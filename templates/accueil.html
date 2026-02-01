@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mon Application de Cotisation</title>
+</head>
+
+<body>
+    <h1>Bienvenue sur l'App de Cotisation</h1>
+    <p>Ceci est votre page d'accueil.</p>
+</body>
+
+</html>
+<h2>Récapitulatif des cotisations</h2>
+<h2>Ajouter une cotisation</h2>
+
+<form method="POST" action="/ajouter">
+    <input type="text" name="nom" placeholder="Nom du membre" required>
+    <input type="number" name="montant" placeholder="Montant (FCFA)" required>
+    <button type="submit">Cotiser</button>
+</form>
+
+<ul>
+    {% for nom, total in cotisations %}
+    <li><strong>{{ nom }}</strong> : {{ total }} FCFA</li>
+    {% endfor %}
+</ul>
+<h2>Récapitulatif des cotisations</h2>
+
+<table border="1">
+    <tr>
+        <th>Membre</th>
+        <th>Montant (FCFA)</th>
+    </tr>
+
+    {% for nom, montant in cotisations %}
+    <tr>
+        <td>{{ nom }}</td>
+        <td>{{ montant }}</td>
+    </tr>
+    {% endfor %}
+</table>
