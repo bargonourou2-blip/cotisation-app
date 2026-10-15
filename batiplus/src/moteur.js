@@ -12,18 +12,30 @@ const themeSystemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 const PAYS_PAR_ISO = new Map(PAYS.map((p) => [p.iso, p]));
 const INDICATIFS = [...new Set(PAYS.map((p) => p.indicatif))].sort((a, b) => b.length - a.length);
+const DONNEES_IMAGE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/;
 
 /* État de l'application, en mémoire uniquement. */
 const etat = {
   compte: null,
+  abonnement: null,
+  historique: [],
+  travailEnCours: null,
   minuterieBlocage: 0,
-  elementAvantModale: null
+  minuterieAdmin: 0,
+  adminEchecs: 0,
+  adminBloqueJusqua: 0,
+  elementAvantModale: null,
+  elementAvantRecherche: null,
+  resoudreModale: null
 };
 
 /* Codes en cours de saisie : jamais dans le DOM, jamais stockés. */
-const codes = { "ins-code": "", "ins-confirmation": "", "cnx-code": "" };
+const codes = { "ins-code": "", "ins-confirmation": "", "cnx-code": "", "pro-ancien": "", "pro-nouveau": "", "pro-confirmation": "" };
 const codesVisibles = new Set();
-const cibleClavier = { "clavier-inscription": "ins-code", "clavier-connexion": "cnx-code" };
+const cibleClavier = { "clavier-inscription": "ins-code", "clavier-connexion": "cnx-code", "clavier-profil": "pro-ancien" };
+/* Champ suivant quand un code atteint 6 chiffres. */
+const CODE_SUIVANT = { "ins-code": "ins-confirmation", "pro-ancien": "pro-nouveau", "pro-nouveau": "pro-confirmation" };
+const animationsCompteurs = new WeakMap();
 
 const presentation = { index: 0, total: 0, departX: null, ecart: 0 };
 
@@ -57,6 +69,11 @@ function trembler(element) {
   void element.offsetWidth;
   element.classList.add("tremble");
   vibrer();
+}
+
+/* Pour comparer sans accents ni majuscules (recherche, clients). */
+function normaliser(texte) {
+  return String(texte || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
 function defilementDoux() {
@@ -133,6 +150,17 @@ async function lireJson(cle) {
   }
 }
 
+/* Reprend une seule fois les clés d'avant le schéma v1 (bp.nom → bp_v1_nom). */
+async function migrerStockage() {
+  for (const [ancienne, nouvelle] of Object.entries(CLES_ANCIENNES)) {
+    const valeur = await lireValeur(ancienne);
+    if (valeur === null || valeur === undefined) continue;
+    const existante = await lireValeur(nouvelle);
+    if (existante === null || existante === undefined) await ecrireValeur(nouvelle, valeur);
+    await supprimerValeur(ancienne);
+  }
+}
+
 /* ---------- Retour haptique ---------- */
 
 function vibrer() {
@@ -156,7 +184,6 @@ function appliquerTheme(theme) {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", THEMES[valide].barreEtat);
   appliquerBarreEtat(valide);
-  $("etat-theme").textContent = THEMES[valide].libelle;
 }
 
 function appliquerBarreEtat(theme) {
@@ -201,13 +228,21 @@ function estEcranEntree(id) {
   return ECRANS_ENTREE.includes(id);
 }
 
-function montrer(id) {
-  /* Les écrans de l'application exigent une session ouverte. */
+/* options.retour : ne pas empiler (bouton retour). L'historique ne garde que les
+   écrans de l'application ; revenir à l'accueil ou à l'entrée le vide. */
+function montrer(id, options) {
   const destination = !estEcranEntree(id) && !etat.compte ? "connexion" : id;
   const cible = $("ecran-" + destination);
   if (!cible) {
     journal("écran inexistant :", destination);
     return false;
+  }
+  const precedent = montrer.ecranCourant;
+  const retour = Boolean(options && options.retour);
+  if (estEcranEntree(destination) || destination === ECRAN_DEPART) {
+    etat.historique = [];
+  } else if (!retour && precedent && precedent !== destination && !estEcranEntree(precedent)) {
+    etat.historique.push(precedent);
   }
   document.querySelectorAll(".ecran.actif").forEach((ecran) => ecran.classList.remove("actif"));
   cible.classList.add("actif");
@@ -219,14 +254,31 @@ function montrer(id) {
   fermerTiroir();
   window.scrollTo({ top: 0, behavior: "auto" });
   montrer.ecranCourant = destination;
+  preparerEcran(destination);
   return true;
 }
 montrer.ecranCourant = null;
 
+/* Remplit l'écran au moment où il s'affiche. */
+function preparerEcran(id) {
+  if (id === "accueil") afficherAccueil();
+  else if (id === "profil") remplirProfil();
+  else if (id === "admin") reinitialiserAdmin();
+}
+
+/* Un seul écouteur pour tous les éléments [data-ecran] (menu, onglets, raccourcis…). */
 function surClicNavigation(evenement) {
-  const lien = evenement.currentTarget;
+  const lien = evenement.target.closest("[data-ecran]");
+  if (!lien || lien.hidden || lien.disabled) return;
   vibrer();
   montrer(lien.dataset.ecran);
+}
+
+/* Un lien vers un écran qui n'existe pas encore est masqué, jamais cassé. */
+function masquerLiensAbsents() {
+  document.querySelectorAll("[data-ecran]").forEach((lien) => {
+    lien.hidden = !ecranExiste(lien.dataset.ecran);
+  });
 }
 
 function creerLienTiroir(entree) {
@@ -239,7 +291,6 @@ function creerLienTiroir(entree) {
   const libelle = document.createElement("span");
   libelle.textContent = entree.libelle;
   bouton.appendChild(libelle);
-  bouton.addEventListener("click", surClicNavigation);
   li.appendChild(bouton);
   return li;
 }
@@ -261,7 +312,6 @@ function creerOnglet(entree) {
     libelle.textContent = entree.libelle;
     bouton.appendChild(libelle);
   }
-  bouton.addEventListener("click", surClicNavigation);
   return bouton;
 }
 
@@ -320,7 +370,8 @@ function activerGlissementTiroir() {
 
 function surToucheClavier(evenement) {
   if (evenement.key === "Escape") {
-    if (!$("modale").hidden) fermerModale();
+    if (!$("modale").hidden) fermerModale(false);
+    else if (!$("recherche").hidden) fermerRecherche();
     else if (tiroirOuvert()) fermerTiroir();
     return;
   }
@@ -330,36 +381,69 @@ function surToucheClavier(evenement) {
   }
 }
 
-/* ---------- Modale ---------- */
+/* ---------- Modale (information ou confirmation) ---------- */
 
-function ouvrirModale(titre, idModele) {
+function ouvrirModale(titre, contenu, options) {
+  const reglages = options || {};
+  if (etat.resoudreModale) fermerModale(false);
   $("modale-titre").textContent = titre;
-  $("modale-contenu").replaceChildren($(idModele).content.cloneNode(true));
-  etat.elementAvantModale = document.activeElement;
+  $("modale-contenu").replaceChildren(contenu);
+  $("libelle-modale-ok").textContent = reglages.ok || "J'ai compris";
+  $("bouton-modale-annuler").hidden = !reglages.annuler;
+  $("libelle-modale-annuler").textContent = reglages.annuler || "Annuler";
+  etat.resoudreModale = reglages.resoudre || null;
+  if (!etat.elementAvantModale) etat.elementAvantModale = document.activeElement;
   $("modale").hidden = false;
-  $("bouton-modale-ok").focus({ preventScroll: true });
+  $(reglages.annuler ? "bouton-modale-annuler" : "bouton-modale-ok").focus({ preventScroll: true });
 }
 
-function fermerModale() {
+function fermerModale(confirme) {
+  if ($("modale").hidden) return;
   $("modale").hidden = true;
+  const resoudre = etat.resoudreModale;
+  etat.resoudreModale = null;
   const precedent = etat.elementAvantModale;
   etat.elementAvantModale = null;
   if (precedent && typeof precedent.focus === "function") precedent.focus({ preventScroll: true });
+  if (resoudre) resoudre(confirme === true);
+}
+
+function surOkModale() {
+  fermerModale(true);
+}
+
+function surAnnulerModale() {
+  fermerModale(false);
 }
 
 function surClicFondModale(evenement) {
-  if (evenement.target === evenement.currentTarget) fermerModale();
+  if (evenement.target === evenement.currentTarget) fermerModale(false);
+}
+
+/* Promesse résolue à true si l'utilisateur confirme. */
+function demanderConfirmation(titre, texte, libelleOui, libelleNon) {
+  return new Promise((resoudre) => {
+    const paragraphe = document.createElement("p");
+    paragraphe.textContent = texte;
+    ouvrirModale(titre, paragraphe, { ok: libelleOui, annuler: libelleNon || "Annuler", resoudre });
+  });
 }
 
 function ouvrirConditions() {
-  ouvrirModale("Conditions d'utilisation et confidentialité", "modele-conditions");
+  ouvrirModale("Conditions d'utilisation et confidentialité", $("modele-conditions").content.cloneNode(true));
 }
 
-/* ---------- Bouton retour Android ---------- */
+/* ---------- Bouton retour Android ----------
+   Ordre : modale → recherche → tiroir → diapositive précédente → historique
+   (confirmation si un travail n'est pas enregistré) → accueil → quitter. */
 
-function surBoutonRetour() {
+async function surBoutonRetour() {
   if (!$("modale").hidden) {
-    fermerModale();
+    fermerModale(false);
+    return;
+  }
+  if (!$("recherche").hidden) {
+    fermerRecherche();
     return;
   }
   if (tiroirOuvert()) {
@@ -370,8 +454,17 @@ function surBoutonRetour() {
     allerDiapo(presentation.index - 1);
     return;
   }
+  if (etat.travailEnCours) {
+    const quitter = await demanderConfirmation("Quitter sans enregistrer ?", etat.travailEnCours + " n'est pas enregistré. Si vous quittez, les modifications seront perdues.", "Quitter", "Rester");
+    if (!quitter) return;
+    etat.travailEnCours = null;
+  }
+  if (etat.historique.length > 0) {
+    montrer(etat.historique.pop(), { retour: true });
+    return;
+  }
   if (montrer.ecranCourant && !estEcranEntree(montrer.ecranCourant) && montrer.ecranCourant !== ECRAN_DEPART) {
-    montrer(ECRAN_DEPART);
+    montrer(ECRAN_DEPART, { retour: true });
     return;
   }
   const app = plugin("App");
@@ -402,7 +495,7 @@ function surveillerLogos() {
 /* ---------- Onde au toucher ---------- */
 
 function surAppuiOnde(evenement) {
-  const cible = evenement.target.closest(".bouton, .bouton-icone, .onglet, .tiroir-lien, .touche, .onglet-auth");
+  const cible = evenement.target.closest(".bouton, .bouton-icone, .onglet, .tiroir-lien, .touche, .onglet-auth, .raccourci, .compte-puce, .recherche-resultat, .avatar-entete");
   if (!cible || cible.disabled || mouvementReduitQuery.matches) return;
   const rect = cible.getBoundingClientRect();
   const onde = document.createElement("span");
@@ -573,11 +666,7 @@ function initialiserToile() {
     if (document.hidden) arreterToile();
     else demarrerToile();
   });
-  mouvementReduitQuery.addEventListener("change", () => { afficherAnimations(); demarrerToile(); });
-}
-
-function afficherAnimations() {
-  $("etat-animations").textContent = mouvementReduitQuery.matches ? "Réduites (réglage de l'appareil)" : "Actives";
+  mouvementReduitQuery.addEventListener("change", demarrerToile);
 }
 
 /* ---------- Présentation (première ouverture) ---------- */
@@ -750,32 +839,49 @@ function afficherApercu(idApercu, analyse, saisie) {
   apercu.replaceChildren(base + " — ", numero);
 }
 
-function construireListesPays() {
+function remplirListes(prefixe, iso, codeDevise) {
   const options = [...PAYS]
     .sort((a, b) => a.nom.localeCompare(b.nom, "fr"))
     .map((p) => new Option(p.nom + " (+" + p.indicatif + ")", p.iso));
-  $("ins-pays").replaceChildren(...options);
-  $("ins-pays").value = PAYS_DEFAUT;
+  $(prefixe + "-pays").replaceChildren(...options);
+  $(prefixe + "-pays").value = iso;
   const devises = Object.entries(DEVISES).map(([code, d]) => new Option(d.libelle + " — " + d.nom, code));
-  $("ins-devise").replaceChildren(...devises);
-  $("ins-devise").value = PAYS_PAR_ISO.get(PAYS_DEFAUT).devise;
+  $(prefixe + "-devise").replaceChildren(...devises);
+  $(prefixe + "-devise").value = codeDevise;
 }
 
-function surSaisieTelephoneInscription() {
-  const champ = $("ins-telephone");
-  const analyse = analyserTelephone(champ.value, $("ins-pays").value);
-  if (analyse.pays && analyse.detecte && analyse.pays.iso !== $("ins-pays").value) {
-    $("ins-pays").value = analyse.pays.iso;
-    $("ins-devise").value = analyse.pays.devise;
+/* Le pays et la devise suivent l'indicatif saisi (226 avant 22). */
+function majTelephone(prefixe) {
+  const champ = $(prefixe + "-telephone");
+  const analyse = analyserTelephone(champ.value, $(prefixe + "-pays").value);
+  if (analyse.pays && analyse.detecte && analyse.pays.iso !== $(prefixe + "-pays").value) {
+    $(prefixe + "-pays").value = analyse.pays.iso;
+    $(prefixe + "-devise").value = analyse.pays.devise;
   }
-  afficherApercu("apercu-ins-telephone", analyse, champ.value);
+  afficherApercu("apercu-" + prefixe + "-telephone", analyse, champ.value);
   effacerErreur(champ);
 }
 
-function surChangementPays() {
-  const pays = PAYS_PAR_ISO.get($("ins-pays").value);
-  if (pays) $("ins-devise").value = pays.devise;
-  surSaisieTelephoneInscription();
+function majPays(prefixe) {
+  const pays = PAYS_PAR_ISO.get($(prefixe + "-pays").value);
+  if (pays) $(prefixe + "-devise").value = pays.devise;
+  majTelephone(prefixe);
+}
+
+function surSaisieTelephoneInscription() {
+  majTelephone("ins");
+}
+
+function surChangementPaysInscription() {
+  majPays("ins");
+}
+
+function surSaisieTelephoneProfil() {
+  majTelephone("pro");
+}
+
+function surChangementPaysProfil() {
+  majPays("pro");
 }
 
 function surSaisieTelephoneConnexion() {
@@ -833,7 +939,7 @@ function saisirChiffre(id, chiffre) {
   afficherCode(id);
   effacerErreur($(id));
   vibrer();
-  if (id === "ins-code" && codes[id].length === CODE.longueurMax) activerCode("ins-confirmation");
+  if (CODE_SUIVANT[id] && codes[id].length === CODE.longueurMax) activerCode(CODE_SUIVANT[id]);
 }
 
 function effacerChiffre(id) {
@@ -967,7 +1073,13 @@ function compteValide(compte) {
   return Boolean(compte) && typeof compte.id === "string" && typeof compte.telephone === "string"
     && typeof compte.nom === "string" && typeof compte.sel === "string" && typeof compte.empreinte === "string"
     && Number.isInteger(compte.iterations) && compte.iterations >= CODE.iterations
-    && PAYS_PAR_ISO.has(compte.pays) && Object.prototype.hasOwnProperty.call(DEVISES, compte.devise);
+    && PAYS_PAR_ISO.has(compte.pays) && Object.prototype.hasOwnProperty.call(DEVISES, compte.devise)
+    && imageFacultative(compte.photo) && imageFacultative(compte.logo)
+    && (compte.conditions === undefined || (typeof compte.conditions === "string" && compte.conditions.length <= BORNES.conditionsMax));
+}
+
+function imageFacultative(valeur) {
+  return valeur === undefined || valeur === "" || (typeof valeur === "string" && valeur.length <= IMAGES.donneesMax && DONNEES_IMAGE.test(valeur));
 }
 
 async function lireComptes() {
@@ -987,13 +1099,17 @@ async function lireSession() {
 async function ouvrirSession(compte) {
   await ecrireValeur(CLES_STOCKAGE.session, JSON.stringify({ compteId: compte.id, ouverte: Date.now() }));
   etat.compte = compte;
+  etat.abonnement = abonnementCourant();
   afficherCompte(compte);
 }
 
 async function fermerSession() {
   await supprimerValeur(CLES_STOCKAGE.session);
   etat.compte = null;
+  etat.abonnement = null;
+  etat.travailEnCours = null;
   afficherCompte(null);
+  await afficherComptesAppareil();
   choisirOnglet("connexion");
   montrer("connexion");
 }
@@ -1086,6 +1202,9 @@ function surSaisieChamp(evenement) {
 /* Fait remonter le champ actif au-dessus du clavier du téléphone. */
 function surFocusChamp(evenement) {
   if (!tiroirMobileQuery.matches) return;
+  /* Seuls les vrais champs ouvrent le clavier du téléphone. Le code secret a son propre
+     clavier : le recentrer à chaque touche ferait sauter la page sous le doigt. */
+  if (!evenement.target.matches("input:not([type=checkbox]):not([type=file]), textarea, select")) return;
   const champ = evenement.target.closest(".champ");
   if (!champ) return;
   setTimeout(() => champ.scrollIntoView({ block: "center", behavior: defilementDoux() }), 280);
@@ -1182,7 +1301,7 @@ async function surInscription(evenement) {
     viderCode("ins-code");
     viderCode("ins-confirmation");
     $("apercu-ins-telephone").textContent = "";
-    construireListesPays();
+    remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);
     await ouvrirSession(compte);
     vibrer();
     montrer(ECRAN_DEPART);
@@ -1267,66 +1386,876 @@ async function surConnexion(evenement) {
   }
 }
 
-/* ---------- Écran de test : compte connecté ---------- */
+/* ---------- Identité affichée partout (en-tête, tiroir, accueil, profil) ---------- */
+
+function prenom(nom) {
+  return String(nom || "").split(" ").filter(Boolean)[0] || "";
+}
+
+function initiales(nom) {
+  const lettres = String(nom || "").split(" ").filter(Boolean)
+    .map((mot) => (mot.match(/\p{L}|\p{N}/u) || [""])[0])
+    .filter(Boolean);
+  return (lettres.slice(0, 2).join("") || "?").toLocaleUpperCase("fr-FR");
+}
+
+/* Formule : le front ne lit JAMAIS la formule dans le stockage local (on ne peut
+   pas s'attribuer le Pro en modifiant un fichier). Elle viendra du compte vérifié
+   en ligne ; d'ici là, tout compte est en formule gratuite. */
+function abonnementCourant() {
+  return { formule: FORMULE_DEFAUT, fin: null };
+}
+
+/* LA seule fonction qui produit le nom de la formule : accueil, profil, menu, abonnement. */
+function libelleFormule(abonnement) {
+  const formule = FORMULES[abonnement && abonnement.formule] || FORMULES[FORMULE_DEFAUT];
+  return formule.nom;
+}
+
+function joursRestants(abonnement) {
+  if (!abonnement || !abonnement.fin) return null;
+  const fin = Date.parse(abonnement.fin);
+  if (Number.isNaN(fin)) return null;
+  return Math.max(0, Math.ceil((fin - Date.now()) / 86400000));
+}
+
+function afficherImage(img, donnees) {
+  if (donnees && DONNEES_IMAGE.test(donnees)) {
+    img.src = donnees;
+    img.hidden = false;
+  } else {
+    img.removeAttribute("src");
+    img.hidden = true;
+  }
+}
 
 function afficherCompte(compte) {
-  const pays = compte ? PAYS_PAR_ISO.get(compte.pays) : null;
-  const devise = compte ? DEVISES[compte.devise] : null;
-  $("compte-nom").textContent = compte ? compte.nom : "";
-  $("compte-entreprise").textContent = compte ? compte.entreprise || "—" : "";
-  $("compte-telephone").textContent = compte ? formaterTelephone(compte.telephone, compte.pays) : "";
-  $("compte-ville").textContent = compte ? compte.ville : "";
-  $("compte-pays").textContent = pays ? pays.nom : "";
-  $("compte-devise").textContent = devise ? devise.nom + " · " + formaterMontant(25000, compte.devise) : "";
+  const nom = compte ? compte.nom : "";
+  document.querySelectorAll("[data-nom]").forEach((el) => { el.textContent = nom; });
+  document.querySelectorAll("[data-initiales]").forEach((el) => { el.textContent = compte ? initiales(nom) : ""; });
+  document.querySelectorAll("[data-photo]").forEach((img) => afficherImage(img, compte ? compte.photo : ""));
+  document.querySelectorAll("[data-formule]").forEach((el) => { el.textContent = libelleFormule(etat.abonnement); });
+  $("bouton-avatar").setAttribute("aria-label", compte ? "Mon profil — " + nom : "Mon profil");
+  $("profil-telephone").textContent = compte ? formaterTelephone(compte.telephone, compte.pays) : "";
 }
 
-/* ---------- Vérification du démarrage (écran de test) ---------- */
+/* ---------- Devis enregistrés (lecture seule à cette étape) ---------- */
 
-async function testerStockage() {
-  const cle = "bp.test-demarrage";
-  const valeur = String(Date.now());
-  const ecrit = await ecrireValeur(cle, valeur);
-  const relu = await lireValeur(cle);
-  await supprimerValeur(cle);
-  return ecrit && relu === valeur;
+function devisValide(devis) {
+  return Boolean(devis) && typeof devis.id === "string" && typeof devis.compteId === "string"
+    && typeof devis.titre === "string" && typeof devis.client === "string"
+    && Number.isFinite(devis.total) && devis.total >= 0 && devis.total <= 1e13
+    && Object.prototype.hasOwnProperty.call(STATUTS_DEVIS, devis.statut)
+    && typeof devis.creeLe === "string" && !Number.isNaN(Date.parse(devis.creeLe));
 }
 
-function testerPolices() {
-  if (!document.fonts || typeof document.fonts.check !== "function") return true;
-  return document.fonts.check('600 16px "Inter"') && document.fonts.check('800 16px "Montserrat"');
+async function lireDevis(compteId) {
+  const liste = await lireJson(CLES_STOCKAGE.devis);
+  return Array.isArray(liste) ? liste.filter(devisValide).filter((d) => d.compteId === compteId) : [];
 }
 
-async function verifierDemarrage() {
-  const bouton = $("bouton-verifier");
-  bouton.setAttribute("aria-busy", "true");
-  $("verif-resultat").hidden = true;
-  vibrer();
-  if (document.fonts && document.fonts.ready) await document.fonts.ready;
-  const controles = [
-    { nom: "stockage local", ok: await testerStockage() },
-    { nom: "polices embarquées", ok: testerPolices() },
-    { nom: "navigation", ok: ecranExiste(ECRAN_DEPART) && montrer.ecranCourant === ECRAN_DEPART },
-    { nom: "chiffrement du code", ok: cryptoDisponible() },
-    { nom: "logo", ok: document.querySelectorAll("[data-logo].logo-echec").length === 0 }
-  ];
-  await attendre(650);
-  afficherVerification(controles.filter((c) => !c.ok).map((c) => c.nom));
-  bouton.removeAttribute("aria-busy");
+function statistiques(devis) {
+  const maintenant = new Date();
+  const duMois = devis.filter((d) => {
+    const date = new Date(d.creeLe);
+    return date.getFullYear() === maintenant.getFullYear() && date.getMonth() === maintenant.getMonth();
+  });
+  const acceptes = devis.filter((d) => d.statut === "accepte").length;
+  return {
+    total: devis.length,
+    mois: duMois.length,
+    acceptes,
+    montant: devis.reduce((somme, d) => somme + d.total, 0),
+    clients: new Set(devis.map((d) => normaliser(d.client)).filter(Boolean)).size,
+    taux: devis.length ? Math.round((acceptes / devis.length) * 100) : null
+  };
 }
 
-function afficherVerification(echecs) {
-  const coche = $("verif-coche");
-  const nouvelle = coche.cloneNode(true);
-  nouvelle.classList.toggle("echec", echecs.length > 0);
-  coche.replaceWith(nouvelle);
-  if (echecs.length === 0) {
-    $("verif-titre").textContent = "Tout est prêt";
-    $("verif-detail").textContent = "Stockage, polices, navigation, chiffrement du code et logo fonctionnent sur cet appareil.";
-  } else {
-    $("verif-titre").textContent = "À vérifier";
-    $("verif-detail").textContent = "Problème détecté : " + echecs.join(", ") + ".";
+/* ---------- Tableau de bord ---------- */
+
+function formaterEntier(valeur) {
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(valeur);
+}
+
+/* Les chiffres comptent de 0 à leur valeur en 700 ms (immédiat si mouvement réduit). */
+function animerCompteur(element, valeur, formater) {
+  const precedente = animationsCompteurs.get(element);
+  if (precedente) cancelAnimationFrame(precedente);
+  if (mouvementReduitQuery.matches || valeur === 0) {
+    element.textContent = formater(valeur);
+    return;
   }
-  $("verif-resultat").hidden = false;
+  const debut = performance.now();
+  const etape = (instant) => {
+    const t = Math.min(1, (instant - debut) / DUREE_COMPTEUR);
+    const adouci = 1 - Math.pow(1 - t, 3);
+    element.textContent = formater(t < 1 ? Math.round(valeur * adouci) : valeur);
+    if (t < 1) animationsCompteurs.set(element, requestAnimationFrame(etape));
+    else animationsCompteurs.delete(element);
+  };
+  element.textContent = formater(0);
+  animationsCompteurs.set(element, requestAnimationFrame(etape));
+}
+
+function dateDuJour() {
+  const texte = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
+  return texte.charAt(0).toLocaleUpperCase("fr-FR") + texte.slice(1);
+}
+
+function astuceDuJour() {
+  const aujourdhui = new Date();
+  const jour = Math.floor(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate()) / 86400000);
+  return ASTUCES[jour % ASTUCES.length];
+}
+
+function creerLigneDevis(devis, codeDevise) {
+  const li = document.createElement("li");
+  const texte = document.createElement("div");
+  texte.className = "devis-texte";
+  const titre = document.createElement("strong");
+  titre.textContent = devis.titre;
+  const client = document.createElement("span");
+  client.textContent = devis.client;
+  texte.append(titre, client);
+  const droite = document.createElement("div");
+  droite.className = "devis-droite";
+  const montant = document.createElement("span");
+  montant.className = "devis-montant";
+  montant.textContent = formaterMontant(devis.total, codeDevise);
+  const statut = document.createElement("span");
+  statut.className = "statut";
+  statut.dataset.ton = STATUTS_DEVIS[devis.statut].ton;
+  statut.textContent = STATUTS_DEVIS[devis.statut].libelle;
+  droite.append(montant, statut);
+  li.append(texte, droite);
+  return li;
+}
+
+async function afficherAccueil() {
+  const compte = etat.compte;
+  if (!compte) return;
+  const devis = await lireDevis(compte.id);
+  const stats = statistiques(devis);
+  const formule = FORMULES[etat.abonnement.formule] || FORMULES[FORMULE_DEFAUT];
+  $("accueil-prenom").textContent = prenom(compte.nom);
+  $("accueil-telephone").textContent = formaterTelephone(compte.telephone, compte.pays);
+  $("accueil-ville").textContent = compte.ville;
+  $("accueil-date").textContent = dateDuJour();
+  $("accueil-quota").textContent = formule.illimite ? "Devis illimités" : stats.mois + " / " + LIMITE_GRATUITE + " devis ce mois";
+  $("bouton-passer-pro").hidden = formule.illimite || !ecranExiste("abonnement");
+
+  animerCompteur($("cpt-montant"), stats.montant, (v) => formaterMontant(v, compte.devise));
+  animerCompteur($("cpt-devis"), stats.mois, formaterEntier);
+  animerCompteur($("cpt-acceptes"), stats.acceptes, formaterEntier);
+  const jours = joursRestants(etat.abonnement);
+  if (jours === null) {
+    $("cpt-jours").textContent = "∞";
+    $("cpt-jours-libelle").textContent = "Sans date de fin";
+  } else {
+    animerCompteur($("cpt-jours"), jours, formaterEntier);
+    $("cpt-jours-libelle").textContent = "Jours restants";
+  }
+
+  const derniers = [...devis].sort((a, b) => Date.parse(b.creeLe) - Date.parse(a.creeLe)).slice(0, 3);
+  $("accueil-devis").replaceChildren(...derniers.map((d) => creerLigneDevis(d, compte.devise)));
+  $("accueil-devis-vide").hidden = derniers.length > 0;
+  $("astuce-texte").textContent = astuceDuJour();
+}
+
+/* ---------- Recherche ---------- */
+
+function ouvrirRecherche() {
+  etat.elementAvantRecherche = document.activeElement;
+  $("recherche-saisie").value = "";
+  afficherResultats("");
+  $("recherche").hidden = false;
+  $("recherche-saisie").focus({ preventScroll: true });
+}
+
+function fermerRecherche() {
+  if ($("recherche").hidden) return;
+  $("recherche").hidden = true;
+  const precedent = etat.elementAvantRecherche;
+  etat.elementAvantRecherche = null;
+  if (precedent && typeof precedent.focus === "function") precedent.focus({ preventScroll: true });
+}
+
+function resultatsRecherche(requete) {
+  const mots = normaliser(requete).split(/\s+/).filter(Boolean);
+  return RECHERCHE.map((entree, index) => ({ entree, index }))
+    .filter(({ entree }) => ecranExiste(entree.ecran))
+    .filter(({ entree }) => {
+      const texte = normaliser(entree.libelle + " " + entree.detail + " " + entree.mots);
+      return mots.every((mot) => texte.includes(mot));
+    });
+}
+
+function afficherResultats(requete) {
+  const resultats = resultatsRecherche(requete);
+  const elements = resultats.map(({ entree, index }) => {
+    const li = document.createElement("li");
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "recherche-resultat";
+    bouton.dataset.index = String(index);
+    const texte = document.createElement("span");
+    const titre = document.createElement("strong");
+    titre.textContent = entree.libelle;
+    const detail = document.createElement("small");
+    detail.textContent = entree.detail;
+    texte.append(titre, detail);
+    bouton.append(creerIcone("i-fleche"), texte);
+    li.appendChild(bouton);
+    return li;
+  });
+  $("recherche-resultats").replaceChildren(...elements);
+  $("recherche-vide").hidden = resultats.length > 0;
+}
+
+function surSaisieRecherche(evenement) {
+  afficherResultats(evenement.currentTarget.value);
+}
+
+function surToucheRecherche(evenement) {
+  if (evenement.key !== "Enter") return;
+  evenement.preventDefault();
+  const premier = $("recherche-resultats").querySelector(".recherche-resultat");
+  if (premier) premier.click();
+}
+
+function surChoixResultat(evenement) {
+  const bouton = evenement.target.closest(".recherche-resultat");
+  if (!bouton) return;
+  const entree = RECHERCHE[Number(bouton.dataset.index)];
+  fermerRecherche();
+  montrer(entree.ecran);
+  if (entree.cible && $(entree.cible)) reperer($(entree.cible));
+}
+
+function surClicFondRecherche(evenement) {
+  if (evenement.target === evenement.currentTarget) fermerRecherche();
+}
+
+function reperer(element) {
+  element.scrollIntoView({ block: "start", behavior: defilementDoux() });
+  element.classList.remove("reperee");
+  void element.offsetWidth;
+  element.classList.add("reperee");
+}
+
+/* ---------- Profil ---------- */
+
+async function enregistrerCompte(modifie) {
+  if (!etat.compte) return false;
+  const comptes = await lireComptes();
+  const index = comptes.findIndex((c) => c.id === modifie.id);
+  if (index < 0 || !compteValide(modifie)) return false;
+  comptes[index] = modifie;
+  if (!await ecrireComptes(comptes)) return false;
+  etat.compte = modifie;
+  afficherCompte(modifie);
+  return true;
+}
+
+function message(id, texte, reussi) {
+  const element = $(id);
+  element.textContent = texte;
+  element.classList.toggle("ok", Boolean(reussi));
+}
+
+function majCompteurConditions() {
+  $("compteur-conditions").textContent = $("pro-conditions").value.length + " / " + BORNES.conditionsMax;
+}
+
+async function afficherStatistiques() {
+  if (!etat.compte) return;
+  const compte = etat.compte;
+  const stats = statistiques(await lireDevis(compte.id));
+  $("stat-devis").textContent = formaterEntier(stats.total);
+  $("stat-acceptes").textContent = formaterEntier(stats.acceptes);
+  $("stat-taux").textContent = stats.taux === null ? "—" : stats.taux + "\u00A0%";
+  $("stat-montant").textContent = formaterMontant(stats.montant, compte.devise);
+  $("stat-clients").textContent = formaterEntier(stats.clients);
+}
+
+function remplirProfil() {
+  const compte = etat.compte;
+  if (!compte) return;
+  ["pro-nom", "pro-entreprise", "pro-telephone", "pro-ville", "pro-conditions", "pro-ancien", "pro-nouveau", "pro-confirmation"]
+    .forEach((id) => effacerErreur($(id)));
+  ["msg-profil", "msg-photo", "msg-logo", "msg-conditions", "msg-code", "msg-sauvegarde"].forEach((id) => message(id, ""));
+  $("pro-nom").value = compte.nom;
+  $("pro-entreprise").value = compte.entreprise || "";
+  $("pro-telephone").value = formaterTelephone(compte.telephone, compte.pays);
+  $("pro-ville").value = compte.ville;
+  remplirListes("pro", compte.pays, compte.devise);
+  $("apercu-pro-telephone").replaceChildren();
+  $("pro-conditions").value = typeof compte.conditions === "string" ? compte.conditions : CONDITIONS_DEFAUT;
+  majCompteurConditions();
+  afficherImage($("apercu-logo"), compte.logo);
+  $("logo-vide").hidden = Boolean(compte.logo);
+  $("bouton-retirer-logo").hidden = !compte.logo;
+  $("bouton-retirer-photo").hidden = !compte.photo;
+  ["pro-ancien", "pro-nouveau", "pro-confirmation"].forEach(viderCode);
+  activerCode("pro-ancien");
+  afficherStatistiques();
+}
+
+function lireFormulaireProfil() {
+  let premier = "";
+  const signaler = (id, texte) => {
+    afficherErreur(id, texte);
+    premier = premier || id;
+  };
+  ["pro-nom", "pro-entreprise", "pro-telephone", "pro-ville"].forEach((id) => effacerErreur($(id)));
+  const nom = nettoyerTexte($("pro-nom").value);
+  if (!texteValide(nom, true)) signaler("pro-nom", "Indiquez votre nom complet (120 caractères au maximum).");
+  const entreprise = nettoyerTexte($("pro-entreprise").value);
+  if (!texteValide(entreprise, false)) signaler("pro-entreprise", "120 caractères au maximum.");
+  const analyse = analyserTelephone($("pro-telephone").value, $("pro-pays").value);
+  if (!telephoneValide(analyse)) signaler("pro-telephone", messageTelephone(analyse));
+  const ville = nettoyerTexte($("pro-ville").value);
+  if (!texteValide(ville, true)) signaler("pro-ville", "Indiquez votre ville (120 caractères au maximum).");
+  if (premier) {
+    allerAuChamp(premier);
+    return null;
+  }
+  const devise = Object.prototype.hasOwnProperty.call(DEVISES, $("pro-devise").value) ? $("pro-devise").value : analyse.pays.devise;
+  return { nom, entreprise, telephone: versE164(analyse), pays: analyse.pays.iso, devise, ville };
+}
+
+async function surEnregistrerProfil(evenement) {
+  evenement.preventDefault();
+  if (!etat.compte) return;
+  message("msg-profil", "");
+  const donnees = lireFormulaireProfil();
+  if (!donnees) return;
+  const comptes = await lireComptes();
+  if (comptes.some((c) => c.id !== etat.compte.id && c.telephone === donnees.telephone)) {
+    afficherErreur("pro-telephone", "Ce numéro ne peut pas être utilisé pour ce compte.");
+    return;
+  }
+  const ok = await enregistrerCompte({ ...etat.compte, ...donnees });
+  message("msg-profil", ok ? "Informations enregistrées." : "Enregistrement impossible. Réessayez.", ok);
+  if (ok) {
+    vibrer();
+    $("pro-telephone").value = formaterTelephone(donnees.telephone, donnees.pays);
+    afficherStatistiques();
+  }
+}
+
+function nettoyerParagraphes(valeur) {
+  return String(valeur || "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, "")
+    .replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+async function surEnregistrerConditions(evenement) {
+  evenement.preventDefault();
+  if (!etat.compte) return;
+  effacerErreur($("pro-conditions"));
+  const conditions = nettoyerParagraphes($("pro-conditions").value);
+  if (conditions.length > BORNES.conditionsMax) {
+    afficherErreur("pro-conditions", BORNES.conditionsMax + " caractères au maximum.");
+    return;
+  }
+  const ok = await enregistrerCompte({ ...etat.compte, conditions });
+  message("msg-conditions", ok ? "Conditions enregistrées." : "Enregistrement impossible. Réessayez.", ok);
+  if (ok) $("pro-conditions").value = conditions;
+}
+
+async function surChangerCode(evenement) {
+  evenement.preventDefault();
+  if (!etat.compte) return;
+  ["pro-ancien", "pro-nouveau", "pro-confirmation"].forEach((id) => effacerErreur($(id)));
+  message("msg-code", "");
+  const verrou = await lireVerrou();
+  if (verrou.jusqua > Date.now()) {
+    message("msg-code", "Trop d'essais. Réessayez dans " + formaterDuree(verrou.jusqua - Date.now()) + ".");
+    return;
+  }
+  if (!cryptoDisponible()) {
+    message("msg-code", "Cet appareil ne permet pas de protéger votre code.");
+    return;
+  }
+  const ancien = codes["pro-ancien"];
+  const nouveau = codes["pro-nouveau"];
+  if (!/^\d{4,6}$/.test(ancien)) {
+    afficherErreur("pro-ancien", "Saisissez votre code actuel.");
+    return;
+  }
+  const erreur = erreurCodeNeuf(nouveau);
+  if (erreur) {
+    afficherErreur("pro-nouveau", erreur);
+    return;
+  }
+  if (nouveau === ancien) {
+    afficherErreur("pro-nouveau", "Le nouveau code doit être différent de l'actuel.");
+    return;
+  }
+  if (codes["pro-confirmation"] !== nouveau) {
+    afficherErreur("pro-confirmation", "Les deux codes ne sont pas identiques.");
+    return;
+  }
+  const bouton = $("bouton-changer-code");
+  bouton.setAttribute("aria-busy", "true");
+  try {
+    const compte = await verifierIdentifiants(etat.compte.telephone, ancien);
+    if (!compte) {
+      const apres = await enregistrerEchec();
+      viderCode("pro-ancien");
+      activerCode("pro-ancien");
+      afficherErreur("pro-ancien", apres.jusqua > Date.now()
+        ? "Code actuel incorrect. Trop d'essais : réessayez dans " + formaterDuree(apres.jusqua - Date.now()) + "."
+        : "Code actuel incorrect.");
+      return;
+    }
+    await reinitialiserVerrou();
+    const sel = crypto.getRandomValues(new Uint8Array(CODE.octetsSel));
+    const empreinte = await deriverEmpreinte(nouveau, sel, CODE.iterations);
+    const ok = await enregistrerCompte({ ...etat.compte, sel: versBase64(sel), empreinte: versBase64(empreinte), iterations: CODE.iterations });
+    ["pro-ancien", "pro-nouveau", "pro-confirmation"].forEach(viderCode);
+    activerCode("pro-ancien");
+    message("msg-code", ok ? "Code secret changé. Utilisez-le dès la prochaine connexion." : "Enregistrement impossible. Réessayez.", ok);
+    if (ok) vibrer();
+  } finally {
+    bouton.removeAttribute("aria-busy");
+  }
+}
+
+/* ---------- Images importées : type vérifié, 5 Mo max, REDESSINÉES (métadonnées et
+   position GPS supprimées), puis compressées. Le SVG est refusé. ---------- */
+
+async function lireOctets(blob, longueur) {
+  const morceau = blob.slice(0, longueur);
+  if (typeof morceau.arrayBuffer === "function") return new Uint8Array(await morceau.arrayBuffer());
+  return new Promise((resoudre, rejeter) => {
+    const lecteur = new FileReader();
+    lecteur.addEventListener("load", () => resoudre(new Uint8Array(lecteur.result)));
+    lecteur.addEventListener("error", () => rejeter(new Error("illisible")));
+    lecteur.readAsArrayBuffer(morceau);
+  });
+}
+
+/* Le type est lu dans les premiers octets du fichier, pas dans son nom. */
+function typeReel(octets) {
+  const texte = (debut, fin) => String.fromCharCode(...octets.slice(debut, fin));
+  if (octets[0] === 0xFF && octets[1] === 0xD8 && octets[2] === 0xFF) return "image/jpeg";
+  if (octets[0] === 0x89 && texte(1, 4) === "PNG") return "image/png";
+  if (texte(0, 4) === "RIFF" && texte(8, 12) === "WEBP") return "image/webp";
+  return "";
+}
+
+async function decoderImage(blob) {
+  if (typeof createImageBitmap === "function") return createImageBitmap(blob);
+  const adresse = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.src = adresse;
+    await image.decode();
+    return image;
+  } finally {
+    URL.revokeObjectURL(adresse);
+  }
+}
+
+function exporterImage(toile, mode, qualite) {
+  const webp = toile.toDataURL("image/webp", qualite);
+  if (webp.startsWith("data:image/webp")) return webp;
+  return mode === "logo" ? toile.toDataURL("image/png") : toile.toDataURL("image/jpeg", qualite);
+}
+
+async function preparerImage(blob, mode) {
+  if (!blob || blob.size > IMAGES.octetsMax) throw new Error("taille");
+  if (!IMAGES.types.includes(typeReel(await lireOctets(blob, 12)))) throw new Error("type");
+  let source;
+  try {
+    source = await decoderImage(blob);
+  } catch (erreur) {
+    throw new Error("illisible");
+  }
+  const largeur = source.width;
+  const hauteur = source.height;
+  if (!largeur || !hauteur || largeur * hauteur > IMAGES.pixelsMax) throw new Error("illisible");
+  const toile = document.createElement("canvas");
+  const ctx = toile.getContext("2d");
+  if (mode === "photo") {
+    const cote = IMAGES.photo.cote;
+    const coupe = Math.min(largeur, hauteur);
+    toile.width = cote;
+    toile.height = cote;
+    ctx.drawImage(source, (largeur - coupe) / 2, (hauteur - coupe) / 2, coupe, coupe, 0, 0, cote, cote);
+  } else {
+    const echelle = Math.min(1, IMAGES.logo.largeur / largeur, IMAGES.logo.hauteur / hauteur);
+    toile.width = Math.max(1, Math.round(largeur * echelle));
+    toile.height = Math.max(1, Math.round(hauteur * echelle));
+    ctx.drawImage(source, 0, 0, toile.width, toile.height);
+  }
+  if (typeof source.close === "function") source.close();
+  let qualite = IMAGES.qualite;
+  let donnees = exporterImage(toile, mode, qualite);
+  while (donnees.length > IMAGES.donneesMax && qualite > 0.4) {
+    qualite -= 0.14;
+    donnees = toile.toDataURL(mode === "logo" ? "image/webp" : "image/jpeg", qualite);
+  }
+  if (donnees.length > IMAGES.donneesMax || !DONNEES_IMAGE.test(donnees)) throw new Error("taille");
+  return donnees;
+}
+
+function messageImage(erreur) {
+  const raison = erreur && erreur.message;
+  if (raison === "type") return "Format refusé : choisissez une image JPEG, PNG ou WebP.";
+  if (raison === "taille") return "Image trop lourde : 5 Mo maximum.";
+  return "Image illisible. Essayez une autre image.";
+}
+
+async function importerImage(evenement, champ, idMessage) {
+  const entree = evenement.currentTarget;
+  const fichier = entree.files && entree.files[0];
+  entree.value = "";
+  if (!fichier) return;
+  message(idMessage, "");
+  try {
+    const donnees = await preparerImage(fichier, champ === "photo" ? "photo" : "logo");
+    const ok = await enregistrerCompte({ ...etat.compte, [champ]: donnees });
+    message(idMessage, ok ? (champ === "photo" ? "Photo mise à jour." : "Logo mis à jour.") : "Enregistrement impossible. Réessayez.", ok);
+    if (ok) remplirImagesProfil();
+  } catch (erreur) {
+    message(idMessage, messageImage(erreur));
+  }
+}
+
+function remplirImagesProfil() {
+  const compte = etat.compte;
+  afficherImage($("apercu-logo"), compte.logo);
+  $("logo-vide").hidden = Boolean(compte.logo);
+  $("bouton-retirer-logo").hidden = !compte.logo;
+  $("bouton-retirer-photo").hidden = !compte.photo;
+}
+
+function surFichierPhoto(evenement) {
+  if (!etat.compte) return;
+  importerImage(evenement, "photo", "msg-photo");
+}
+
+function surFichierLogo(evenement) {
+  if (!etat.compte) return;
+  importerImage(evenement, "logo", "msg-logo");
+}
+
+function surChoisirPhoto() {
+  $("fichier-photo").click();
+}
+
+function surChoisirLogo() {
+  $("fichier-logo").click();
+}
+
+async function surRetirerPhoto() {
+  if (!etat.compte) return;
+  const ok = await enregistrerCompte({ ...etat.compte, photo: "" });
+  message("msg-photo", ok ? "Photo retirée." : "Enregistrement impossible. Réessayez.", ok);
+  if (ok) remplirImagesProfil();
+}
+
+async function surRetirerLogo() {
+  if (!etat.compte) return;
+  const ok = await enregistrerCompte({ ...etat.compte, logo: "" });
+  message("msg-logo", ok ? "Logo retiré." : "Enregistrement impossible. Réessayez.", ok);
+  if (ok) remplirImagesProfil();
+}
+
+/* ---------- Sauvegarde : export et import contrôlé ---------- */
+
+function construireSauvegarde(compte) {
+  return {
+    format: SAUVEGARDE.format,
+    version: SAUVEGARDE.version,
+    exporteLe: new Date().toISOString(),
+    profil: {
+      nom: compte.nom,
+      entreprise: compte.entreprise || "",
+      ville: compte.ville,
+      pays: compte.pays,
+      devise: compte.devise,
+      conditions: typeof compte.conditions === "string" ? compte.conditions : CONDITIONS_DEFAUT,
+      photo: compte.photo || "",
+      logo: compte.logo || ""
+    }
+  };
+}
+
+async function surExporter() {
+  if (!etat.compte) return;
+  const json = JSON.stringify(construireSauvegarde(etat.compte), null, 2);
+  const nom = "batiplus-sauvegarde-" + new Date().toISOString().slice(0, 10) + ".json";
+  const fichiers = plugin("Filesystem");
+  try {
+    if (fichiers) {
+      await fichiers.writeFile({ path: "BatiPlus/" + nom, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
+      message("msg-sauvegarde", "Sauvegarde enregistrée dans Documents/BatiPlus.", true);
+    } else {
+      const adresse = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+      const lien = document.createElement("a");
+      lien.href = adresse;
+      lien.download = nom;
+      document.body.appendChild(lien);
+      lien.click();
+      lien.remove();
+      setTimeout(() => URL.revokeObjectURL(adresse), 1000);
+      message("msg-sauvegarde", "Sauvegarde téléchargée : " + nom, true);
+    }
+    vibrer();
+  } catch (erreur) {
+    message("msg-sauvegarde", "Impossible d'enregistrer la sauvegarde sur cet appareil.");
+  }
+}
+
+function estObjetSimple(valeur) {
+  return Boolean(valeur) && typeof valeur === "object" && !Array.isArray(valeur) && Object.getPrototypeOf(valeur) === Object.prototype;
+}
+
+function verifierCles(objet, autorisees, nomBloc) {
+  const inconnue = Object.keys(objet).find((cle) => !autorisees.includes(cle));
+  if (inconnue) throw new Error("Fichier refusé : champ inattendu « " + inconnue.slice(0, 30) + " » dans " + nomBloc + ".");
+}
+
+/* Structure validée champ par champ, valeurs typées, clés inconnues rejetées.
+   Une sauvegarde ne peut JAMAIS toucher au code secret, au téléphone ni à l'abonnement. */
+function validerSauvegarde(donnees) {
+  const refus = (texte) => { throw new Error(texte); };
+  if (!estObjetSimple(donnees)) refus("Ce fichier n'est pas une sauvegarde BâtiPlus.");
+  verifierCles(donnees, ["format", "version", "exporteLe", "profil"], "la sauvegarde");
+  if (donnees.format !== SAUVEGARDE.format) refus("Ce fichier n'est pas une sauvegarde BâtiPlus.");
+  if (donnees.version !== SAUVEGARDE.version) refus("Version de sauvegarde non prise en charge.");
+  if (typeof donnees.exporteLe !== "string" || Number.isNaN(Date.parse(donnees.exporteLe))) refus("Date de sauvegarde invalide.");
+  const p = donnees.profil;
+  if (!estObjetSimple(p)) refus("Profil absent de la sauvegarde.");
+  verifierCles(p, ["nom", "entreprise", "ville", "pays", "devise", "conditions", "photo", "logo"], "le profil");
+  const texte = (valeur, obligatoire, nomChamp) => {
+    if (valeur === undefined && !obligatoire) return "";
+    if (typeof valeur !== "string") refus("Champ « " + nomChamp + " » invalide.");
+    const propre = nettoyerTexte(valeur);
+    if (!texteValide(propre, obligatoire)) refus("Champ « " + nomChamp + " » invalide.");
+    return propre;
+  };
+  const image = (valeur, nomChamp) => {
+    if (valeur === undefined || valeur === "") return "";
+    if (typeof valeur !== "string" || valeur.length > IMAGES.donneesMax || !DONNEES_IMAGE.test(valeur)) refus("Image « " + nomChamp + " » invalide.");
+    return valeur;
+  };
+  const profil = {
+    nom: texte(p.nom, true, "nom"),
+    entreprise: texte(p.entreprise, false, "entreprise"),
+    ville: texte(p.ville, true, "ville"),
+    pays: p.pays,
+    devise: p.devise,
+    conditions: CONDITIONS_DEFAUT,
+    photo: image(p.photo, "photo"),
+    logo: image(p.logo, "logo")
+  };
+  if (typeof p.pays !== "string" || !PAYS_PAR_ISO.has(p.pays)) refus("Pays inconnu dans la sauvegarde.");
+  if (typeof p.devise !== "string" || !Object.prototype.hasOwnProperty.call(DEVISES, p.devise)) refus("Devise inconnue dans la sauvegarde.");
+  if (p.conditions !== undefined) {
+    if (typeof p.conditions !== "string") refus("Champ « conditions » invalide.");
+    profil.conditions = nettoyerParagraphes(p.conditions);
+    if (profil.conditions.length > BORNES.conditionsMax) refus("Conditions trop longues.");
+  }
+  return profil;
+}
+
+function dataUrlVersBlob(donnees) {
+  const [entete, base64] = donnees.split(",");
+  const type = entete.slice(5, entete.indexOf(";"));
+  return new Blob([depuisBase64(base64)], { type });
+}
+
+async function lireTexte(fichier) {
+  if (typeof fichier.text === "function") return fichier.text();
+  return new Promise((resoudre, rejeter) => {
+    const lecteur = new FileReader();
+    lecteur.addEventListener("load", () => resoudre(String(lecteur.result)));
+    lecteur.addEventListener("error", () => rejeter(new Error("illisible")));
+    lecteur.readAsText(fichier);
+  });
+}
+
+function surChoisirSauvegarde() {
+  $("fichier-sauvegarde").click();
+}
+
+async function surFichierSauvegarde(evenement) {
+  if (!etat.compte) return;
+  const entree = evenement.currentTarget;
+  const fichier = entree.files && entree.files[0];
+  entree.value = "";
+  if (!fichier) return;
+  message("msg-sauvegarde", "");
+  if (fichier.size > SAUVEGARDE.octetsMax) {
+    message("msg-sauvegarde", "Fichier trop lourd : 2 Mo maximum.");
+    return;
+  }
+  let profil;
+  try {
+    let donnees;
+    try {
+      donnees = JSON.parse(await lireTexte(fichier));
+    } catch (erreur) {
+      throw new Error("Ce fichier n'est pas une sauvegarde BâtiPlus.");
+    }
+    profil = validerSauvegarde(donnees);
+  } catch (erreur) {
+    message("msg-sauvegarde", erreur.message);
+    return;
+  }
+  const accord = await demanderConfirmation("Importer cette sauvegarde ?",
+    "Votre nom, votre entreprise, votre ville, votre pays, votre devise, vos conditions, votre photo et votre logo seront remplacés. Votre téléphone, votre code secret et votre abonnement ne changent pas.",
+    "Importer");
+  if (!accord) return;
+  try {
+    /* Les images importées repassent par le même contrôle que les images choisies. */
+    if (profil.photo) profil.photo = await preparerImage(dataUrlVersBlob(profil.photo), "photo");
+    if (profil.logo) profil.logo = await preparerImage(dataUrlVersBlob(profil.logo), "logo");
+  } catch (erreur) {
+    message("msg-sauvegarde", "Fichier refusé : " + messageImage(erreur).toLocaleLowerCase("fr-FR"));
+    return;
+  }
+  const ok = await enregistrerCompte({ ...etat.compte, ...profil });
+  if (ok) remplirProfil();
+  message("msg-sauvegarde", ok ? "Sauvegarde importée." : "Import impossible. Réessayez.", ok);
+}
+
+/* ---------- Session : déconnexion et changement de compte ---------- */
+
+function masquerTelephone(e164, iso) {
+  const affiche = formaterTelephone(e164, iso);
+  const pays = PAYS_PAR_ISO.get(iso);
+  const debut = pays ? pays.indicatif.length + 2 : 0;
+  const chiffres = affiche.slice(debut).replace(/\D/g, "").length;
+  let rang = 0;
+  return affiche.slice(0, debut) + affiche.slice(debut).replace(/\d/g, (chiffre) => (rang++ < chiffres - 4 ? "•" : chiffre));
+}
+
+async function afficherComptesAppareil() {
+  const comptes = await lireComptes();
+  const puces = comptes.map((compte) => {
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "compte-puce";
+    bouton.dataset.compte = compte.id;
+    const nom = document.createElement("strong");
+    nom.textContent = compte.nom;
+    const telephone = document.createElement("span");
+    telephone.textContent = masquerTelephone(compte.telephone, compte.pays);
+    bouton.append(nom, telephone);
+    return bouton;
+  });
+  $("comptes-liste").replaceChildren(...puces);
+  $("comptes-appareil").hidden = puces.length === 0;
+}
+
+async function surChoixCompte(evenement) {
+  const bouton = evenement.target.closest(".compte-puce");
+  if (!bouton) return;
+  const compte = (await lireComptes()).find((c) => c.id === bouton.dataset.compte);
+  if (!compte) return;
+  $("cnx-telephone").value = formaterTelephone(compte.telephone, compte.pays);
+  surSaisieTelephoneConnexion();
+  viderCode("cnx-code");
+  $("cnx-code").focus({ preventScroll: true });
+}
+
+function surDeconnexion() {
+  fermerSession();
+}
+
+async function surChangerCompte() {
+  await fermerSession();
+  const premier = $("comptes-liste").querySelector(".compte-puce");
+  if (premier) premier.focus({ preventScroll: true });
+}
+
+/* ---------- Administration (accès caché) ----------
+   Appui long de 3 s sur le logo de « À propos ». Le code est envoyé en HTTPS à
+   l'API qui seule le vérifie : rien n'est comparé ni stocké sur le téléphone. */
+
+function surDebutAppuiAdmin(evenement) {
+  if (evenement.pointerType === "mouse" && evenement.button !== 0) return;
+  clearTimeout(etat.minuterieAdmin);
+  etat.minuterieAdmin = setTimeout(ouvrirAdmin, DUREE_APPUI_ADMIN);
+}
+
+function surFinAppuiAdmin() {
+  clearTimeout(etat.minuterieAdmin);
+}
+
+function surMenuContextuelLogo(evenement) {
+  evenement.preventDefault();
+}
+
+function ouvrirAdmin() {
+  vibrer();
+  montrer("admin");
+}
+
+function reinitialiserAdmin() {
+  $("adm-code").value = "";
+  effacerErreur($("adm-code"));
+  message("msg-admin", "");
+}
+
+async function surAdmin(evenement) {
+  evenement.preventDefault();
+  const champ = $("adm-code");
+  const code = champ.value;
+  champ.value = "";
+  effacerErreur(champ);
+  message("msg-admin", "");
+  if (code.length < ADMIN.codeMin || code.length > ADMIN.codeMax) {
+    afficherErreur("adm-code", "Code incomplet.");
+    return;
+  }
+  if (etat.adminBloqueJusqua > Date.now()) {
+    message("msg-admin", "Trop d'essais. Réessayez dans " + formaterDuree(etat.adminBloqueJusqua - Date.now()) + ".");
+    return;
+  }
+  if (!navigator.onLine) {
+    message("msg-admin", "Connexion Internet nécessaire pour vérifier ce code.");
+    return;
+  }
+  if (typeof fetch !== "function" || typeof AbortController !== "function") {
+    message("msg-admin", "Vérification impossible sur cet appareil.");
+    return;
+  }
+  const bouton = $("bouton-admin");
+  const arret = new AbortController();
+  const minuterie = setTimeout(() => arret.abort(), ADMIN.delaiMs);
+  bouton.setAttribute("aria-busy", "true");
+  try {
+    const reponse = await fetch(API_URL + ADMIN.chemin, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+      credentials: "omit",
+      cache: "no-store",
+      referrerPolicy: "no-referrer",
+      signal: arret.signal
+    });
+    if (reponse.status === 401 || reponse.status === 403) {
+      etat.adminEchecs += 1;
+      if (etat.adminEchecs >= 3) etat.adminBloqueJusqua = Date.now() + 60000;
+      message("msg-admin", "Code incorrect.");
+    } else if (!reponse.ok) {
+      message("msg-admin", "Vérification impossible pour le moment. Réessayez plus tard.");
+    } else {
+      etat.adminEchecs = 0;
+      message("msg-admin", "Code accepté.", true);
+    }
+  } catch (erreur) {
+    message("msg-admin", "Vérification impossible pour le moment. Vérifiez votre connexion puis réessayez.");
+  } finally {
+    clearTimeout(minuterie);
+    bouton.removeAttribute("aria-busy");
+  }
 }
 
 /* ---------- Écran de démarrage natif ---------- */
@@ -1341,12 +2270,19 @@ function masquerSplashNatif() {
    ========================================================================== */
 
 function brancherEvenements() {
+  document.addEventListener("click", surClicNavigation);
   $("bouton-menu").addEventListener("click", ouvrirTiroir);
   $("bouton-fermer-tiroir").addEventListener("click", fermerTiroir);
   $("voile").addEventListener("click", fermerTiroir);
   $("bouton-theme").addEventListener("click", basculerTheme);
-  $("bouton-verifier").addEventListener("click", verifierDemarrage);
-  $("bouton-deconnexion").addEventListener("click", fermerSession);
+  $("bouton-deconnexion").addEventListener("click", surDeconnexion);
+
+  $("bouton-recherche").addEventListener("click", ouvrirRecherche);
+  $("bouton-fermer-recherche").addEventListener("click", fermerRecherche);
+  $("recherche").addEventListener("click", surClicFondRecherche);
+  $("recherche-saisie").addEventListener("input", surSaisieRecherche);
+  $("recherche-saisie").addEventListener("keydown", surToucheRecherche);
+  $("recherche-resultats").addEventListener("click", surChoixResultat);
 
   $("bouton-passer").addEventListener("click", terminerPresentation);
   $("bouton-diapo-suivante").addEventListener("click", surDiapoSuivante);
@@ -1364,9 +2300,11 @@ function brancherEvenements() {
   $("panneau-inscription").addEventListener("submit", surInscription);
   $("panneau-connexion").addEventListener("submit", surConnexion);
   $("ins-telephone").addEventListener("input", surSaisieTelephoneInscription);
-  $("ins-pays").addEventListener("change", surChangementPays);
+  $("ins-pays").addEventListener("change", surChangementPaysInscription);
   $("cnx-telephone").addEventListener("input", surSaisieTelephoneConnexion);
-  ["ins-nom", "ins-entreprise", "ins-ville", "ins-conditions"].forEach((id) => $(id).addEventListener("input", surSaisieChamp));
+  $("comptes-liste").addEventListener("click", surChoixCompte);
+  ["ins-nom", "ins-entreprise", "ins-ville", "ins-conditions", "pro-nom", "pro-entreprise", "pro-ville", "pro-conditions"]
+    .forEach((id) => $(id).addEventListener("input", surSaisieChamp));
   document.querySelectorAll(".code-cases").forEach((champ) => {
     champ.addEventListener("focus", surActivationCode);
     champ.addEventListener("click", surActivationCode);
@@ -1374,11 +2312,39 @@ function brancherEvenements() {
   });
   document.querySelectorAll(".code-oeil").forEach((bouton) => bouton.addEventListener("click", surOeil));
   $("bouton-conditions").addEventListener("click", ouvrirConditions);
+  $("bouton-conditions-apropos").addEventListener("click", ouvrirConditions);
   $("contenu").addEventListener("focusin", surFocusChamp);
 
+  $("carte-infos").addEventListener("submit", surEnregistrerProfil);
+  $("pro-telephone").addEventListener("input", surSaisieTelephoneProfil);
+  $("pro-pays").addEventListener("change", surChangementPaysProfil);
+  $("carte-conditions").addEventListener("submit", surEnregistrerConditions);
+  $("pro-conditions").addEventListener("input", majCompteurConditions);
+  $("carte-code").addEventListener("submit", surChangerCode);
+  $("bouton-photo").addEventListener("click", surChoisirPhoto);
+  $("bouton-retirer-photo").addEventListener("click", surRetirerPhoto);
+  $("fichier-photo").addEventListener("change", surFichierPhoto);
+  $("bouton-logo").addEventListener("click", surChoisirLogo);
+  $("bouton-retirer-logo").addEventListener("click", surRetirerLogo);
+  $("fichier-logo").addEventListener("change", surFichierLogo);
+  $("bouton-exporter").addEventListener("click", surExporter);
+  $("bouton-importer").addEventListener("click", surChoisirSauvegarde);
+  $("fichier-sauvegarde").addEventListener("change", surFichierSauvegarde);
+  $("bouton-deconnexion-profil").addEventListener("click", surDeconnexion);
+  $("bouton-changer-compte").addEventListener("click", surChangerCompte);
+
+  const logo = $("logo-apropos");
+  logo.addEventListener("pointerdown", surDebutAppuiAdmin);
+  logo.addEventListener("pointerup", surFinAppuiAdmin);
+  logo.addEventListener("pointerleave", surFinAppuiAdmin);
+  logo.addEventListener("pointercancel", surFinAppuiAdmin);
+  logo.addEventListener("contextmenu", surMenuContextuelLogo);
+  $("form-admin").addEventListener("submit", surAdmin);
+
   $("modale").addEventListener("click", surClicFondModale);
-  $("bouton-fermer-modale").addEventListener("click", fermerModale);
-  $("bouton-modale-ok").addEventListener("click", fermerModale);
+  $("bouton-fermer-modale").addEventListener("click", surAnnulerModale);
+  $("bouton-modale-annuler").addEventListener("click", surAnnulerModale);
+  $("bouton-modale-ok").addEventListener("click", surOkModale);
 
   document.addEventListener("keydown", surToucheClavier);
   document.addEventListener("pointerdown", surAppuiOnde);
@@ -1390,15 +2356,17 @@ function brancherEvenements() {
 function preparerInterface() {
   $("etat-version").textContent = APP.version;
   $("etat-plateforme").textContent = nomPlateforme();
-  afficherAnimations();
   surveillerLogos();
   construireNavigation();
-  construireListesPays();
+  masquerLiensAbsents();
+  remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);
   creerClavier("clavier-inscription");
   creerClavier("clavier-connexion");
+  creerClavier("clavier-profil");
   Object.keys(codes).forEach(afficherCode);
   activerCode("ins-code");
   activerCode("cnx-code");
+  activerCode("pro-ancien");
   construirePoints();
   allerDiapo(0);
   majLienCodeOublie(null);
@@ -1408,16 +2376,19 @@ function preparerInterface() {
 
 /* Pendant l'écran de démarrage : thème, compte et choix du premier écran. */
 async function choisirPremierEcran() {
+  await migrerStockage();
   await initialiserTheme();
   const presentationVue = await lireValeur(CLES_STOCKAGE.presentationVue) === "1";
   const comptes = await lireComptes();
   choisirOnglet(comptes.length ? "connexion" : "inscription");
+  await afficherComptesAppareil();
   const verrou = await lireVerrou();
   if (verrou.jusqua > Date.now()) afficherBlocage(verrou.jusqua);
   const session = await lireSession();
   const compte = session ? comptes.find((c) => c.id === session.compteId) : null;
   if (compte) {
     etat.compte = compte;
+    etat.abonnement = abonnementCourant();
     afficherCompte(compte);
   }
   if (!presentationVue) return "presentation";

@@ -19,7 +19,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 |---|---|---|
 | 1 | Fondations : structure, charte, coquille Capacitor qui démarre | ✔ livrée |
 | 2 | Écrans d'entrée : démarrage, présentation, connexion/inscription | ✔ livrée |
-| 3 | Accueil, profil, à propos, réglages, thème, navigation complète | à venir |
+| 3 | Accueil, profil, à propos, réglages, thème, navigation complète | ✔ livrée |
 | 4 | Identités visuelles : logos réels, icônes, photos | à venir |
 | 5 | Assistant Nouveau chantier (5 étapes) et moteur de calcul NF C 15-100 | à venir |
 | 6 | Résultat de l'étude : circuits, schéma du tableau, conformité | à venir |
@@ -87,11 +87,16 @@ On modifie les sources, puis on réassemble :
 et les contrôles de sécurité du front. Il **échoue** (code 1) au moindre ✘.
 Le contrôle de la console exécute la page dans jsdom : `npm i --no-save jsdom` (outil de
 vérification, jamais embarqué dans l'application). Il joue aussi les parcours réels de
-l'étape 2 (inscription, connexion, blocage après 5 échecs, reprise de session, détection du pays).
+l'étape 2 (inscription, connexion, blocage après 5 échecs, reprise de session, détection du pays)
+et de l'étape 3 (migration du stockage, compteurs de l'accueil, recherche, profil, changement du
+code, export/import de sauvegarde, accès admin, formule identique partout, ordre du bouton retour
+Android avec un Capacitor simulé).
 
 `npm run verifier:navigateur` (`src/scripts/verifier-navigateur.mjs`) ouvre la page dans un vrai
-Chromium : débordements et textes coupés de 360×640 à 1440×900, écran de démarrage, mouvement
-réduit, taille des champs et des touches, erreurs console et CSP.
+Chromium : débordements et textes coupés de 360×640 à 1440×900 (chaque mot est mesuré, un montant
+de 125 000 000 doit tenir sur une ligne), contenu jamais sous le menu latéral (1440 et 1025 px),
+traitement réel des images (WebP ≤ 300 Ko, faux PNG / SVG / > 5 Mo refusés), écran de démarrage,
+mouvement réduit, taille des champs et des touches, erreurs console et CSP.
 
 ```bash
 npm i --no-save puppeteer-core
@@ -104,9 +109,29 @@ CHROME_PATH=/chemin/vers/chrome CAPTURES=/tmp/captures npm run verifier:navigate
   (150 000 itérations, sel aléatoire de 16 octets) est conservée. Les codes trop simples
   (1234, 0000, 1212…) sont refusés.
 - Après 5 échecs, la connexion est bloquée 30 s, puis 1 min, 5 min et 15 min.
-  Ce compteur est local tant que le serveur (étape 14) n'existe pas.
+  Ce compteur est local tant que l'API (étape 14) n'existe pas.
 - Le pays et la devise sont déduits de l'indicatif (226 avant 22) ; le numéro est enregistré
   au format international `+22605608608` et affiché `+226 05 60 86 08`.
+
+### Accueil, profil, navigation (étape 3)
+
+- Stockage versionné : clés `bp_v1_*`. Les anciennes clés `bp.*` sont reprises une seule fois
+  au démarrage, puis supprimées (une clé v1 existante n'est jamais écrasée).
+- L'abonnement n'est **jamais** lu dans le stockage local : la formule vient d'une seule
+  fonction, `libelleFormule()`, qui alimente le menu, l'accueil et le profil (« Gratuit »
+  jusqu'à l'étape 11).
+- Photo et logo : JPEG, PNG ou WebP uniquement (type vérifié sur les octets), 5 Mo maximum,
+  redessinés sur un canvas puis compressés en WebP (photo 320×320, logo 600×300 au plus, 300 Ko).
+  Le SVG est refusé.
+- Sauvegarde : l'export ne contient que le profil (ni téléphone, ni code, ni abonnement).
+  L'import est validé champ par champ (clé inconnue, `__proto__`, format, pays, devise, image
+  → refus), limité à 2 Mo, et demande confirmation.
+- Accès admin : appui long de 3 s sur le logo de « À propos ». Le code est vérifié par l'API
+  uniquement (`API_URL` + `/api/admin/session`) ; l'application n'en contient aucun.
+- `API_URL` est lue dans `.env` par l'assembleur et injectée dans le script : c'est la seule
+  configuration connue du front.
+- Bouton retour Android : modale → recherche → tiroir → écran précédent → accueil → quitter,
+  avec confirmation si un travail n'est pas enregistré.
 
 Les logos sont générés depuis les originaux du client (`sources-logos/`) par
 `python3 src/scripts/preparer_logos.py` (détourage sans liseré, WebP, icônes 192/512/maskable,

@@ -22,6 +22,24 @@
   <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.4A8.5 8.5 0 1 1 21 11.5z"/></symbol>
   <symbol id="i-fleche" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-sortie" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-recherche" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5L16 16"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></symbol>
+  <symbol id="i-poubelle" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-exporter" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
+  <symbol id="i-importer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
+  <symbol id="i-calendrier" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-lieu" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="i-ampoule" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V17h5v-1.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></symbol>
+  <symbol id="i-bouclier" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+  <symbol id="i-norme" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 14l2 2 4-4"/></symbol>
+  <symbol id="i-mobile" viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M10 18.5h4"/></symbol>
+  <symbol id="i-ordinateur" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-cle" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/></symbol>
+  <symbol id="i-graphique" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-echange" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
+  <symbol id="i-retour" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-document" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
 </svg>
 
 <canvas id="toile" aria-hidden="true"></canvas>
@@ -39,6 +57,13 @@
     <button type="button" class="bouton-icone bouton-fermer-tiroir" id="bouton-fermer-tiroir" aria-label="Fermer le menu">
       <svg class="icone" aria-hidden="true"><use href="#i-fermer"/></svg>
     </button>
+  </div>
+  <div class="tiroir-profil">
+    <span class="avatar avatar-tiroir"><span class="avatar-initiales" data-initiales aria-hidden="true"></span><img class="avatar-photo" data-photo alt="" hidden></span>
+    <div class="tiroir-profil-texte">
+      <strong data-nom></strong>
+      <span class="formule-pastille" data-formule></span>
+    </div>
   </div>
   <nav aria-label="Navigation">
     <ul class="tiroir-menu" id="tiroir-menu"></ul>
@@ -65,10 +90,14 @@
       <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
     </span>
     <span class="entete-espace"></span>
+    <button type="button" class="bouton-icone" id="bouton-recherche" aria-label="Rechercher" aria-haspopup="dialog" aria-controls="recherche">
+      <svg class="icone" aria-hidden="true"><use href="#i-recherche"/></svg>
+    </button>
     <button type="button" class="bouton-icone bouton-theme" id="bouton-theme" aria-label="Passer en mode sombre">
       <svg class="icone i-lune" aria-hidden="true"><use href="#i-lune"/></svg>
       <svg class="icone i-soleil" aria-hidden="true"><use href="#i-soleil"/></svg>
     </button>
+    <button type="button" class="avatar avatar-entete" id="bouton-avatar" data-ecran="profil" aria-label="Mon profil"><span class="avatar-initiales" data-initiales aria-hidden="true"></span><img class="avatar-photo" data-photo alt="" hidden></button>
   </header>
 
   <main class="contenu" id="contenu">
@@ -237,6 +266,10 @@
           </form>
 
           <form class="formulaire" id="panneau-connexion" role="tabpanel" aria-labelledby="onglet-connexion" novalidate autocomplete="on" hidden>
+            <div class="comptes-appareil" id="comptes-appareil" hidden>
+              <p class="etiquette-champ">Comptes sur cet appareil</p>
+              <div class="comptes-liste" id="comptes-liste"></div>
+            </div>
             <div class="champ">
               <label for="cnx-telephone">Téléphone</label>
               <input id="cnx-telephone" name="telephone" type="tel" inputmode="tel" autocomplete="tel" maxlength="22" placeholder="+226 05 60 86 08" required aria-describedby="apercu-cnx-telephone err-cnx-telephone">
@@ -276,58 +309,321 @@
       </div>
     </section>
 
-    <!-- Écran de test des fondations (remplacé par le tableau de bord à l'étape 3) -->
+    <!-- Accueil : tableau de bord -->
     <section class="ecran" id="ecran-accueil" aria-labelledby="titre-accueil">
-      <div class="demarrage">
-        <div class="carte demarrage-hero cascade" data-rang="0">
-          <span class="etiquette"><svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>Votre espace électricien</span>
-          <span class="logo" data-logo>
-            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="Logo BâtiPlus" width="720" height="609" decoding="async">
-            <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="Logo BâtiPlus" width="720" height="608" decoding="async">
-            <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
-          </span>
-          <h1 class="demarrage-titre" id="titre-accueil">BâtiPlus démarre</h1>
-          <p class="demarrage-par">par <strong>BRG Électro+</strong></p>
-        </div>
-
-        <div class="carte soulevable cascade" data-rang="1">
-          <h2 class="etat-titre">Votre compte</h2>
-          <ul class="etat-liste">
-            <li class="etat-ligne"><span>Nom</span><strong id="compte-nom"></strong></li>
-            <li class="etat-ligne"><span>Entreprise</span><strong id="compte-entreprise"></strong></li>
-            <li class="etat-ligne"><span>Téléphone</span><strong class="insecable" id="compte-telephone"></strong></li>
-            <li class="etat-ligne"><span>Ville</span><strong id="compte-ville"></strong></li>
-            <li class="etat-ligne"><span>Pays</span><strong id="compte-pays"></strong></li>
-            <li class="etat-ligne"><span>Devise</span><strong class="insecable" id="compte-devise"></strong></li>
+      <div class="tableau">
+        <div class="bandeau-accueil carte cascade" data-rang="0">
+          <span class="etiquette etiquette-claire"><svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>Votre espace électricien</span>
+          <h1 class="bandeau-titre" id="titre-accueil">Bonjour, <span id="accueil-prenom"></span></h1>
+          <ul class="bandeau-infos">
+            <li><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg><span class="insecable" id="accueil-telephone"></span></li>
+            <li><svg class="icone" aria-hidden="true"><use href="#i-lieu"/></svg><span id="accueil-ville"></span></li>
+            <li><svg class="icone" aria-hidden="true"><use href="#i-calendrier"/></svg><span id="accueil-date"></span></li>
           </ul>
         </div>
 
-        <div class="carte soulevable cascade" data-rang="2">
-          <h2 class="etat-titre">État de l'application</h2>
+        <div class="bandeau-abonnement carte cascade" data-rang="1">
+          <span class="bandeau-abonnement-icone" aria-hidden="true"><svg class="icone"><use href="#i-abonnement"/></svg></span>
+          <div class="bandeau-abonnement-texte">
+            <strong>Formule <span data-formule></span></strong>
+            <span id="accueil-quota"></span>
+          </div>
+          <button type="button" class="bouton bouton-pro" id="bouton-passer-pro" data-ecran="abonnement"><span class="bouton-libelle">Passer en Pro</span></button>
+        </div>
+
+        <button type="button" class="bouton bouton-principal bouton-chantier cascade" data-rang="2" id="bouton-nouveau-chantier" data-ecran="nouveau-chantier">
+          <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
+          <span class="bouton-libelle">Nouveau chantier</span>
+        </button>
+
+        <ul class="compteurs cascade" data-rang="3" aria-label="Mes chiffres">
+          <li class="compteur carte compteur-montant"><span class="compteur-valeur insecable" id="cpt-montant">0</span><span class="compteur-libelle">Montant total devisé</span></li>
+          <li class="compteur carte"><span class="compteur-valeur" id="cpt-devis">0</span><span class="compteur-libelle">Devis ce mois</span></li>
+          <li class="compteur carte"><span class="compteur-valeur" id="cpt-acceptes">0</span><span class="compteur-libelle">Devis acceptés</span></li>
+          <li class="compteur carte"><span class="compteur-valeur" id="cpt-jours">0</span><span class="compteur-libelle" id="cpt-jours-libelle">Jours restants</span></li>
+        </ul>
+
+        <section class="bloc cascade" data-rang="4" aria-labelledby="titre-raccourcis">
+          <h2 class="bloc-titre" id="titre-raccourcis">Raccourcis</h2>
+          <div class="raccourcis">
+            <button type="button" class="raccourci carte soulevable" data-ecran="chantiers"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-chantier"/></svg></span><span>Mes chantiers</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="devis"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-devis"/></svg></span><span>Mes devis</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="clients"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-clients"/></svg></span><span>Mes clients</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="prix"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-prix"/></svg></span><span>Mes prix</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="abonnement"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-abonnement"/></svg></span><span>Abonnement</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="profil"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-profil"/></svg></span><span>Profil</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="a-propos"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-info"/></svg></span><span>À propos</span></button>
+          </div>
+        </section>
+
+        <section class="bloc carte cascade" data-rang="5" aria-labelledby="titre-derniers">
+          <h2 class="bloc-titre" id="titre-derniers">Derniers devis</h2>
+          <ul class="liste-devis" id="accueil-devis"></ul>
+          <p class="vide" id="accueil-devis-vide">Aucun devis pour l'instant. Vos trois derniers devis s'afficheront ici.</p>
+        </section>
+
+        <section class="astuce carte cascade" data-rang="6" aria-labelledby="titre-astuce">
+          <span class="astuce-icone" aria-hidden="true"><svg class="icone"><use href="#i-ampoule"/></svg></span>
+          <div>
+            <h2 class="bloc-titre" id="titre-astuce">Astuce du jour</h2>
+            <p id="astuce-texte"></p>
+          </div>
+        </section>
+
+        <figure class="bandeau-photos cascade" data-rang="7">
+          <div class="bandeau-photos-rangee">
+            <img src="images/equipe/equipe-chantier.webp" alt="Équipe d'électriciens sur un chantier" width="640" height="427" loading="lazy" decoding="async">
+            <img src="images/equipe/elec-tableau.webp" alt="Électricien câblant un tableau" width="640" height="427" loading="lazy" decoding="async">
+            <img src="images/equipe/elec-cables.webp" alt="Électricien tirant des câbles" width="640" height="427" loading="lazy" decoding="async">
+          </div>
+          <figcaption>La qualité, c'est la sécurité</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Mon profil -->
+    <section class="ecran" id="ecran-profil" aria-labelledby="titre-profil">
+      <div class="colonnes">
+        <h1 class="titre-ecran cascade" id="titre-profil">Mon profil</h1>
+
+        <div class="carte identite cascade" data-rang="1" id="carte-identite">
+          <span class="avatar avatar-grand"><span class="avatar-initiales" data-initiales aria-hidden="true"></span><img class="avatar-photo" data-photo alt="" hidden></span>
+          <div class="identite-texte">
+            <strong class="identite-nom" data-nom></strong>
+            <span class="formule-pastille" data-formule></span>
+            <span class="identite-tel insecable" id="profil-telephone"></span>
+          </div>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-photo"><svg class="icone" aria-hidden="true"><use href="#i-photo"/></svg><span class="bouton-libelle">Changer la photo</span></button>
+            <button type="button" class="bouton bouton-discret" id="bouton-retirer-photo"><svg class="icone" aria-hidden="true"><use href="#i-poubelle"/></svg><span class="bouton-libelle">Retirer</span></button>
+          </div>
+          <input type="file" id="fichier-photo" accept="image/jpeg,image/png,image/webp" hidden>
+          <p class="message-formulaire" id="msg-photo" role="status"></p>
+        </div>
+
+        <form class="carte formulaire cascade" data-rang="2" id="carte-infos" novalidate>
+          <h2 class="bloc-titre">Mes informations</h2>
+          <div class="champ">
+            <label for="pro-nom">Nom complet</label>
+            <input id="pro-nom" type="text" autocomplete="name" maxlength="120" required aria-describedby="err-pro-nom">
+            <p class="champ-erreur" id="err-pro-nom"></p>
+          </div>
+          <div class="champ">
+            <label for="pro-entreprise">Nom de l'entreprise <span class="facultatif">(facultatif)</span></label>
+            <input id="pro-entreprise" type="text" autocomplete="organization" maxlength="120" aria-describedby="err-pro-entreprise">
+            <p class="champ-erreur" id="err-pro-entreprise"></p>
+          </div>
+          <div class="champ">
+            <label for="pro-telephone">Téléphone</label>
+            <input id="pro-telephone" type="tel" inputmode="tel" autocomplete="tel" maxlength="22" required aria-describedby="apercu-pro-telephone err-pro-telephone">
+            <p class="apercu-pays" id="apercu-pro-telephone" aria-live="polite"></p>
+            <p class="champ-erreur" id="err-pro-telephone"></p>
+          </div>
+          <div class="champ">
+            <label for="pro-ville">Ville</label>
+            <input id="pro-ville" type="text" autocomplete="address-level2" maxlength="120" required aria-describedby="err-pro-ville">
+            <p class="champ-erreur" id="err-pro-ville"></p>
+          </div>
+          <div class="champ-duo">
+            <div class="champ">
+              <label for="pro-pays">Pays</label>
+              <select id="pro-pays" autocomplete="country"></select>
+            </div>
+            <div class="champ">
+              <label for="pro-devise">Devise</label>
+              <select id="pro-devise"></select>
+            </div>
+          </div>
+          <p class="message-formulaire" id="msg-profil" role="status"></p>
+          <button type="submit" class="bouton bouton-principal" id="bouton-enregistrer-profil"><span class="bouton-libelle">Enregistrer</span></button>
+        </form>
+
+        <div class="carte cascade" data-rang="3" id="carte-logo">
+          <h2 class="bloc-titre">Logo de l'entreprise</h2>
+          <p class="aide">Affiché en haut de vos devis avec une formule Pro. JPEG, PNG ou WebP, 5 Mo maximum.</p>
+          <div class="logo-entreprise">
+            <img id="apercu-logo" alt="Logo de votre entreprise" hidden>
+            <span class="logo-entreprise-vide" id="logo-vide"><svg class="icone" aria-hidden="true"><use href="#i-image"/></svg>Aucun logo</span>
+          </div>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-logo"><svg class="icone" aria-hidden="true"><use href="#i-image"/></svg><span class="bouton-libelle">Choisir un logo</span></button>
+            <button type="button" class="bouton bouton-discret" id="bouton-retirer-logo"><svg class="icone" aria-hidden="true"><use href="#i-poubelle"/></svg><span class="bouton-libelle">Retirer</span></button>
+          </div>
+          <input type="file" id="fichier-logo" accept="image/jpeg,image/png,image/webp" hidden>
+          <p class="message-formulaire" id="msg-logo" role="status"></p>
+        </div>
+
+        <form class="carte formulaire cascade" data-rang="4" id="carte-conditions" novalidate>
+          <h2 class="bloc-titre">Conditions par défaut</h2>
+          <div class="champ">
+            <label for="pro-conditions">Texte repris en bas de chaque nouveau devis</label>
+            <textarea id="pro-conditions" rows="4" maxlength="1000" aria-describedby="compteur-conditions err-pro-conditions"></textarea>
+            <p class="aide aide-droite" id="compteur-conditions"></p>
+            <p class="champ-erreur" id="err-pro-conditions"></p>
+          </div>
+          <p class="message-formulaire" id="msg-conditions" role="status"></p>
+          <button type="submit" class="bouton bouton-secondaire" id="bouton-enregistrer-conditions"><span class="bouton-libelle">Enregistrer les conditions</span></button>
+        </form>
+
+        <form class="carte formulaire cascade" data-rang="5" id="carte-code" novalidate>
+          <h2 class="bloc-titre">Changer le code secret</h2>
+            <div class="champ">
+              <span class="etiquette-champ" id="lbl-pro-ancien">Code actuel</span>
+              <div class="code" data-code="pro-ancien">
+                <div class="code-cases" id="pro-ancien" role="textbox" tabindex="0" aria-labelledby="lbl-pro-ancien" aria-describedby="err-pro-ancien" aria-readonly="true" data-clavier="clavier-profil"></div>
+                <button type="button" class="bouton-icone code-oeil" data-oeil="pro-ancien" aria-label="Afficher le code" aria-pressed="false">
+                  <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                  <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+                </button>
+              </div>
+              <p class="champ-erreur" id="err-pro-ancien"></p>
+            </div>
+            <div class="champ">
+              <span class="etiquette-champ" id="lbl-pro-nouveau">Nouveau code <span class="facultatif">(4 à 6 chiffres)</span></span>
+              <div class="code" data-code="pro-nouveau">
+                <div class="code-cases" id="pro-nouveau" role="textbox" tabindex="0" aria-labelledby="lbl-pro-nouveau" aria-describedby="err-pro-nouveau" aria-readonly="true" data-clavier="clavier-profil"></div>
+                <button type="button" class="bouton-icone code-oeil" data-oeil="pro-nouveau" aria-label="Afficher le code" aria-pressed="false">
+                  <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                  <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+                </button>
+              </div>
+              <p class="champ-erreur" id="err-pro-nouveau"></p>
+            </div>
+            <div class="champ">
+              <span class="etiquette-champ" id="lbl-pro-confirmation">Confirmez le nouveau code</span>
+              <div class="code" data-code="pro-confirmation">
+                <div class="code-cases" id="pro-confirmation" role="textbox" tabindex="0" aria-labelledby="lbl-pro-confirmation" aria-describedby="err-pro-confirmation" aria-readonly="true" data-clavier="clavier-profil"></div>
+                <button type="button" class="bouton-icone code-oeil" data-oeil="pro-confirmation" aria-label="Afficher le code" aria-pressed="false">
+                  <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                  <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+                </button>
+              </div>
+              <p class="champ-erreur" id="err-pro-confirmation"></p>
+            </div>
+            <div class="clavier" id="clavier-profil" aria-label="Clavier du code secret"></div>
+          <p class="message-formulaire" id="msg-code" role="status"></p>
+          <button type="submit" class="bouton bouton-principal" id="bouton-changer-code"><svg class="icone" aria-hidden="true"><use href="#i-cle"/></svg><span class="bouton-libelle">Changer le code</span></button>
+        </form>
+
+        <div class="carte cascade" data-rang="6" id="carte-stats">
+          <h2 class="bloc-titre">Mes statistiques</h2>
           <ul class="etat-liste">
-            <li class="etat-ligne"><span>Version</span><strong id="etat-version">1.0.0</strong></li>
-            <li class="etat-ligne"><span>Plateforme</span><strong id="etat-plateforme">Détection…</strong></li>
-            <li class="etat-ligne"><span>Réseau</span><strong class="pastille" id="etat-reseau">Détection…</strong></li>
-            <li class="etat-ligne"><span>Thème</span><strong id="etat-theme">Détection…</strong></li>
-            <li class="etat-ligne"><span>Animations</span><strong id="etat-animations">Détection…</strong></li>
+            <li class="etat-ligne"><span>Devis réalisés</span><strong id="stat-devis">0</strong></li>
+            <li class="etat-ligne"><span>Devis acceptés</span><strong id="stat-acceptes">0</strong></li>
+            <li class="etat-ligne"><span>Taux d'acceptation</span><strong class="insecable" id="stat-taux">—</strong></li>
+            <li class="etat-ligne"><span>Montant total devisé</span><strong class="insecable" id="stat-montant">0</strong></li>
+            <li class="etat-ligne"><span>Clients</span><strong id="stat-clients">0</strong></li>
           </ul>
         </div>
 
-        <div class="carte soulevable cascade" data-rang="3">
-          <button type="button" class="bouton bouton-principal" id="bouton-verifier">
-            <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
-            <span class="bouton-libelle">Vérifier le démarrage</span>
-          </button>
-          <div class="verif-resultat" id="verif-resultat" role="status" aria-live="polite" hidden>
-            <svg class="coche" id="verif-coche" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16"/><path d="M11 18.5l5 5 9-10"/></svg>
-            <div><strong id="verif-titre"></strong><p id="verif-detail"></p></div>
+        <div class="carte cascade" data-rang="7" id="carte-sauvegarde">
+          <h2 class="bloc-titre">Sauvegarde</h2>
+          <p class="aide">Gardez une copie de votre profil, de votre photo, de votre logo et de vos conditions dans un fichier. Votre code secret et votre abonnement n'y figurent jamais.</p>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-exporter"><svg class="icone" aria-hidden="true"><use href="#i-exporter"/></svg><span class="bouton-libelle">Exporter</span></button>
+            <button type="button" class="bouton bouton-secondaire" id="bouton-importer"><svg class="icone" aria-hidden="true"><use href="#i-importer"/></svg><span class="bouton-libelle">Importer</span></button>
+          </div>
+          <input type="file" id="fichier-sauvegarde" accept="application/json,.json" hidden>
+          <p class="message-formulaire" id="msg-sauvegarde" role="status"></p>
+        </div>
+
+        <div class="carte cascade" data-rang="8" id="carte-session">
+          <h2 class="bloc-titre">Mon compte</h2>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-changer-compte"><svg class="icone" aria-hidden="true"><use href="#i-echange"/></svg><span class="bouton-libelle">Changer de compte</span></button>
+            <button type="button" class="bouton bouton-danger" id="bouton-deconnexion-profil"><svg class="icone" aria-hidden="true"><use href="#i-sortie"/></svg><span class="bouton-libelle">Se déconnecter</span></button>
           </div>
         </div>
 
-        <p class="mention cascade" data-rang="4">
+        <figure class="bandeau-photos cascade" data-rang="8">
+          <div class="bandeau-photos-rangee">
+            <img src="images/equipe/equipe-chantier.webp" alt="Équipe d'électriciens sur un chantier" width="640" height="427" loading="lazy" decoding="async">
+            <img src="images/equipe/elec-tableau.webp" alt="Électricien câblant un tableau" width="640" height="427" loading="lazy" decoding="async">
+            <img src="images/equipe/elec-cables.webp" alt="Électricien tirant des câbles" width="640" height="427" loading="lazy" decoding="async">
+          </div>
+          <figcaption>La qualité, c'est la sécurité</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- À propos -->
+    <section class="ecran" id="ecran-a-propos" aria-labelledby="titre-a-propos">
+      <div class="colonnes">
+        <h1 class="titre-ecran cascade" id="titre-a-propos">À propos</h1>
+
+        <div class="carte apropos-app cascade" data-rang="1" id="carte-application">
+          <span class="logo logo-apropos" id="logo-apropos" data-logo>
+            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="609" decoding="async">
+            <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
+            <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+          </span>
+          <h2 class="bloc-titre">L'application</h2>
+          <ul class="etat-liste">
+            <li class="etat-ligne"><span>Version</span><strong id="etat-version">1.0.0</strong></li>
+            <li class="etat-ligne"><span>Langue</span><strong>Français</strong></li>
+            <li class="etat-ligne"><span>Hors ligne</span><strong>Oui, vos données restent sur le téléphone</strong></li>
+            <li class="etat-ligne"><span>Plateforme</span><strong id="etat-plateforme">Détection…</strong></li>
+            <li class="etat-ligne"><span>Réseau</span><strong class="pastille" id="etat-reseau">Détection…</strong></li>
+          </ul>
+        </div>
+
+        <div class="carte apropos-concepteur cascade" data-rang="2" id="carte-concepteur">
+          <span class="logo logo-brg-apropos" data-logo>
+            <img class="logo-clair" src="images/brg/brg-couleur.webp" alt="BRG Électro+" width="640" height="315" decoding="async">
+            <img class="logo-sombre" src="images/brg/brg-blanc.webp" alt="BRG Électro+" width="640" height="315" decoding="async">
+            <span class="logo-repli logo-repli-brg" aria-hidden="true">BRG Électro+</span>
+          </span>
+          <h2 class="bloc-titre">Le concepteur de BâtiPlus</h2>
+          <p>BRG Électro+ est l'entreprise d'électricité qui a imaginé, conçu et développé l'application. Elle en assure les mises à jour, le support et la gestion des abonnements.</p>
+          <div class="actions-ligne">
+            <a class="bouton bouton-secondaire" href="tel:+22605608608"><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg><span class="bouton-libelle insecable">+226 05 60 86 08</span></a>
+            <a class="bouton bouton-secondaire" href="tel:+22668524290"><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg><span class="bouton-libelle insecable">+226 68 52 42 90</span></a>
+          </div>
+        </div>
+
+        <div class="carte cascade" data-rang="3" id="carte-installation">
+          <h2 class="bloc-titre">Installer BâtiPlus</h2>
+          <ul class="plateformes">
+            <li><span class="plateforme-icone" aria-hidden="true"><svg class="icone"><use href="#i-mobile"/></svg></span><div><strong>Android</strong><p>Installez l'application BâtiPlus depuis le Google Play Store, puis connectez-vous avec votre numéro.</p></div></li>
+            <li><span class="plateforme-icone" aria-hidden="true"><svg class="icone"><use href="#i-mobile"/></svg></span><div><strong>iPhone</strong><p>Ouvrez BâtiPlus dans Safari, touchez « Partager » puis « Sur l'écran d'accueil ».</p></div></li>
+            <li><span class="plateforme-icone" aria-hidden="true"><svg class="icone"><use href="#i-ordinateur"/></svg></span><div><strong>Ordinateur</strong><p>Ouvrez BâtiPlus dans Chrome ou Edge, puis cliquez sur « Installer » dans la barre d'adresse.</p></div></li>
+          </ul>
+        </div>
+
+        <div class="carte cascade" data-rang="4" id="carte-normes">
+          <h2 class="bloc-titre">Les normes</h2>
+          <p>Les études de BâtiPlus suivent la norme française <span class="insecable">NF C 15-100</span>, référence des installations électriques basse tension : nombre de prises et de points lumineux par pièce, sections des câbles, calibre des disjoncteurs, différentiels 30 mA et mise à la terre.</p>
+          <p class="aide">BâtiPlus est une aide au calcul. La conformité finale reste sous la responsabilité de l'électricien qui réalise l'installation.</p>
+        </div>
+
+        <div class="carte cascade" data-rang="5" id="carte-confidentialite">
+          <h2 class="bloc-titre">Confidentialité</h2>
+          <p>Vos informations servent uniquement à faire fonctionner votre compte, vos études et vos devis. Elles ne sont jamais vendues et ne servent à aucune publicité. Votre code secret n'est jamais conservé en clair.</p>
+          <button type="button" class="bouton bouton-secondaire" id="bouton-conditions-apropos"><svg class="icone" aria-hidden="true"><use href="#i-document"/></svg><span class="bouton-libelle">Lire les conditions</span></button>
+        </div>
+
+        <p class="mention cascade" data-rang="6">
           <strong>BâtiPlus est une application conçue et développée par BRG Électro+</strong>
           <small>© 2026 BRG Électro+ — Tous droits réservés</small>
         </p>
+      </div>
+    </section>
+
+    <!-- Administration (accès caché : appui long de 3 s sur le logo de « À propos ») -->
+    <section class="ecran" id="ecran-admin" aria-labelledby="titre-admin">
+      <div class="colonnes colonne-etroite">
+        <h1 class="titre-ecran" id="titre-admin">Administration</h1>
+        <form class="carte formulaire" id="form-admin" novalidate autocomplete="off">
+          <p class="aide">Accès réservé à BRG Électro+. Le code est vérifié en ligne et n'est jamais enregistré sur ce téléphone.</p>
+          <div class="champ">
+            <label for="adm-code">Code d'administration</label>
+            <input id="adm-code" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64" required aria-describedby="err-adm-code">
+            <p class="champ-erreur" id="err-adm-code"></p>
+          </div>
+          <p class="message-formulaire" id="msg-admin" role="alert"></p>
+          <button type="submit" class="bouton bouton-principal" id="bouton-admin"><svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg><span class="bouton-libelle">Valider</span></button>
+          <button type="button" class="bouton bouton-discret" data-ecran="a-propos"><svg class="icone" aria-hidden="true"><use href="#i-retour"/></svg><span class="bouton-libelle">Retour</span></button>
+        </form>
       </div>
     </section>
   </main>
@@ -344,7 +640,25 @@
       </button>
     </div>
     <div class="modale-contenu" id="modale-contenu"></div>
-    <button type="button" class="bouton bouton-principal" id="bouton-modale-ok"><span class="bouton-libelle">J'ai compris</span></button>
+    <div class="modale-actions">
+      <button type="button" class="bouton bouton-secondaire" id="bouton-modale-annuler" hidden><span class="bouton-libelle" id="libelle-modale-annuler">Annuler</span></button>
+      <button type="button" class="bouton bouton-principal" id="bouton-modale-ok"><span class="bouton-libelle" id="libelle-modale-ok">J'ai compris</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="recherche" hidden>
+  <div class="recherche-boite carte" role="dialog" aria-modal="true" aria-labelledby="titre-recherche">
+    <h2 class="visuellement-cache" id="titre-recherche">Rechercher</h2>
+    <div class="recherche-champ">
+      <svg class="icone" aria-hidden="true"><use href="#i-recherche"/></svg>
+      <input id="recherche-saisie" type="search" placeholder="Rechercher dans BâtiPlus" autocomplete="off" maxlength="60" aria-label="Rechercher" aria-controls="recherche-resultats">
+      <button type="button" class="bouton-icone" id="bouton-fermer-recherche" aria-label="Fermer la recherche">
+        <svg class="icone" aria-hidden="true"><use href="#i-fermer"/></svg>
+      </button>
+    </div>
+    <ul class="recherche-resultats" id="recherche-resultats"></ul>
+    <p class="vide" id="recherche-vide" hidden>Aucun résultat.</p>
   </div>
 </div>
 
@@ -352,9 +666,9 @@
   <p><strong>Éditeur.</strong> BâtiPlus est éditée par BRG Électro+, Burkina Faso — +226 05 60 86 08 · +226 68 52 42 90.</p>
   <p><strong>Données collectées.</strong> Votre nom, le nom de votre entreprise, votre téléphone, votre ville, votre pays, votre devise, ainsi que les chantiers, clients et devis que vous créez.</p>
   <p><strong>Pourquoi.</strong> Uniquement pour faire fonctionner votre compte, vos études, vos devis et votre abonnement. Vos données ne sont jamais vendues et ne servent à aucune publicité.</p>
-  <p><strong>Où.</strong> Sur votre téléphone. Lorsque vous êtes connecté à Internet, une copie est conservée sur le serveur sécurisé de BRG Électro+ pour la sauvegarde et la synchronisation entre vos appareils.</p>
+  <p><strong>Où.</strong> Sur votre téléphone. Vous pouvez en garder une copie dans un fichier depuis « Mon profil », rubrique « Sauvegarde ».</p>
   <p><strong>Votre code secret.</strong> Il n'est jamais conservé en clair : seule une empreinte chiffrée (PBKDF2, 150 000 itérations) est enregistrée.</p>
   <p><strong>Suppression.</strong> Vous pouvez demander à tout moment la suppression de votre compte et de vos données par WhatsApp au +226 05 60 86 08.</p>
-  <p><strong>Responsabilité.</strong> Les études et devis de BâtiPlus sont une aide au calcul. La conformité de l'installation à la norme NF C 15-100 reste sous la responsabilité de l'électricien qui la réalise.</p>
+  <p><strong>Responsabilité.</strong> Les études et devis de BâtiPlus sont une aide au calcul. La conformité de l'installation à la norme <span class="insecable">NF C 15-100</span> reste sous la responsabilité de l'électricien qui la réalise.</p>
 </template>
 <div id="feuille-devis" aria-hidden="true"></div>

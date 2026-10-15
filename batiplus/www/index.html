@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-l4TimezDIDHV5ugEwfsZ2xm0+6eSNwWmwM9OFPGMP+4='; style-src 'self' 'sha256-B48y3AtR2mYwE+vHCdhIOv1/996wDFCZvUFE7h7Bkow='; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.batiplus.bf; media-src 'none'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-639iM3gUnY84wlnjTN9bmBDhjBARV00t50jRrVe0Asg='; style-src 'self' 'sha256-wczlWUN+xPXF4tm7Kekf9kq2N4o6RZF9EaaPcCaLjw0='; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.batiplus.bf; media-src 'none'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#6A0DAD">
 <meta name="color-scheme" content="light dark">
@@ -50,6 +50,7 @@
   --texte-3: #918AA3;
   --ligne: #E8E4F0;
   --erreur: #C41414;
+  --accent-texte: #6A0DAD;
 
   --entete-fond: rgba(244, 242, 249, 0.72);
   --ombre-1: 0 1px 2px rgba(23, 19, 31, 0.06), 0 4px 14px rgba(78, 10, 128, 0.07);
@@ -82,6 +83,7 @@
   --ligne: #2A2336;
   --violet-doux: #251A35;
   --erreur: #FF6B6B;
+  --accent-texte: #D2B0F7;
   --entete-fond: rgba(8, 7, 12, 0.68);
   --ombre-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
   --ombre-2: 0 6px 18px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(106, 13, 173, 0.25);
@@ -100,6 +102,7 @@
     --ligne: #2A2336;
     --violet-doux: #251A35;
     --erreur: #FF6B6B;
+  --accent-texte: #D2B0F7;
     --entete-fond: rgba(8, 7, 12, 0.68);
     --ombre-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
     --ombre-2: 0 6px 18px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(106, 13, 173, 0.25);
@@ -290,14 +293,6 @@ main.contenu {
 }
 .carte.soulevable:hover { transform: translateY(-4px); box-shadow: var(--ombre-2); }
 
-/* Écran de démarrage (test de l'étape 1) */
-.demarrage { display: grid; gap: 16px; }
-.demarrage-hero { text-align: center; padding: 28px 20px 24px; overflow: hidden; }
-.demarrage-hero .logo { height: clamp(150px, 42vw, 230px); margin: 0 auto 14px; }
-.demarrage-hero .logo-repli { font-size: clamp(34px, 11vw, 56px); }
-.demarrage-titre { font-size: clamp(24px, 6.5vw, 34px); font-weight: 800; color: var(--texte); }
-.demarrage-par { margin-top: 6px; color: var(--texte-2); font-size: 14px; font-weight: 600; }
-.demarrage-par strong { color: var(--violet-2); }
 .etiquette {
   display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px;
   padding: 5px 12px; border-radius: 999px; background: var(--violet-doux); color: var(--violet-2);
@@ -361,14 +356,10 @@ main.contenu {
 }
 @keyframes onde { to { transform: scale(var(--onde-echelle, 30)); opacity: 0; } }
 
-/* Résultat de la vérification : coche qui se dessine */
-.verif-resultat { display: flex; align-items: flex-start; gap: 12px; margin-top: 14px; font-size: 15px; }
-.verif-resultat p { color: var(--texte-2); }
-.verif-resultat strong { color: var(--texte); display: block; }
+/* Succès : la coche se dessine en vert */
 .coche { width: 36px; height: 36px; flex: none; }
 .coche circle { fill: none; stroke: var(--vert); stroke-width: 3; stroke-dasharray: 101; stroke-dashoffset: 101; animation: dessine 500ms var(--courbe) forwards; }
 .coche path { fill: none; stroke: var(--vert); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 30; stroke-dashoffset: 30; animation: dessine 360ms 380ms var(--courbe) forwards; }
-.coche.echec circle, .coche.echec path { stroke: var(--rouge); }
 @keyframes dessine { to { stroke-dashoffset: 0; } }
 
 .mention { text-align: center; font-size: 13px; color: var(--texte-2); padding: 6px 8px 0; }
@@ -529,6 +520,173 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
   #modale { place-items: center; }
 }
 
+/* ---------- 7c. Application : en-tête, tiroir, tableau de bord, profil, à propos ---------- */
+.avatar {
+  position: relative; flex: none; overflow: hidden;
+  width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0;
+  display: inline-grid; place-items: center;
+  background: linear-gradient(135deg, var(--violet-2), var(--violet-3)); color: #fff;
+  font-family: var(--police-titre); font-weight: 800; font-size: 16px;
+  box-shadow: 0 0 0 2px var(--carte), 0 0 0 4px rgba(139, 47, 214, 0.35);
+}
+.avatar-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.avatar-entete { cursor: pointer; width: 44px; height: 44px; }
+.avatar-tiroir { width: 48px; height: 48px; font-size: 18px; }
+.avatar-grand { width: 96px; height: 96px; font-size: 34px; margin: 0 auto; }
+
+.tiroir-profil { display: flex; align-items: center; gap: 12px; padding: 12px; margin-bottom: 14px; border-radius: var(--rayon-petit); background: var(--violet-doux); }
+.tiroir-profil-texte { display: grid; gap: 4px; min-width: 0; }
+.tiroir-profil-texte strong { font-family: var(--police-titre); font-size: 15px; overflow-wrap: anywhere; }
+.formule-pastille {
+  justify-self: start; display: inline-flex; align-items: center;
+  padding: 2px 10px; border-radius: 999px; white-space: nowrap;
+  background: var(--violet); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+}
+
+.titre-ecran { font-size: clamp(24px, 6vw, 32px); font-weight: 800; }
+.bloc-titre { font-size: 17px; font-weight: 800; margin-bottom: 12px; }
+.aide { font-size: 13px; color: var(--texte-2); }
+.aide-droite { text-align: right; margin-top: 4px; }
+.vide { font-size: 14px; color: var(--texte-2); }
+.tableau, .colonnes { display: grid; gap: 16px; }
+.colonne-etroite { max-width: 520px; margin: 0 auto; }
+
+/* Tableau de bord */
+.bandeau-accueil {
+  color: #fff; border: 0; overflow: hidden;
+  background: radial-gradient(120% 140% at 100% 0%, rgba(255, 30, 30, 0.35), transparent 55%), linear-gradient(135deg, var(--violet-2), var(--violet) 50%, var(--violet-3));
+  box-shadow: 0 14px 34px rgba(106, 13, 173, 0.3);
+}
+.etiquette-claire { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.etiquette-claire .icone { stroke: none; }
+.bandeau-titre { font-size: clamp(26px, 7vw, 38px); font-weight: 800; margin: 12px 0 10px; color: #fff; }
+/* Le prénom (« Marie-Christine ») passe entier à la ligne, jamais coupé au trait d'union. */
+#accueil-prenom { display: inline-block; max-width: 100%; }
+.bandeau-infos { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: rgba(255, 255, 255, 0.92); }
+.bandeau-infos li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.bandeau-infos .icone { width: 16px; height: 16px; }
+.bandeau-abonnement { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; }
+.bandeau-abonnement-icone { width: 44px; height: 44px; flex: none; border-radius: 14px; display: grid; place-items: center; background: var(--violet-doux); color: var(--accent-texte); }
+.bandeau-abonnement-texte { flex: 1 1 160px; display: grid; gap: 2px; font-size: 14px; color: var(--texte-2); }
+.bandeau-abonnement-texte strong { color: var(--texte); font-size: 16px; }
+.bouton-pro { width: auto; flex: 1 1 140px; min-height: 46px; color: var(--violet-3); background: var(--jaune); box-shadow: 0 8px 18px rgba(255, 212, 0, 0.35); }
+.bouton-chantier { min-height: 64px; font-size: 18px; border-radius: 20px; }
+.bouton-chantier .icone { width: 26px; height: 26px; }
+
+.compteurs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compteur { display: grid; align-content: start; gap: 4px; padding: 16px; }
+.compteur-montant { grid-column: 1 / -1; }
+.compteur-valeur { font-family: var(--police-titre); font-weight: 800; font-size: clamp(22px, 6vw, 30px); line-height: 1.15; color: var(--accent-texte); font-variant-numeric: tabular-nums; }
+.compteur-libelle { font-size: 13px; color: var(--texte-2); font-weight: 600; }
+
+.raccourcis { display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 12px; }
+.raccourci { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; text-align: left; font-weight: 700; font-size: 15px; color: var(--texte); overflow: hidden; }
+.raccourci-icone { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; background: var(--violet-doux); color: var(--accent-texte); }
+.raccourci .icone { transition: transform 0.25s var(--courbe); }
+.raccourci:hover .icone { transform: rotate(-7deg) scale(1.08); }
+
+.liste-devis { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.liste-devis li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--ligne); }
+.liste-devis li:last-child { border-bottom: 0; }
+.devis-texte { display: grid; min-width: 0; flex: 1 1 160px; }
+.devis-texte strong { overflow-wrap: anywhere; }
+.devis-texte span { font-size: 13px; color: var(--texte-2); overflow-wrap: anywhere; }
+.devis-droite { display: grid; justify-items: end; gap: 4px; margin-left: auto; }
+.devis-montant { font-weight: 800; white-space: nowrap; }
+.statut { display: inline-flex; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: var(--violet-doux); color: var(--texte-2); }
+.statut[data-ton="info"] { background: rgba(139, 47, 214, 0.14); color: var(--accent-texte); }
+.statut[data-ton="ok"] { background: rgba(18, 161, 80, 0.14); color: var(--vert); }
+.statut[data-ton="alerte"] { background: rgba(255, 30, 30, 0.12); color: var(--erreur); }
+
+.astuce { display: flex; gap: 14px; align-items: flex-start; }
+.astuce-icone { width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--jaune); color: var(--violet-3); }
+.astuce p { color: var(--texte-2); font-size: 15px; }
+.astuce .bloc-titre { margin-bottom: 4px; }
+
+.bandeau-photos { margin: 4px 0 0; }
+.bandeau-photos-rangee { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bandeau-photos img { width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 14px; box-shadow: var(--ombre-1); }
+.bandeau-photos figcaption { margin-top: 10px; text-align: center; font-family: var(--police-titre); font-weight: 800; font-size: 15px; color: var(--accent-texte); }
+
+/* Boutons secondaires */
+a.bouton { text-decoration: none; }
+.bouton-secondaire { background: var(--violet-doux); color: var(--accent-texte); }
+.bouton-discret { background: transparent; color: var(--texte-2); border: 1px solid var(--ligne); }
+.bouton-danger { background: rgba(255, 30, 30, 0.1); color: var(--erreur); }
+.bouton-secondaire .icone, .bouton-discret .icone, .bouton-danger .icone { width: 20px; height: 20px; }
+.actions-ligne { display: flex; flex-wrap: wrap; gap: 10px; }
+.actions-ligne > .bouton { flex: 1 1 150px; width: auto; min-height: 48px; padding: 0 16px; }
+
+/* Profil */
+.identite { display: grid; gap: 14px; text-align: center; }
+.identite-texte { display: grid; gap: 6px; justify-items: center; }
+.identite-nom { font-family: var(--police-titre); font-size: 20px; overflow-wrap: anywhere; }
+.identite-tel { color: var(--texte-2); font-size: 15px; }
+.identite .formule-pastille { justify-self: center; }
+.champ textarea {
+  width: 100%; min-height: 112px; resize: vertical; padding: 12px 14px; line-height: 1.5;
+  border: 1.5px solid var(--ligne); border-radius: var(--rayon-petit); background: var(--carte-2); color: var(--texte);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.champ textarea:focus { outline: none; border-color: var(--violet-2); box-shadow: 0 0 0 4px rgba(139, 47, 214, 0.16); }
+.champ.invalide textarea { border-color: var(--erreur); }
+.logo-entreprise { height: 112px; margin: 12px 0; display: grid; place-items: center; border: 1.5px dashed var(--ligne); border-radius: var(--rayon-petit); background: var(--carte-2); }
+.logo-entreprise img { max-height: 92px; max-width: 90%; object-fit: contain; }
+.logo-entreprise-vide { display: inline-flex; align-items: center; gap: 8px; color: var(--texte-3); font-size: 14px; font-weight: 600; }
+.message-formulaire.ok { color: var(--vert); }
+
+/* À propos */
+.apropos-app .logo-apropos { height: 120px; margin: 0 auto 10px; display: flex; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.logo-brg-apropos { height: 64px; justify-content: flex-start; margin-bottom: 10px; }
+.logo-brg-apropos .logo-repli-brg { font-size: 22px; }
+.apropos-concepteur p, #carte-normes p, #carte-confidentialite p { color: var(--texte-2); margin-bottom: 12px; }
+#carte-normes .aide { margin: 0; }
+.plateformes { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.plateformes li { display: flex; gap: 12px; align-items: flex-start; }
+.plateformes p { font-size: 14px; color: var(--texte-2); }
+.plateforme-icone { width: 40px; height: 40px; flex: none; border-radius: 12px; display: grid; place-items: center; background: var(--violet-doux); color: var(--accent-texte); }
+
+/* Connexion : comptes déjà présents sur l'appareil */
+.comptes-appareil { margin-bottom: 16px; }
+.comptes-liste { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.compte-puce {
+  display: inline-flex; flex-direction: column; align-items: flex-start;
+  min-height: 48px; padding: 6px 14px; border: 1.5px solid var(--ligne); border-radius: 14px;
+  background: var(--carte-2); color: var(--texte); text-align: left; max-width: 100%;
+}
+.compte-puce strong { font-size: 14px; overflow-wrap: anywhere; }
+.compte-puce span { font-size: 12px; color: var(--texte-2); white-space: nowrap; }
+.compte-puce:hover, .compte-puce:focus-visible { border-color: var(--violet-2); }
+
+/* Recherche */
+#recherche {
+  position: fixed; inset: 0; z-index: 96; display: flex; justify-content: center; align-items: flex-start;
+  padding: calc(var(--haut-sur) + 12px) 12px 12px; background: rgba(8, 7, 12, 0.55);
+  animation: fondu-entree 180ms ease both;
+}
+.recherche-boite { width: min(640px, 100%); max-height: min(80vh, 640px); display: flex; flex-direction: column; gap: 8px; padding: 10px; animation: monte 260ms var(--courbe) both; }
+.recherche-champ { display: flex; align-items: center; gap: 10px; padding: 0 0 8px 8px; border-bottom: 1px solid var(--ligne); color: var(--texte-2); }
+.recherche-champ input { flex: 1; min-width: 0; min-height: 44px; border: 0; background: transparent; color: var(--texte); outline: none; }
+.recherche-resultats { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: grid; gap: 2px; }
+.recherche-resultat {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; min-height: 52px; border: 0; border-radius: var(--rayon-petit);
+  background: transparent; color: var(--texte); text-align: left;
+}
+.recherche-resultat:hover, .recherche-resultat:focus-visible { background: var(--violet-doux); }
+.recherche-resultat span { display: grid; min-width: 0; }
+.recherche-resultat strong { font-size: 15px; }
+.recherche-resultat small { font-size: 13px; color: var(--texte-2); }
+.recherche-resultat .icone { color: var(--accent-texte); }
+#recherche .vide { padding: 12px; }
+
+/* Modale : deux boutons (confirmation) */
+.modale-actions { display: flex; gap: 10px; }
+.modale-actions .bouton { flex: 1 1 0; width: auto; padding: 0 14px; }
+
+/* Repère visuel quand la recherche amène sur une rubrique */
+.reperee { animation: reperee 1.4s var(--courbe); }
+@keyframes reperee { 0%, 40% { box-shadow: 0 0 0 4px var(--jaune), var(--ombre-2); } }
+
 /* ---------- 8. Barre d'onglets mobile ---------- */
 .onglets {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 35;
@@ -585,9 +743,16 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
   .bouton-menu, .bouton-fermer-tiroir, .onglets { display: none; }
   .entete .logo { display: none; }
   main.contenu { padding: 28px 32px 40px; }
-  .demarrage { grid-template-columns: 1.25fr 1fr; align-items: start; }
-  .demarrage-hero { grid-row: span 2; padding: 44px 32px 36px; }
-  .demarrage .mention { grid-column: 1 / -1; }
+  .tableau { grid-template-columns: repeat(6, 1fr); }
+  .tableau > * { grid-column: span 6; }
+  .tableau > .bandeau-accueil { grid-column: span 4; }
+  .tableau > .bandeau-abonnement { grid-column: span 2; flex-direction: column; align-items: stretch; justify-content: center; }
+  .tableau > .astuce, .tableau > .bloc.carte { grid-column: span 3; }
+  .compteurs { grid-template-columns: 2fr 1fr 1fr 1fr; }
+  .compteur-montant { grid-column: auto; }
+  .colonnes { grid-template-columns: 1fr 1fr; align-items: start; }
+  .colonnes > .titre-ecran, .colonnes > .bandeau-photos, .colonnes > .mention { grid-column: 1 / -1; }
+  .colonne-etroite { grid-template-columns: 1fr; }
   body[data-mode="entree"] .page { margin-left: 0; }
   .connexion { padding-top: 40px; }
 }
@@ -637,6 +802,24 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
   <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.4A8.5 8.5 0 1 1 21 11.5z"/></symbol>
   <symbol id="i-fleche" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-sortie" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-recherche" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5L16 16"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></symbol>
+  <symbol id="i-poubelle" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-exporter" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
+  <symbol id="i-importer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
+  <symbol id="i-calendrier" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-lieu" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="i-ampoule" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V17h5v-1.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></symbol>
+  <symbol id="i-bouclier" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+  <symbol id="i-norme" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 14l2 2 4-4"/></symbol>
+  <symbol id="i-mobile" viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M10 18.5h4"/></symbol>
+  <symbol id="i-ordinateur" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-cle" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/></symbol>
+  <symbol id="i-graphique" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-echange" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
+  <symbol id="i-retour" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-document" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
 </svg>
 
 <canvas id="toile" aria-hidden="true"></canvas>
@@ -654,6 +837,13 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
     <button type="button" class="bouton-icone bouton-fermer-tiroir" id="bouton-fermer-tiroir" aria-label="Fermer le menu">
       <svg class="icone" aria-hidden="true"><use href="#i-fermer"/></svg>
     </button>
+  </div>
+  <div class="tiroir-profil">
+    <span class="avatar avatar-tiroir"><span class="avatar-initiales" data-initiales aria-hidden="true"></span><img class="avatar-photo" data-photo alt="" hidden></span>
+    <div class="tiroir-profil-texte">
+      <strong data-nom></strong>
+      <span class="formule-pastille" data-formule></span>
+    </div>
   </div>
   <nav aria-label="Navigation">
     <ul class="tiroir-menu" id="tiroir-menu"></ul>
@@ -680,10 +870,14 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
       <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
     </span>
     <span class="entete-espace"></span>
+    <button type="button" class="bouton-icone" id="bouton-recherche" aria-label="Rechercher" aria-haspopup="dialog" aria-controls="recherche">
+      <svg class="icone" aria-hidden="true"><use href="#i-recherche"/></svg>
+    </button>
     <button type="button" class="bouton-icone bouton-theme" id="bouton-theme" aria-label="Passer en mode sombre">
       <svg class="icone i-lune" aria-hidden="true"><use href="#i-lune"/></svg>
       <svg class="icone i-soleil" aria-hidden="true"><use href="#i-soleil"/></svg>
     </button>
+    <button type="button" class="avatar avatar-entete" id="bouton-avatar" data-ecran="profil" aria-label="Mon profil"><span class="avatar-initiales" data-initiales aria-hidden="true"></span><img class="avatar-photo" data-photo alt="" hidden></button>
   </header>
 
   <main class="contenu" id="contenu">
@@ -852,6 +1046,10 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
           </form>
 
           <form class="formulaire" id="panneau-connexion" role="tabpanel" aria-labelledby="onglet-connexion" novalidate autocomplete="on" hidden>
+            <div class="comptes-appareil" id="comptes-appareil" hidden>
+              <p class="etiquette-champ">Comptes sur cet appareil</p>
+              <div class="comptes-liste" id="comptes-liste"></div>
+            </div>
             <div class="champ">
               <label for="cnx-telephone">Téléphone</label>
               <input id="cnx-telephone" name="telephone" type="tel" inputmode="tel" autocomplete="tel" maxlength="22" placeholder="+226 05 60 86 08" required aria-describedby="apercu-cnx-telephone err-cnx-telephone">
@@ -891,58 +1089,321 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
       </div>
     </section>
 
-    <!-- Écran de test des fondations (remplacé par le tableau de bord à l'étape 3) -->
+    <!-- Accueil : tableau de bord -->
     <section class="ecran" id="ecran-accueil" aria-labelledby="titre-accueil">
-      <div class="demarrage">
-        <div class="carte demarrage-hero cascade" data-rang="0">
-          <span class="etiquette"><svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>Votre espace électricien</span>
-          <span class="logo" data-logo>
-            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="Logo BâtiPlus" width="720" height="609" decoding="async">
-            <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="Logo BâtiPlus" width="720" height="608" decoding="async">
-            <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
-          </span>
-          <h1 class="demarrage-titre" id="titre-accueil">BâtiPlus démarre</h1>
-          <p class="demarrage-par">par <strong>BRG Électro+</strong></p>
-        </div>
-
-        <div class="carte soulevable cascade" data-rang="1">
-          <h2 class="etat-titre">Votre compte</h2>
-          <ul class="etat-liste">
-            <li class="etat-ligne"><span>Nom</span><strong id="compte-nom"></strong></li>
-            <li class="etat-ligne"><span>Entreprise</span><strong id="compte-entreprise"></strong></li>
-            <li class="etat-ligne"><span>Téléphone</span><strong class="insecable" id="compte-telephone"></strong></li>
-            <li class="etat-ligne"><span>Ville</span><strong id="compte-ville"></strong></li>
-            <li class="etat-ligne"><span>Pays</span><strong id="compte-pays"></strong></li>
-            <li class="etat-ligne"><span>Devise</span><strong class="insecable" id="compte-devise"></strong></li>
+      <div class="tableau">
+        <div class="bandeau-accueil carte cascade" data-rang="0">
+          <span class="etiquette etiquette-claire"><svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>Votre espace électricien</span>
+          <h1 class="bandeau-titre" id="titre-accueil">Bonjour, <span id="accueil-prenom"></span></h1>
+          <ul class="bandeau-infos">
+            <li><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg><span class="insecable" id="accueil-telephone"></span></li>
+            <li><svg class="icone" aria-hidden="true"><use href="#i-lieu"/></svg><span id="accueil-ville"></span></li>
+            <li><svg class="icone" aria-hidden="true"><use href="#i-calendrier"/></svg><span id="accueil-date"></span></li>
           </ul>
         </div>
 
-        <div class="carte soulevable cascade" data-rang="2">
-          <h2 class="etat-titre">État de l'application</h2>
+        <div class="bandeau-abonnement carte cascade" data-rang="1">
+          <span class="bandeau-abonnement-icone" aria-hidden="true"><svg class="icone"><use href="#i-abonnement"/></svg></span>
+          <div class="bandeau-abonnement-texte">
+            <strong>Formule <span data-formule></span></strong>
+            <span id="accueil-quota"></span>
+          </div>
+          <button type="button" class="bouton bouton-pro" id="bouton-passer-pro" data-ecran="abonnement"><span class="bouton-libelle">Passer en Pro</span></button>
+        </div>
+
+        <button type="button" class="bouton bouton-principal bouton-chantier cascade" data-rang="2" id="bouton-nouveau-chantier" data-ecran="nouveau-chantier">
+          <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
+          <span class="bouton-libelle">Nouveau chantier</span>
+        </button>
+
+        <ul class="compteurs cascade" data-rang="3" aria-label="Mes chiffres">
+          <li class="compteur carte compteur-montant"><span class="compteur-valeur insecable" id="cpt-montant">0</span><span class="compteur-libelle">Montant total devisé</span></li>
+          <li class="compteur carte"><span class="compteur-valeur" id="cpt-devis">0</span><span class="compteur-libelle">Devis ce mois</span></li>
+          <li class="compteur carte"><span class="compteur-valeur" id="cpt-acceptes">0</span><span class="compteur-libelle">Devis acceptés</span></li>
+          <li class="compteur carte"><span class="compteur-valeur" id="cpt-jours">0</span><span class="compteur-libelle" id="cpt-jours-libelle">Jours restants</span></li>
+        </ul>
+
+        <section class="bloc cascade" data-rang="4" aria-labelledby="titre-raccourcis">
+          <h2 class="bloc-titre" id="titre-raccourcis">Raccourcis</h2>
+          <div class="raccourcis">
+            <button type="button" class="raccourci carte soulevable" data-ecran="chantiers"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-chantier"/></svg></span><span>Mes chantiers</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="devis"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-devis"/></svg></span><span>Mes devis</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="clients"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-clients"/></svg></span><span>Mes clients</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="prix"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-prix"/></svg></span><span>Mes prix</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="abonnement"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-abonnement"/></svg></span><span>Abonnement</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="profil"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-profil"/></svg></span><span>Profil</span></button>
+            <button type="button" class="raccourci carte soulevable" data-ecran="a-propos"><span class="raccourci-icone"><svg class="icone" aria-hidden="true"><use href="#i-info"/></svg></span><span>À propos</span></button>
+          </div>
+        </section>
+
+        <section class="bloc carte cascade" data-rang="5" aria-labelledby="titre-derniers">
+          <h2 class="bloc-titre" id="titre-derniers">Derniers devis</h2>
+          <ul class="liste-devis" id="accueil-devis"></ul>
+          <p class="vide" id="accueil-devis-vide">Aucun devis pour l'instant. Vos trois derniers devis s'afficheront ici.</p>
+        </section>
+
+        <section class="astuce carte cascade" data-rang="6" aria-labelledby="titre-astuce">
+          <span class="astuce-icone" aria-hidden="true"><svg class="icone"><use href="#i-ampoule"/></svg></span>
+          <div>
+            <h2 class="bloc-titre" id="titre-astuce">Astuce du jour</h2>
+            <p id="astuce-texte"></p>
+          </div>
+        </section>
+
+        <figure class="bandeau-photos cascade" data-rang="7">
+          <div class="bandeau-photos-rangee">
+            <img src="images/equipe/equipe-chantier.webp" alt="Équipe d'électriciens sur un chantier" width="640" height="427" loading="lazy" decoding="async">
+            <img src="images/equipe/elec-tableau.webp" alt="Électricien câblant un tableau" width="640" height="427" loading="lazy" decoding="async">
+            <img src="images/equipe/elec-cables.webp" alt="Électricien tirant des câbles" width="640" height="427" loading="lazy" decoding="async">
+          </div>
+          <figcaption>La qualité, c'est la sécurité</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Mon profil -->
+    <section class="ecran" id="ecran-profil" aria-labelledby="titre-profil">
+      <div class="colonnes">
+        <h1 class="titre-ecran cascade" id="titre-profil">Mon profil</h1>
+
+        <div class="carte identite cascade" data-rang="1" id="carte-identite">
+          <span class="avatar avatar-grand"><span class="avatar-initiales" data-initiales aria-hidden="true"></span><img class="avatar-photo" data-photo alt="" hidden></span>
+          <div class="identite-texte">
+            <strong class="identite-nom" data-nom></strong>
+            <span class="formule-pastille" data-formule></span>
+            <span class="identite-tel insecable" id="profil-telephone"></span>
+          </div>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-photo"><svg class="icone" aria-hidden="true"><use href="#i-photo"/></svg><span class="bouton-libelle">Changer la photo</span></button>
+            <button type="button" class="bouton bouton-discret" id="bouton-retirer-photo"><svg class="icone" aria-hidden="true"><use href="#i-poubelle"/></svg><span class="bouton-libelle">Retirer</span></button>
+          </div>
+          <input type="file" id="fichier-photo" accept="image/jpeg,image/png,image/webp" hidden>
+          <p class="message-formulaire" id="msg-photo" role="status"></p>
+        </div>
+
+        <form class="carte formulaire cascade" data-rang="2" id="carte-infos" novalidate>
+          <h2 class="bloc-titre">Mes informations</h2>
+          <div class="champ">
+            <label for="pro-nom">Nom complet</label>
+            <input id="pro-nom" type="text" autocomplete="name" maxlength="120" required aria-describedby="err-pro-nom">
+            <p class="champ-erreur" id="err-pro-nom"></p>
+          </div>
+          <div class="champ">
+            <label for="pro-entreprise">Nom de l'entreprise <span class="facultatif">(facultatif)</span></label>
+            <input id="pro-entreprise" type="text" autocomplete="organization" maxlength="120" aria-describedby="err-pro-entreprise">
+            <p class="champ-erreur" id="err-pro-entreprise"></p>
+          </div>
+          <div class="champ">
+            <label for="pro-telephone">Téléphone</label>
+            <input id="pro-telephone" type="tel" inputmode="tel" autocomplete="tel" maxlength="22" required aria-describedby="apercu-pro-telephone err-pro-telephone">
+            <p class="apercu-pays" id="apercu-pro-telephone" aria-live="polite"></p>
+            <p class="champ-erreur" id="err-pro-telephone"></p>
+          </div>
+          <div class="champ">
+            <label for="pro-ville">Ville</label>
+            <input id="pro-ville" type="text" autocomplete="address-level2" maxlength="120" required aria-describedby="err-pro-ville">
+            <p class="champ-erreur" id="err-pro-ville"></p>
+          </div>
+          <div class="champ-duo">
+            <div class="champ">
+              <label for="pro-pays">Pays</label>
+              <select id="pro-pays" autocomplete="country"></select>
+            </div>
+            <div class="champ">
+              <label for="pro-devise">Devise</label>
+              <select id="pro-devise"></select>
+            </div>
+          </div>
+          <p class="message-formulaire" id="msg-profil" role="status"></p>
+          <button type="submit" class="bouton bouton-principal" id="bouton-enregistrer-profil"><span class="bouton-libelle">Enregistrer</span></button>
+        </form>
+
+        <div class="carte cascade" data-rang="3" id="carte-logo">
+          <h2 class="bloc-titre">Logo de l'entreprise</h2>
+          <p class="aide">Affiché en haut de vos devis avec une formule Pro. JPEG, PNG ou WebP, 5 Mo maximum.</p>
+          <div class="logo-entreprise">
+            <img id="apercu-logo" alt="Logo de votre entreprise" hidden>
+            <span class="logo-entreprise-vide" id="logo-vide"><svg class="icone" aria-hidden="true"><use href="#i-image"/></svg>Aucun logo</span>
+          </div>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-logo"><svg class="icone" aria-hidden="true"><use href="#i-image"/></svg><span class="bouton-libelle">Choisir un logo</span></button>
+            <button type="button" class="bouton bouton-discret" id="bouton-retirer-logo"><svg class="icone" aria-hidden="true"><use href="#i-poubelle"/></svg><span class="bouton-libelle">Retirer</span></button>
+          </div>
+          <input type="file" id="fichier-logo" accept="image/jpeg,image/png,image/webp" hidden>
+          <p class="message-formulaire" id="msg-logo" role="status"></p>
+        </div>
+
+        <form class="carte formulaire cascade" data-rang="4" id="carte-conditions" novalidate>
+          <h2 class="bloc-titre">Conditions par défaut</h2>
+          <div class="champ">
+            <label for="pro-conditions">Texte repris en bas de chaque nouveau devis</label>
+            <textarea id="pro-conditions" rows="4" maxlength="1000" aria-describedby="compteur-conditions err-pro-conditions"></textarea>
+            <p class="aide aide-droite" id="compteur-conditions"></p>
+            <p class="champ-erreur" id="err-pro-conditions"></p>
+          </div>
+          <p class="message-formulaire" id="msg-conditions" role="status"></p>
+          <button type="submit" class="bouton bouton-secondaire" id="bouton-enregistrer-conditions"><span class="bouton-libelle">Enregistrer les conditions</span></button>
+        </form>
+
+        <form class="carte formulaire cascade" data-rang="5" id="carte-code" novalidate>
+          <h2 class="bloc-titre">Changer le code secret</h2>
+            <div class="champ">
+              <span class="etiquette-champ" id="lbl-pro-ancien">Code actuel</span>
+              <div class="code" data-code="pro-ancien">
+                <div class="code-cases" id="pro-ancien" role="textbox" tabindex="0" aria-labelledby="lbl-pro-ancien" aria-describedby="err-pro-ancien" aria-readonly="true" data-clavier="clavier-profil"></div>
+                <button type="button" class="bouton-icone code-oeil" data-oeil="pro-ancien" aria-label="Afficher le code" aria-pressed="false">
+                  <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                  <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+                </button>
+              </div>
+              <p class="champ-erreur" id="err-pro-ancien"></p>
+            </div>
+            <div class="champ">
+              <span class="etiquette-champ" id="lbl-pro-nouveau">Nouveau code <span class="facultatif">(4 à 6 chiffres)</span></span>
+              <div class="code" data-code="pro-nouveau">
+                <div class="code-cases" id="pro-nouveau" role="textbox" tabindex="0" aria-labelledby="lbl-pro-nouveau" aria-describedby="err-pro-nouveau" aria-readonly="true" data-clavier="clavier-profil"></div>
+                <button type="button" class="bouton-icone code-oeil" data-oeil="pro-nouveau" aria-label="Afficher le code" aria-pressed="false">
+                  <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                  <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+                </button>
+              </div>
+              <p class="champ-erreur" id="err-pro-nouveau"></p>
+            </div>
+            <div class="champ">
+              <span class="etiquette-champ" id="lbl-pro-confirmation">Confirmez le nouveau code</span>
+              <div class="code" data-code="pro-confirmation">
+                <div class="code-cases" id="pro-confirmation" role="textbox" tabindex="0" aria-labelledby="lbl-pro-confirmation" aria-describedby="err-pro-confirmation" aria-readonly="true" data-clavier="clavier-profil"></div>
+                <button type="button" class="bouton-icone code-oeil" data-oeil="pro-confirmation" aria-label="Afficher le code" aria-pressed="false">
+                  <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                  <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+                </button>
+              </div>
+              <p class="champ-erreur" id="err-pro-confirmation"></p>
+            </div>
+            <div class="clavier" id="clavier-profil" aria-label="Clavier du code secret"></div>
+          <p class="message-formulaire" id="msg-code" role="status"></p>
+          <button type="submit" class="bouton bouton-principal" id="bouton-changer-code"><svg class="icone" aria-hidden="true"><use href="#i-cle"/></svg><span class="bouton-libelle">Changer le code</span></button>
+        </form>
+
+        <div class="carte cascade" data-rang="6" id="carte-stats">
+          <h2 class="bloc-titre">Mes statistiques</h2>
           <ul class="etat-liste">
-            <li class="etat-ligne"><span>Version</span><strong id="etat-version">1.0.0</strong></li>
-            <li class="etat-ligne"><span>Plateforme</span><strong id="etat-plateforme">Détection…</strong></li>
-            <li class="etat-ligne"><span>Réseau</span><strong class="pastille" id="etat-reseau">Détection…</strong></li>
-            <li class="etat-ligne"><span>Thème</span><strong id="etat-theme">Détection…</strong></li>
-            <li class="etat-ligne"><span>Animations</span><strong id="etat-animations">Détection…</strong></li>
+            <li class="etat-ligne"><span>Devis réalisés</span><strong id="stat-devis">0</strong></li>
+            <li class="etat-ligne"><span>Devis acceptés</span><strong id="stat-acceptes">0</strong></li>
+            <li class="etat-ligne"><span>Taux d'acceptation</span><strong class="insecable" id="stat-taux">—</strong></li>
+            <li class="etat-ligne"><span>Montant total devisé</span><strong class="insecable" id="stat-montant">0</strong></li>
+            <li class="etat-ligne"><span>Clients</span><strong id="stat-clients">0</strong></li>
           </ul>
         </div>
 
-        <div class="carte soulevable cascade" data-rang="3">
-          <button type="button" class="bouton bouton-principal" id="bouton-verifier">
-            <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
-            <span class="bouton-libelle">Vérifier le démarrage</span>
-          </button>
-          <div class="verif-resultat" id="verif-resultat" role="status" aria-live="polite" hidden>
-            <svg class="coche" id="verif-coche" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16"/><path d="M11 18.5l5 5 9-10"/></svg>
-            <div><strong id="verif-titre"></strong><p id="verif-detail"></p></div>
+        <div class="carte cascade" data-rang="7" id="carte-sauvegarde">
+          <h2 class="bloc-titre">Sauvegarde</h2>
+          <p class="aide">Gardez une copie de votre profil, de votre photo, de votre logo et de vos conditions dans un fichier. Votre code secret et votre abonnement n'y figurent jamais.</p>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-exporter"><svg class="icone" aria-hidden="true"><use href="#i-exporter"/></svg><span class="bouton-libelle">Exporter</span></button>
+            <button type="button" class="bouton bouton-secondaire" id="bouton-importer"><svg class="icone" aria-hidden="true"><use href="#i-importer"/></svg><span class="bouton-libelle">Importer</span></button>
+          </div>
+          <input type="file" id="fichier-sauvegarde" accept="application/json,.json" hidden>
+          <p class="message-formulaire" id="msg-sauvegarde" role="status"></p>
+        </div>
+
+        <div class="carte cascade" data-rang="8" id="carte-session">
+          <h2 class="bloc-titre">Mon compte</h2>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-changer-compte"><svg class="icone" aria-hidden="true"><use href="#i-echange"/></svg><span class="bouton-libelle">Changer de compte</span></button>
+            <button type="button" class="bouton bouton-danger" id="bouton-deconnexion-profil"><svg class="icone" aria-hidden="true"><use href="#i-sortie"/></svg><span class="bouton-libelle">Se déconnecter</span></button>
           </div>
         </div>
 
-        <p class="mention cascade" data-rang="4">
+        <figure class="bandeau-photos cascade" data-rang="8">
+          <div class="bandeau-photos-rangee">
+            <img src="images/equipe/equipe-chantier.webp" alt="Équipe d'électriciens sur un chantier" width="640" height="427" loading="lazy" decoding="async">
+            <img src="images/equipe/elec-tableau.webp" alt="Électricien câblant un tableau" width="640" height="427" loading="lazy" decoding="async">
+            <img src="images/equipe/elec-cables.webp" alt="Électricien tirant des câbles" width="640" height="427" loading="lazy" decoding="async">
+          </div>
+          <figcaption>La qualité, c'est la sécurité</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- À propos -->
+    <section class="ecran" id="ecran-a-propos" aria-labelledby="titre-a-propos">
+      <div class="colonnes">
+        <h1 class="titre-ecran cascade" id="titre-a-propos">À propos</h1>
+
+        <div class="carte apropos-app cascade" data-rang="1" id="carte-application">
+          <span class="logo logo-apropos" id="logo-apropos" data-logo>
+            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="609" decoding="async">
+            <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
+            <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+          </span>
+          <h2 class="bloc-titre">L'application</h2>
+          <ul class="etat-liste">
+            <li class="etat-ligne"><span>Version</span><strong id="etat-version">1.0.0</strong></li>
+            <li class="etat-ligne"><span>Langue</span><strong>Français</strong></li>
+            <li class="etat-ligne"><span>Hors ligne</span><strong>Oui, vos données restent sur le téléphone</strong></li>
+            <li class="etat-ligne"><span>Plateforme</span><strong id="etat-plateforme">Détection…</strong></li>
+            <li class="etat-ligne"><span>Réseau</span><strong class="pastille" id="etat-reseau">Détection…</strong></li>
+          </ul>
+        </div>
+
+        <div class="carte apropos-concepteur cascade" data-rang="2" id="carte-concepteur">
+          <span class="logo logo-brg-apropos" data-logo>
+            <img class="logo-clair" src="images/brg/brg-couleur.webp" alt="BRG Électro+" width="640" height="315" decoding="async">
+            <img class="logo-sombre" src="images/brg/brg-blanc.webp" alt="BRG Électro+" width="640" height="315" decoding="async">
+            <span class="logo-repli logo-repli-brg" aria-hidden="true">BRG Électro+</span>
+          </span>
+          <h2 class="bloc-titre">Le concepteur de BâtiPlus</h2>
+          <p>BRG Électro+ est l'entreprise d'électricité qui a imaginé, conçu et développé l'application. Elle en assure les mises à jour, le support et la gestion des abonnements.</p>
+          <div class="actions-ligne">
+            <a class="bouton bouton-secondaire" href="tel:+22605608608"><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg><span class="bouton-libelle insecable">+226 05 60 86 08</span></a>
+            <a class="bouton bouton-secondaire" href="tel:+22668524290"><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg><span class="bouton-libelle insecable">+226 68 52 42 90</span></a>
+          </div>
+        </div>
+
+        <div class="carte cascade" data-rang="3" id="carte-installation">
+          <h2 class="bloc-titre">Installer BâtiPlus</h2>
+          <ul class="plateformes">
+            <li><span class="plateforme-icone" aria-hidden="true"><svg class="icone"><use href="#i-mobile"/></svg></span><div><strong>Android</strong><p>Installez l'application BâtiPlus depuis le Google Play Store, puis connectez-vous avec votre numéro.</p></div></li>
+            <li><span class="plateforme-icone" aria-hidden="true"><svg class="icone"><use href="#i-mobile"/></svg></span><div><strong>iPhone</strong><p>Ouvrez BâtiPlus dans Safari, touchez « Partager » puis « Sur l'écran d'accueil ».</p></div></li>
+            <li><span class="plateforme-icone" aria-hidden="true"><svg class="icone"><use href="#i-ordinateur"/></svg></span><div><strong>Ordinateur</strong><p>Ouvrez BâtiPlus dans Chrome ou Edge, puis cliquez sur « Installer » dans la barre d'adresse.</p></div></li>
+          </ul>
+        </div>
+
+        <div class="carte cascade" data-rang="4" id="carte-normes">
+          <h2 class="bloc-titre">Les normes</h2>
+          <p>Les études de BâtiPlus suivent la norme française <span class="insecable">NF C 15-100</span>, référence des installations électriques basse tension : nombre de prises et de points lumineux par pièce, sections des câbles, calibre des disjoncteurs, différentiels 30 mA et mise à la terre.</p>
+          <p class="aide">BâtiPlus est une aide au calcul. La conformité finale reste sous la responsabilité de l'électricien qui réalise l'installation.</p>
+        </div>
+
+        <div class="carte cascade" data-rang="5" id="carte-confidentialite">
+          <h2 class="bloc-titre">Confidentialité</h2>
+          <p>Vos informations servent uniquement à faire fonctionner votre compte, vos études et vos devis. Elles ne sont jamais vendues et ne servent à aucune publicité. Votre code secret n'est jamais conservé en clair.</p>
+          <button type="button" class="bouton bouton-secondaire" id="bouton-conditions-apropos"><svg class="icone" aria-hidden="true"><use href="#i-document"/></svg><span class="bouton-libelle">Lire les conditions</span></button>
+        </div>
+
+        <p class="mention cascade" data-rang="6">
           <strong>BâtiPlus est une application conçue et développée par BRG Électro+</strong>
           <small>© 2026 BRG Électro+ — Tous droits réservés</small>
         </p>
+      </div>
+    </section>
+
+    <!-- Administration (accès caché : appui long de 3 s sur le logo de « À propos ») -->
+    <section class="ecran" id="ecran-admin" aria-labelledby="titre-admin">
+      <div class="colonnes colonne-etroite">
+        <h1 class="titre-ecran" id="titre-admin">Administration</h1>
+        <form class="carte formulaire" id="form-admin" novalidate autocomplete="off">
+          <p class="aide">Accès réservé à BRG Électro+. Le code est vérifié en ligne et n'est jamais enregistré sur ce téléphone.</p>
+          <div class="champ">
+            <label for="adm-code">Code d'administration</label>
+            <input id="adm-code" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64" required aria-describedby="err-adm-code">
+            <p class="champ-erreur" id="err-adm-code"></p>
+          </div>
+          <p class="message-formulaire" id="msg-admin" role="alert"></p>
+          <button type="submit" class="bouton bouton-principal" id="bouton-admin"><svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg><span class="bouton-libelle">Valider</span></button>
+          <button type="button" class="bouton bouton-discret" data-ecran="a-propos"><svg class="icone" aria-hidden="true"><use href="#i-retour"/></svg><span class="bouton-libelle">Retour</span></button>
+        </form>
       </div>
     </section>
   </main>
@@ -959,7 +1420,25 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
       </button>
     </div>
     <div class="modale-contenu" id="modale-contenu"></div>
-    <button type="button" class="bouton bouton-principal" id="bouton-modale-ok"><span class="bouton-libelle">J'ai compris</span></button>
+    <div class="modale-actions">
+      <button type="button" class="bouton bouton-secondaire" id="bouton-modale-annuler" hidden><span class="bouton-libelle" id="libelle-modale-annuler">Annuler</span></button>
+      <button type="button" class="bouton bouton-principal" id="bouton-modale-ok"><span class="bouton-libelle" id="libelle-modale-ok">J'ai compris</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="recherche" hidden>
+  <div class="recherche-boite carte" role="dialog" aria-modal="true" aria-labelledby="titre-recherche">
+    <h2 class="visuellement-cache" id="titre-recherche">Rechercher</h2>
+    <div class="recherche-champ">
+      <svg class="icone" aria-hidden="true"><use href="#i-recherche"/></svg>
+      <input id="recherche-saisie" type="search" placeholder="Rechercher dans BâtiPlus" autocomplete="off" maxlength="60" aria-label="Rechercher" aria-controls="recherche-resultats">
+      <button type="button" class="bouton-icone" id="bouton-fermer-recherche" aria-label="Fermer la recherche">
+        <svg class="icone" aria-hidden="true"><use href="#i-fermer"/></svg>
+      </button>
+    </div>
+    <ul class="recherche-resultats" id="recherche-resultats"></ul>
+    <p class="vide" id="recherche-vide" hidden>Aucun résultat.</p>
   </div>
 </div>
 
@@ -967,10 +1446,10 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
   <p><strong>Éditeur.</strong> BâtiPlus est éditée par BRG Électro+, Burkina Faso — +226 05 60 86 08 · +226 68 52 42 90.</p>
   <p><strong>Données collectées.</strong> Votre nom, le nom de votre entreprise, votre téléphone, votre ville, votre pays, votre devise, ainsi que les chantiers, clients et devis que vous créez.</p>
   <p><strong>Pourquoi.</strong> Uniquement pour faire fonctionner votre compte, vos études, vos devis et votre abonnement. Vos données ne sont jamais vendues et ne servent à aucune publicité.</p>
-  <p><strong>Où.</strong> Sur votre téléphone. Lorsque vous êtes connecté à Internet, une copie est conservée sur le serveur sécurisé de BRG Électro+ pour la sauvegarde et la synchronisation entre vos appareils.</p>
+  <p><strong>Où.</strong> Sur votre téléphone. Vous pouvez en garder une copie dans un fichier depuis « Mon profil », rubrique « Sauvegarde ».</p>
   <p><strong>Votre code secret.</strong> Il n'est jamais conservé en clair : seule une empreinte chiffrée (PBKDF2, 150 000 itérations) est enregistrée.</p>
   <p><strong>Suppression.</strong> Vous pouvez demander à tout moment la suppression de votre compte et de vos données par WhatsApp au +226 05 60 86 08.</p>
-  <p><strong>Responsabilité.</strong> Les études et devis de BâtiPlus sont une aide au calcul. La conformité de l'installation à la norme NF C 15-100 reste sous la responsabilité de l'électricien qui la réalise.</p>
+  <p><strong>Responsabilité.</strong> Les études et devis de BâtiPlus sont une aide au calcul. La conformité de l'installation à la norme <span class="insecable">NF C 15-100</span> reste sous la responsabilité de l'électricien qui la réalise.</p>
 </template>
 <div id="feuille-devis" aria-hidden="true"></div>
 <script>
@@ -995,13 +1474,28 @@ const APP = Object.freeze({
   copyright: "© 2026 BRG Électro+ — Tous droits réservés"
 });
 
+/* Stockage : préfixe bp_ + version du schéma (v1). Changer de schéma = nouvelle
+   version + migration dans migrerStockage(). */
 const CLES_STOCKAGE = Object.freeze({
-  theme: "bp.theme",
-  presentationVue: "bp.presentation-vue",
-  comptes: "bp.comptes",
-  session: "bp.session",
-  verrou: "bp.verrou"
+  theme: "bp_v1_theme",
+  presentationVue: "bp_v1_presentation_vue",
+  comptes: "bp_v1_comptes",
+  session: "bp_v1_session",
+  verrou: "bp_v1_verrou",
+  devis: "bp_v1_devis"
 });
+/* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
+const CLES_ANCIENNES = Object.freeze({
+  "bp.theme": "bp_v1_theme",
+  "bp.presentation-vue": "bp_v1_presentation_vue",
+  "bp.comptes": "bp_v1_comptes",
+  "bp.session": "bp_v1_session",
+  "bp.verrou": "bp_v1_verrou"
+});
+
+/* Adresse publique de l'API, injectée par l'assembleur depuis .env (API_URL).
+   C'est la SEULE valeur de configuration connue du front : aucune clé, aucun secret. */
+const API_URL = "https://api.batiplus.bf";
 
 /* WhatsApp de BRG Électro+ pour « Code oublié ? » (chiffres uniquement). */
 const WHATSAPP_BRG = "22605608608";
@@ -1060,6 +1554,7 @@ const BLOCAGE = Object.freeze({
 const BORNES = Object.freeze({
   texteMin: 1,
   texteMax: 120,
+  conditionsMax: 1000,
   telephoneMin: 8,
   telephoneMax: 15
 });
@@ -1128,6 +1623,113 @@ const TOILE = Object.freeze({
   vitesseImpulsion: 0.012
 });
 
+/* ---------- Formules d'abonnement (affichage uniquement) ----------
+   Le front ne décide JAMAIS de la formule : elle viendra du compte vérifié
+   (étapes 11-14). Une seule fonction, libelleFormule(), l'affiche partout. */
+const FORMULES = Object.freeze({
+  gratuit: { nom: "Gratuit", prix: 0, illimite: false },
+  semaine: { nom: "Pass semaine", prix: 750, illimite: true },
+  mensuel: { nom: "Pro mensuel", prix: 2500, illimite: true },
+  annuel: { nom: "Pro annuel", prix: 25000, illimite: true },
+  vie: { nom: "Lifetime", prix: 60000, illimite: true }
+});
+const FORMULE_DEFAUT = "gratuit";
+const LIMITE_GRATUITE = 5;
+
+const STATUTS_DEVIS = Object.freeze({
+  brouillon: { libelle: "Brouillon", ton: "neutre" },
+  envoye: { libelle: "Envoyé", ton: "info" },
+  accepte: { libelle: "Accepté", ton: "ok" },
+  refuse: { libelle: "Refusé", ton: "alerte" }
+});
+
+/* Animations des compteurs du tableau de bord (ms). */
+const DUREE_COMPTEUR = 700;
+/* Appui long sur le logo de « À propos » pour ouvrir l'administration (ms). */
+const DUREE_APPUI_ADMIN = 3000;
+
+/* ---------- Astuce du jour : sécurité électrique (une par jour, en boucle) ---------- */
+const ASTUCES = Object.freeze([
+  "Coupez toujours le disjoncteur général et vérifiez l'absence de tension au VAT avant de toucher un conducteur.",
+  "Un différentiel 30 mA protège les personnes : testez-le chaque mois avec son bouton « T ».",
+  "La terre est obligatoire sur tous les circuits : une prise sans terre est un risque d'électrocution.",
+  "Respectez les couleurs : vert-jaune uniquement pour la terre, bleu pour le neutre.",
+  "Une section trop faible chauffe : 1,5 mm² pour l'éclairage, 2,5 mm² pour les prises.",
+  "Serrez toutes les bornes au bon couple : un serrage lâche provoque des échauffements et des incendies.",
+  "Dans la salle d'eau, respectez les volumes : aucune prise ordinaire à moins de 60 cm de la douche.",
+  "Prévoyez au moins 20 % de place libre dans le tableau pour les extensions futures.",
+  "Un parafoudre protège les appareils dans les zones exposées à la foudre et aux coupures brutales.",
+  "Ne dépassez pas 8 prises sur un circuit 16 A en 1,5 mm², ni 12 sur un circuit 20 A en 2,5 mm².",
+  "Un appareil puissant (cuisinière, climatiseur, chauffe-eau) doit avoir son propre circuit.",
+  "Utilisez des gaines adaptées : une gaine écrasée dans le béton abîme les conducteurs.",
+  "Repérez chaque disjoncteur avec une étiquette claire : le client gagnera du temps en cas de panne.",
+  "Gardez vos outils isolés en bon état : un manche fendu n'isole plus.",
+  "Ne travaillez jamais seul sur une installation à risque : une deuxième personne peut couper le courant.",
+  "Mesurez la résistance de terre : en dessous de 100 ohms avec un différentiel 30 mA, c'est conforme.",
+  "Les boîtes de dérivation doivent rester accessibles : jamais enfouies dans le mur sans trappe.",
+  "Pour la cuisinière, prévoyez un circuit en 6 mm² protégé par un disjoncteur 32 A.",
+  "Évitez les dominos sous tension mécanique : préférez des bornes à levier de qualité.",
+  "Coupez le courant avant de remplacer une ampoule ou un luminaire, même pour quelques secondes.",
+  "Laissez une distance suffisante entre câbles électriques et canalisations d'eau ou de gaz.",
+  "Un tableau doit être fixé à une hauteur accessible, entre 1 m et 1,80 m du sol.",
+  "Une odeur de brûlé ou une prise qui noircit signale un échauffement : coupez et contrôlez.",
+  "Testez chaque circuit après la pose : continuité, isolement, puis fonctionnement.",
+  "Ne surchargez pas une multiprise : elle n'augmente pas la puissance du circuit.",
+  "Fixez les câbles tous les 30 à 40 cm pour éviter qu'ils pendent ou soient arrachés.",
+  "En extérieur, utilisez du matériel étanche (IP44 minimum) et un différentiel 30 mA.",
+  "Expliquez au client où se trouve le disjoncteur général et comment le couper.",
+  "Gardez une trace de chaque installation : schéma et devis aident en cas de dépannage.",
+  "Portez des chaussures isolantes et retirez bagues, montres et bracelets avant d'intervenir.",
+  "La qualité du matériel compte : un disjoncteur contrefait peut ne jamais déclencher."
+]);
+
+/* ---------- Recherche (en-tête) : écrans et rubriques ----------
+   Une entrée n'est proposée que si son écran existe. Les devis, chantiers et
+   clients s'ajouteront quand leurs écrans existeront. */
+const RECHERCHE = Object.freeze([
+  { libelle: "Accueil", detail: "Tableau de bord", ecran: "accueil", mots: "tableau bord compteurs astuce" },
+  { libelle: "Mon profil", detail: "Nom, entreprise, téléphone, ville", ecran: "profil", cible: "carte-infos", mots: "profil nom entreprise telephone ville pays devise" },
+  { libelle: "Photo de profil", detail: "Mon profil", ecran: "profil", cible: "carte-identite", mots: "photo image avatar" },
+  { libelle: "Logo de l'entreprise", detail: "Mon profil", ecran: "profil", cible: "carte-logo", mots: "logo entreprise image devis" },
+  { libelle: "Conditions par défaut", detail: "Mon profil", ecran: "profil", cible: "carte-conditions", mots: "conditions acompte validite paiement" },
+  { libelle: "Changer le code secret", detail: "Mon profil", ecran: "profil", cible: "carte-code", mots: "code secret mot passe securite" },
+  { libelle: "Mes statistiques", detail: "Mon profil", ecran: "profil", cible: "carte-stats", mots: "statistiques chiffres montant" },
+  { libelle: "Sauvegarde", detail: "Exporter ou importer", ecran: "profil", cible: "carte-sauvegarde", mots: "sauvegarde export import fichier" },
+  { libelle: "Changer de compte", detail: "Mon profil", ecran: "profil", cible: "carte-session", mots: "compte deconnexion changer" },
+  { libelle: "À propos", detail: "BâtiPlus et BRG Électro+", ecran: "a-propos", mots: "propos version concepteur brg contact whatsapp" },
+  { libelle: "Installer BâtiPlus", detail: "Android, iPhone, ordinateur", ecran: "a-propos", cible: "carte-installation", mots: "installer android iphone ordinateur" },
+  { libelle: "Normes", detail: "NF C 15-100", ecran: "a-propos", cible: "carte-normes", mots: "norme nf c 15-100 conformite" },
+  { libelle: "Confidentialité", detail: "Vos données", ecran: "a-propos", cible: "carte-confidentialite", mots: "confidentialite donnees conditions" }
+]);
+
+const CONDITIONS_DEFAUT = "Devis valable 30 jours. Acompte de 50 % à la commande, solde à la fin des travaux. Matériel garanti selon les conditions du fabricant.";
+
+/* ---------- Images importées (photo, logo) ---------- */
+const IMAGES = Object.freeze({
+  types: Object.freeze(["image/jpeg", "image/png", "image/webp"]),
+  octetsMax: 5 * 1024 * 1024,
+  pixelsMax: 40000000,
+  photo: Object.freeze({ cote: 320 }),
+  logo: Object.freeze({ largeur: 600, hauteur: 300 }),
+  qualite: 0.82,
+  donneesMax: 300 * 1024
+});
+
+/* ---------- Sauvegarde exportée / importée ---------- */
+const SAUVEGARDE = Object.freeze({
+  format: "batiplus-sauvegarde",
+  version: 1,
+  octetsMax: 2 * 1024 * 1024
+});
+
+/* ---------- Administration : le code est vérifié par l'API, jamais ici ---------- */
+const ADMIN = Object.freeze({
+  chemin: "/api/admin/session",
+  delaiMs: 10000,
+  codeMin: 6,
+  codeMax: 64
+});
+
 /* ==========================================================================
    BâtiPlus — moteur.js
    Fonctions de l'application, puis initialisation (tout en bas).
@@ -1142,18 +1744,30 @@ const themeSystemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 const PAYS_PAR_ISO = new Map(PAYS.map((p) => [p.iso, p]));
 const INDICATIFS = [...new Set(PAYS.map((p) => p.indicatif))].sort((a, b) => b.length - a.length);
+const DONNEES_IMAGE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/;
 
 /* État de l'application, en mémoire uniquement. */
 const etat = {
   compte: null,
+  abonnement: null,
+  historique: [],
+  travailEnCours: null,
   minuterieBlocage: 0,
-  elementAvantModale: null
+  minuterieAdmin: 0,
+  adminEchecs: 0,
+  adminBloqueJusqua: 0,
+  elementAvantModale: null,
+  elementAvantRecherche: null,
+  resoudreModale: null
 };
 
 /* Codes en cours de saisie : jamais dans le DOM, jamais stockés. */
-const codes = { "ins-code": "", "ins-confirmation": "", "cnx-code": "" };
+const codes = { "ins-code": "", "ins-confirmation": "", "cnx-code": "", "pro-ancien": "", "pro-nouveau": "", "pro-confirmation": "" };
 const codesVisibles = new Set();
-const cibleClavier = { "clavier-inscription": "ins-code", "clavier-connexion": "cnx-code" };
+const cibleClavier = { "clavier-inscription": "ins-code", "clavier-connexion": "cnx-code", "clavier-profil": "pro-ancien" };
+/* Champ suivant quand un code atteint 6 chiffres. */
+const CODE_SUIVANT = { "ins-code": "ins-confirmation", "pro-ancien": "pro-nouveau", "pro-nouveau": "pro-confirmation" };
+const animationsCompteurs = new WeakMap();
 
 const presentation = { index: 0, total: 0, departX: null, ecart: 0 };
 
@@ -1187,6 +1801,11 @@ function trembler(element) {
   void element.offsetWidth;
   element.classList.add("tremble");
   vibrer();
+}
+
+/* Pour comparer sans accents ni majuscules (recherche, clients). */
+function normaliser(texte) {
+  return String(texte || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
 function defilementDoux() {
@@ -1263,6 +1882,17 @@ async function lireJson(cle) {
   }
 }
 
+/* Reprend une seule fois les clés d'avant le schéma v1 (bp.nom → bp_v1_nom). */
+async function migrerStockage() {
+  for (const [ancienne, nouvelle] of Object.entries(CLES_ANCIENNES)) {
+    const valeur = await lireValeur(ancienne);
+    if (valeur === null || valeur === undefined) continue;
+    const existante = await lireValeur(nouvelle);
+    if (existante === null || existante === undefined) await ecrireValeur(nouvelle, valeur);
+    await supprimerValeur(ancienne);
+  }
+}
+
 /* ---------- Retour haptique ---------- */
 
 function vibrer() {
@@ -1286,7 +1916,6 @@ function appliquerTheme(theme) {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", THEMES[valide].barreEtat);
   appliquerBarreEtat(valide);
-  $("etat-theme").textContent = THEMES[valide].libelle;
 }
 
 function appliquerBarreEtat(theme) {
@@ -1331,13 +1960,21 @@ function estEcranEntree(id) {
   return ECRANS_ENTREE.includes(id);
 }
 
-function montrer(id) {
-  /* Les écrans de l'application exigent une session ouverte. */
+/* options.retour : ne pas empiler (bouton retour). L'historique ne garde que les
+   écrans de l'application ; revenir à l'accueil ou à l'entrée le vide. */
+function montrer(id, options) {
   const destination = !estEcranEntree(id) && !etat.compte ? "connexion" : id;
   const cible = $("ecran-" + destination);
   if (!cible) {
     journal("écran inexistant :", destination);
     return false;
+  }
+  const precedent = montrer.ecranCourant;
+  const retour = Boolean(options && options.retour);
+  if (estEcranEntree(destination) || destination === ECRAN_DEPART) {
+    etat.historique = [];
+  } else if (!retour && precedent && precedent !== destination && !estEcranEntree(precedent)) {
+    etat.historique.push(precedent);
   }
   document.querySelectorAll(".ecran.actif").forEach((ecran) => ecran.classList.remove("actif"));
   cible.classList.add("actif");
@@ -1349,14 +1986,31 @@ function montrer(id) {
   fermerTiroir();
   window.scrollTo({ top: 0, behavior: "auto" });
   montrer.ecranCourant = destination;
+  preparerEcran(destination);
   return true;
 }
 montrer.ecranCourant = null;
 
+/* Remplit l'écran au moment où il s'affiche. */
+function preparerEcran(id) {
+  if (id === "accueil") afficherAccueil();
+  else if (id === "profil") remplirProfil();
+  else if (id === "admin") reinitialiserAdmin();
+}
+
+/* Un seul écouteur pour tous les éléments [data-ecran] (menu, onglets, raccourcis…). */
 function surClicNavigation(evenement) {
-  const lien = evenement.currentTarget;
+  const lien = evenement.target.closest("[data-ecran]");
+  if (!lien || lien.hidden || lien.disabled) return;
   vibrer();
   montrer(lien.dataset.ecran);
+}
+
+/* Un lien vers un écran qui n'existe pas encore est masqué, jamais cassé. */
+function masquerLiensAbsents() {
+  document.querySelectorAll("[data-ecran]").forEach((lien) => {
+    lien.hidden = !ecranExiste(lien.dataset.ecran);
+  });
 }
 
 function creerLienTiroir(entree) {
@@ -1369,7 +2023,6 @@ function creerLienTiroir(entree) {
   const libelle = document.createElement("span");
   libelle.textContent = entree.libelle;
   bouton.appendChild(libelle);
-  bouton.addEventListener("click", surClicNavigation);
   li.appendChild(bouton);
   return li;
 }
@@ -1391,7 +2044,6 @@ function creerOnglet(entree) {
     libelle.textContent = entree.libelle;
     bouton.appendChild(libelle);
   }
-  bouton.addEventListener("click", surClicNavigation);
   return bouton;
 }
 
@@ -1450,7 +2102,8 @@ function activerGlissementTiroir() {
 
 function surToucheClavier(evenement) {
   if (evenement.key === "Escape") {
-    if (!$("modale").hidden) fermerModale();
+    if (!$("modale").hidden) fermerModale(false);
+    else if (!$("recherche").hidden) fermerRecherche();
     else if (tiroirOuvert()) fermerTiroir();
     return;
   }
@@ -1460,36 +2113,69 @@ function surToucheClavier(evenement) {
   }
 }
 
-/* ---------- Modale ---------- */
+/* ---------- Modale (information ou confirmation) ---------- */
 
-function ouvrirModale(titre, idModele) {
+function ouvrirModale(titre, contenu, options) {
+  const reglages = options || {};
+  if (etat.resoudreModale) fermerModale(false);
   $("modale-titre").textContent = titre;
-  $("modale-contenu").replaceChildren($(idModele).content.cloneNode(true));
-  etat.elementAvantModale = document.activeElement;
+  $("modale-contenu").replaceChildren(contenu);
+  $("libelle-modale-ok").textContent = reglages.ok || "J'ai compris";
+  $("bouton-modale-annuler").hidden = !reglages.annuler;
+  $("libelle-modale-annuler").textContent = reglages.annuler || "Annuler";
+  etat.resoudreModale = reglages.resoudre || null;
+  if (!etat.elementAvantModale) etat.elementAvantModale = document.activeElement;
   $("modale").hidden = false;
-  $("bouton-modale-ok").focus({ preventScroll: true });
+  $(reglages.annuler ? "bouton-modale-annuler" : "bouton-modale-ok").focus({ preventScroll: true });
 }
 
-function fermerModale() {
+function fermerModale(confirme) {
+  if ($("modale").hidden) return;
   $("modale").hidden = true;
+  const resoudre = etat.resoudreModale;
+  etat.resoudreModale = null;
   const precedent = etat.elementAvantModale;
   etat.elementAvantModale = null;
   if (precedent && typeof precedent.focus === "function") precedent.focus({ preventScroll: true });
+  if (resoudre) resoudre(confirme === true);
+}
+
+function surOkModale() {
+  fermerModale(true);
+}
+
+function surAnnulerModale() {
+  fermerModale(false);
 }
 
 function surClicFondModale(evenement) {
-  if (evenement.target === evenement.currentTarget) fermerModale();
+  if (evenement.target === evenement.currentTarget) fermerModale(false);
+}
+
+/* Promesse résolue à true si l'utilisateur confirme. */
+function demanderConfirmation(titre, texte, libelleOui, libelleNon) {
+  return new Promise((resoudre) => {
+    const paragraphe = document.createElement("p");
+    paragraphe.textContent = texte;
+    ouvrirModale(titre, paragraphe, { ok: libelleOui, annuler: libelleNon || "Annuler", resoudre });
+  });
 }
 
 function ouvrirConditions() {
-  ouvrirModale("Conditions d'utilisation et confidentialité", "modele-conditions");
+  ouvrirModale("Conditions d'utilisation et confidentialité", $("modele-conditions").content.cloneNode(true));
 }
 
-/* ---------- Bouton retour Android ---------- */
+/* ---------- Bouton retour Android ----------
+   Ordre : modale → recherche → tiroir → diapositive précédente → historique
+   (confirmation si un travail n'est pas enregistré) → accueil → quitter. */
 
-function surBoutonRetour() {
+async function surBoutonRetour() {
   if (!$("modale").hidden) {
-    fermerModale();
+    fermerModale(false);
+    return;
+  }
+  if (!$("recherche").hidden) {
+    fermerRecherche();
     return;
   }
   if (tiroirOuvert()) {
@@ -1500,8 +2186,17 @@ function surBoutonRetour() {
     allerDiapo(presentation.index - 1);
     return;
   }
+  if (etat.travailEnCours) {
+    const quitter = await demanderConfirmation("Quitter sans enregistrer ?", etat.travailEnCours + " n'est pas enregistré. Si vous quittez, les modifications seront perdues.", "Quitter", "Rester");
+    if (!quitter) return;
+    etat.travailEnCours = null;
+  }
+  if (etat.historique.length > 0) {
+    montrer(etat.historique.pop(), { retour: true });
+    return;
+  }
   if (montrer.ecranCourant && !estEcranEntree(montrer.ecranCourant) && montrer.ecranCourant !== ECRAN_DEPART) {
-    montrer(ECRAN_DEPART);
+    montrer(ECRAN_DEPART, { retour: true });
     return;
   }
   const app = plugin("App");
@@ -1532,7 +2227,7 @@ function surveillerLogos() {
 /* ---------- Onde au toucher ---------- */
 
 function surAppuiOnde(evenement) {
-  const cible = evenement.target.closest(".bouton, .bouton-icone, .onglet, .tiroir-lien, .touche, .onglet-auth");
+  const cible = evenement.target.closest(".bouton, .bouton-icone, .onglet, .tiroir-lien, .touche, .onglet-auth, .raccourci, .compte-puce, .recherche-resultat, .avatar-entete");
   if (!cible || cible.disabled || mouvementReduitQuery.matches) return;
   const rect = cible.getBoundingClientRect();
   const onde = document.createElement("span");
@@ -1703,11 +2398,7 @@ function initialiserToile() {
     if (document.hidden) arreterToile();
     else demarrerToile();
   });
-  mouvementReduitQuery.addEventListener("change", () => { afficherAnimations(); demarrerToile(); });
-}
-
-function afficherAnimations() {
-  $("etat-animations").textContent = mouvementReduitQuery.matches ? "Réduites (réglage de l'appareil)" : "Actives";
+  mouvementReduitQuery.addEventListener("change", demarrerToile);
 }
 
 /* ---------- Présentation (première ouverture) ---------- */
@@ -1880,32 +2571,49 @@ function afficherApercu(idApercu, analyse, saisie) {
   apercu.replaceChildren(base + " — ", numero);
 }
 
-function construireListesPays() {
+function remplirListes(prefixe, iso, codeDevise) {
   const options = [...PAYS]
     .sort((a, b) => a.nom.localeCompare(b.nom, "fr"))
     .map((p) => new Option(p.nom + " (+" + p.indicatif + ")", p.iso));
-  $("ins-pays").replaceChildren(...options);
-  $("ins-pays").value = PAYS_DEFAUT;
+  $(prefixe + "-pays").replaceChildren(...options);
+  $(prefixe + "-pays").value = iso;
   const devises = Object.entries(DEVISES).map(([code, d]) => new Option(d.libelle + " — " + d.nom, code));
-  $("ins-devise").replaceChildren(...devises);
-  $("ins-devise").value = PAYS_PAR_ISO.get(PAYS_DEFAUT).devise;
+  $(prefixe + "-devise").replaceChildren(...devises);
+  $(prefixe + "-devise").value = codeDevise;
 }
 
-function surSaisieTelephoneInscription() {
-  const champ = $("ins-telephone");
-  const analyse = analyserTelephone(champ.value, $("ins-pays").value);
-  if (analyse.pays && analyse.detecte && analyse.pays.iso !== $("ins-pays").value) {
-    $("ins-pays").value = analyse.pays.iso;
-    $("ins-devise").value = analyse.pays.devise;
+/* Le pays et la devise suivent l'indicatif saisi (226 avant 22). */
+function majTelephone(prefixe) {
+  const champ = $(prefixe + "-telephone");
+  const analyse = analyserTelephone(champ.value, $(prefixe + "-pays").value);
+  if (analyse.pays && analyse.detecte && analyse.pays.iso !== $(prefixe + "-pays").value) {
+    $(prefixe + "-pays").value = analyse.pays.iso;
+    $(prefixe + "-devise").value = analyse.pays.devise;
   }
-  afficherApercu("apercu-ins-telephone", analyse, champ.value);
+  afficherApercu("apercu-" + prefixe + "-telephone", analyse, champ.value);
   effacerErreur(champ);
 }
 
-function surChangementPays() {
-  const pays = PAYS_PAR_ISO.get($("ins-pays").value);
-  if (pays) $("ins-devise").value = pays.devise;
-  surSaisieTelephoneInscription();
+function majPays(prefixe) {
+  const pays = PAYS_PAR_ISO.get($(prefixe + "-pays").value);
+  if (pays) $(prefixe + "-devise").value = pays.devise;
+  majTelephone(prefixe);
+}
+
+function surSaisieTelephoneInscription() {
+  majTelephone("ins");
+}
+
+function surChangementPaysInscription() {
+  majPays("ins");
+}
+
+function surSaisieTelephoneProfil() {
+  majTelephone("pro");
+}
+
+function surChangementPaysProfil() {
+  majPays("pro");
 }
 
 function surSaisieTelephoneConnexion() {
@@ -1963,7 +2671,7 @@ function saisirChiffre(id, chiffre) {
   afficherCode(id);
   effacerErreur($(id));
   vibrer();
-  if (id === "ins-code" && codes[id].length === CODE.longueurMax) activerCode("ins-confirmation");
+  if (CODE_SUIVANT[id] && codes[id].length === CODE.longueurMax) activerCode(CODE_SUIVANT[id]);
 }
 
 function effacerChiffre(id) {
@@ -2097,7 +2805,13 @@ function compteValide(compte) {
   return Boolean(compte) && typeof compte.id === "string" && typeof compte.telephone === "string"
     && typeof compte.nom === "string" && typeof compte.sel === "string" && typeof compte.empreinte === "string"
     && Number.isInteger(compte.iterations) && compte.iterations >= CODE.iterations
-    && PAYS_PAR_ISO.has(compte.pays) && Object.prototype.hasOwnProperty.call(DEVISES, compte.devise);
+    && PAYS_PAR_ISO.has(compte.pays) && Object.prototype.hasOwnProperty.call(DEVISES, compte.devise)
+    && imageFacultative(compte.photo) && imageFacultative(compte.logo)
+    && (compte.conditions === undefined || (typeof compte.conditions === "string" && compte.conditions.length <= BORNES.conditionsMax));
+}
+
+function imageFacultative(valeur) {
+  return valeur === undefined || valeur === "" || (typeof valeur === "string" && valeur.length <= IMAGES.donneesMax && DONNEES_IMAGE.test(valeur));
 }
 
 async function lireComptes() {
@@ -2117,13 +2831,17 @@ async function lireSession() {
 async function ouvrirSession(compte) {
   await ecrireValeur(CLES_STOCKAGE.session, JSON.stringify({ compteId: compte.id, ouverte: Date.now() }));
   etat.compte = compte;
+  etat.abonnement = abonnementCourant();
   afficherCompte(compte);
 }
 
 async function fermerSession() {
   await supprimerValeur(CLES_STOCKAGE.session);
   etat.compte = null;
+  etat.abonnement = null;
+  etat.travailEnCours = null;
   afficherCompte(null);
+  await afficherComptesAppareil();
   choisirOnglet("connexion");
   montrer("connexion");
 }
@@ -2216,6 +2934,9 @@ function surSaisieChamp(evenement) {
 /* Fait remonter le champ actif au-dessus du clavier du téléphone. */
 function surFocusChamp(evenement) {
   if (!tiroirMobileQuery.matches) return;
+  /* Seuls les vrais champs ouvrent le clavier du téléphone. Le code secret a son propre
+     clavier : le recentrer à chaque touche ferait sauter la page sous le doigt. */
+  if (!evenement.target.matches("input:not([type=checkbox]):not([type=file]), textarea, select")) return;
   const champ = evenement.target.closest(".champ");
   if (!champ) return;
   setTimeout(() => champ.scrollIntoView({ block: "center", behavior: defilementDoux() }), 280);
@@ -2312,7 +3033,7 @@ async function surInscription(evenement) {
     viderCode("ins-code");
     viderCode("ins-confirmation");
     $("apercu-ins-telephone").textContent = "";
-    construireListesPays();
+    remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);
     await ouvrirSession(compte);
     vibrer();
     montrer(ECRAN_DEPART);
@@ -2397,66 +3118,876 @@ async function surConnexion(evenement) {
   }
 }
 
-/* ---------- Écran de test : compte connecté ---------- */
+/* ---------- Identité affichée partout (en-tête, tiroir, accueil, profil) ---------- */
+
+function prenom(nom) {
+  return String(nom || "").split(" ").filter(Boolean)[0] || "";
+}
+
+function initiales(nom) {
+  const lettres = String(nom || "").split(" ").filter(Boolean)
+    .map((mot) => (mot.match(/\p{L}|\p{N}/u) || [""])[0])
+    .filter(Boolean);
+  return (lettres.slice(0, 2).join("") || "?").toLocaleUpperCase("fr-FR");
+}
+
+/* Formule : le front ne lit JAMAIS la formule dans le stockage local (on ne peut
+   pas s'attribuer le Pro en modifiant un fichier). Elle viendra du compte vérifié
+   en ligne ; d'ici là, tout compte est en formule gratuite. */
+function abonnementCourant() {
+  return { formule: FORMULE_DEFAUT, fin: null };
+}
+
+/* LA seule fonction qui produit le nom de la formule : accueil, profil, menu, abonnement. */
+function libelleFormule(abonnement) {
+  const formule = FORMULES[abonnement && abonnement.formule] || FORMULES[FORMULE_DEFAUT];
+  return formule.nom;
+}
+
+function joursRestants(abonnement) {
+  if (!abonnement || !abonnement.fin) return null;
+  const fin = Date.parse(abonnement.fin);
+  if (Number.isNaN(fin)) return null;
+  return Math.max(0, Math.ceil((fin - Date.now()) / 86400000));
+}
+
+function afficherImage(img, donnees) {
+  if (donnees && DONNEES_IMAGE.test(donnees)) {
+    img.src = donnees;
+    img.hidden = false;
+  } else {
+    img.removeAttribute("src");
+    img.hidden = true;
+  }
+}
 
 function afficherCompte(compte) {
-  const pays = compte ? PAYS_PAR_ISO.get(compte.pays) : null;
-  const devise = compte ? DEVISES[compte.devise] : null;
-  $("compte-nom").textContent = compte ? compte.nom : "";
-  $("compte-entreprise").textContent = compte ? compte.entreprise || "—" : "";
-  $("compte-telephone").textContent = compte ? formaterTelephone(compte.telephone, compte.pays) : "";
-  $("compte-ville").textContent = compte ? compte.ville : "";
-  $("compte-pays").textContent = pays ? pays.nom : "";
-  $("compte-devise").textContent = devise ? devise.nom + " · " + formaterMontant(25000, compte.devise) : "";
+  const nom = compte ? compte.nom : "";
+  document.querySelectorAll("[data-nom]").forEach((el) => { el.textContent = nom; });
+  document.querySelectorAll("[data-initiales]").forEach((el) => { el.textContent = compte ? initiales(nom) : ""; });
+  document.querySelectorAll("[data-photo]").forEach((img) => afficherImage(img, compte ? compte.photo : ""));
+  document.querySelectorAll("[data-formule]").forEach((el) => { el.textContent = libelleFormule(etat.abonnement); });
+  $("bouton-avatar").setAttribute("aria-label", compte ? "Mon profil — " + nom : "Mon profil");
+  $("profil-telephone").textContent = compte ? formaterTelephone(compte.telephone, compte.pays) : "";
 }
 
-/* ---------- Vérification du démarrage (écran de test) ---------- */
+/* ---------- Devis enregistrés (lecture seule à cette étape) ---------- */
 
-async function testerStockage() {
-  const cle = "bp.test-demarrage";
-  const valeur = String(Date.now());
-  const ecrit = await ecrireValeur(cle, valeur);
-  const relu = await lireValeur(cle);
-  await supprimerValeur(cle);
-  return ecrit && relu === valeur;
+function devisValide(devis) {
+  return Boolean(devis) && typeof devis.id === "string" && typeof devis.compteId === "string"
+    && typeof devis.titre === "string" && typeof devis.client === "string"
+    && Number.isFinite(devis.total) && devis.total >= 0 && devis.total <= 1e13
+    && Object.prototype.hasOwnProperty.call(STATUTS_DEVIS, devis.statut)
+    && typeof devis.creeLe === "string" && !Number.isNaN(Date.parse(devis.creeLe));
 }
 
-function testerPolices() {
-  if (!document.fonts || typeof document.fonts.check !== "function") return true;
-  return document.fonts.check('600 16px "Inter"') && document.fonts.check('800 16px "Montserrat"');
+async function lireDevis(compteId) {
+  const liste = await lireJson(CLES_STOCKAGE.devis);
+  return Array.isArray(liste) ? liste.filter(devisValide).filter((d) => d.compteId === compteId) : [];
 }
 
-async function verifierDemarrage() {
-  const bouton = $("bouton-verifier");
-  bouton.setAttribute("aria-busy", "true");
-  $("verif-resultat").hidden = true;
-  vibrer();
-  if (document.fonts && document.fonts.ready) await document.fonts.ready;
-  const controles = [
-    { nom: "stockage local", ok: await testerStockage() },
-    { nom: "polices embarquées", ok: testerPolices() },
-    { nom: "navigation", ok: ecranExiste(ECRAN_DEPART) && montrer.ecranCourant === ECRAN_DEPART },
-    { nom: "chiffrement du code", ok: cryptoDisponible() },
-    { nom: "logo", ok: document.querySelectorAll("[data-logo].logo-echec").length === 0 }
-  ];
-  await attendre(650);
-  afficherVerification(controles.filter((c) => !c.ok).map((c) => c.nom));
-  bouton.removeAttribute("aria-busy");
+function statistiques(devis) {
+  const maintenant = new Date();
+  const duMois = devis.filter((d) => {
+    const date = new Date(d.creeLe);
+    return date.getFullYear() === maintenant.getFullYear() && date.getMonth() === maintenant.getMonth();
+  });
+  const acceptes = devis.filter((d) => d.statut === "accepte").length;
+  return {
+    total: devis.length,
+    mois: duMois.length,
+    acceptes,
+    montant: devis.reduce((somme, d) => somme + d.total, 0),
+    clients: new Set(devis.map((d) => normaliser(d.client)).filter(Boolean)).size,
+    taux: devis.length ? Math.round((acceptes / devis.length) * 100) : null
+  };
 }
 
-function afficherVerification(echecs) {
-  const coche = $("verif-coche");
-  const nouvelle = coche.cloneNode(true);
-  nouvelle.classList.toggle("echec", echecs.length > 0);
-  coche.replaceWith(nouvelle);
-  if (echecs.length === 0) {
-    $("verif-titre").textContent = "Tout est prêt";
-    $("verif-detail").textContent = "Stockage, polices, navigation, chiffrement du code et logo fonctionnent sur cet appareil.";
-  } else {
-    $("verif-titre").textContent = "À vérifier";
-    $("verif-detail").textContent = "Problème détecté : " + echecs.join(", ") + ".";
+/* ---------- Tableau de bord ---------- */
+
+function formaterEntier(valeur) {
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(valeur);
+}
+
+/* Les chiffres comptent de 0 à leur valeur en 700 ms (immédiat si mouvement réduit). */
+function animerCompteur(element, valeur, formater) {
+  const precedente = animationsCompteurs.get(element);
+  if (precedente) cancelAnimationFrame(precedente);
+  if (mouvementReduitQuery.matches || valeur === 0) {
+    element.textContent = formater(valeur);
+    return;
   }
-  $("verif-resultat").hidden = false;
+  const debut = performance.now();
+  const etape = (instant) => {
+    const t = Math.min(1, (instant - debut) / DUREE_COMPTEUR);
+    const adouci = 1 - Math.pow(1 - t, 3);
+    element.textContent = formater(t < 1 ? Math.round(valeur * adouci) : valeur);
+    if (t < 1) animationsCompteurs.set(element, requestAnimationFrame(etape));
+    else animationsCompteurs.delete(element);
+  };
+  element.textContent = formater(0);
+  animationsCompteurs.set(element, requestAnimationFrame(etape));
+}
+
+function dateDuJour() {
+  const texte = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
+  return texte.charAt(0).toLocaleUpperCase("fr-FR") + texte.slice(1);
+}
+
+function astuceDuJour() {
+  const aujourdhui = new Date();
+  const jour = Math.floor(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate()) / 86400000);
+  return ASTUCES[jour % ASTUCES.length];
+}
+
+function creerLigneDevis(devis, codeDevise) {
+  const li = document.createElement("li");
+  const texte = document.createElement("div");
+  texte.className = "devis-texte";
+  const titre = document.createElement("strong");
+  titre.textContent = devis.titre;
+  const client = document.createElement("span");
+  client.textContent = devis.client;
+  texte.append(titre, client);
+  const droite = document.createElement("div");
+  droite.className = "devis-droite";
+  const montant = document.createElement("span");
+  montant.className = "devis-montant";
+  montant.textContent = formaterMontant(devis.total, codeDevise);
+  const statut = document.createElement("span");
+  statut.className = "statut";
+  statut.dataset.ton = STATUTS_DEVIS[devis.statut].ton;
+  statut.textContent = STATUTS_DEVIS[devis.statut].libelle;
+  droite.append(montant, statut);
+  li.append(texte, droite);
+  return li;
+}
+
+async function afficherAccueil() {
+  const compte = etat.compte;
+  if (!compte) return;
+  const devis = await lireDevis(compte.id);
+  const stats = statistiques(devis);
+  const formule = FORMULES[etat.abonnement.formule] || FORMULES[FORMULE_DEFAUT];
+  $("accueil-prenom").textContent = prenom(compte.nom);
+  $("accueil-telephone").textContent = formaterTelephone(compte.telephone, compte.pays);
+  $("accueil-ville").textContent = compte.ville;
+  $("accueil-date").textContent = dateDuJour();
+  $("accueil-quota").textContent = formule.illimite ? "Devis illimités" : stats.mois + " / " + LIMITE_GRATUITE + " devis ce mois";
+  $("bouton-passer-pro").hidden = formule.illimite || !ecranExiste("abonnement");
+
+  animerCompteur($("cpt-montant"), stats.montant, (v) => formaterMontant(v, compte.devise));
+  animerCompteur($("cpt-devis"), stats.mois, formaterEntier);
+  animerCompteur($("cpt-acceptes"), stats.acceptes, formaterEntier);
+  const jours = joursRestants(etat.abonnement);
+  if (jours === null) {
+    $("cpt-jours").textContent = "∞";
+    $("cpt-jours-libelle").textContent = "Sans date de fin";
+  } else {
+    animerCompteur($("cpt-jours"), jours, formaterEntier);
+    $("cpt-jours-libelle").textContent = "Jours restants";
+  }
+
+  const derniers = [...devis].sort((a, b) => Date.parse(b.creeLe) - Date.parse(a.creeLe)).slice(0, 3);
+  $("accueil-devis").replaceChildren(...derniers.map((d) => creerLigneDevis(d, compte.devise)));
+  $("accueil-devis-vide").hidden = derniers.length > 0;
+  $("astuce-texte").textContent = astuceDuJour();
+}
+
+/* ---------- Recherche ---------- */
+
+function ouvrirRecherche() {
+  etat.elementAvantRecherche = document.activeElement;
+  $("recherche-saisie").value = "";
+  afficherResultats("");
+  $("recherche").hidden = false;
+  $("recherche-saisie").focus({ preventScroll: true });
+}
+
+function fermerRecherche() {
+  if ($("recherche").hidden) return;
+  $("recherche").hidden = true;
+  const precedent = etat.elementAvantRecherche;
+  etat.elementAvantRecherche = null;
+  if (precedent && typeof precedent.focus === "function") precedent.focus({ preventScroll: true });
+}
+
+function resultatsRecherche(requete) {
+  const mots = normaliser(requete).split(/\s+/).filter(Boolean);
+  return RECHERCHE.map((entree, index) => ({ entree, index }))
+    .filter(({ entree }) => ecranExiste(entree.ecran))
+    .filter(({ entree }) => {
+      const texte = normaliser(entree.libelle + " " + entree.detail + " " + entree.mots);
+      return mots.every((mot) => texte.includes(mot));
+    });
+}
+
+function afficherResultats(requete) {
+  const resultats = resultatsRecherche(requete);
+  const elements = resultats.map(({ entree, index }) => {
+    const li = document.createElement("li");
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "recherche-resultat";
+    bouton.dataset.index = String(index);
+    const texte = document.createElement("span");
+    const titre = document.createElement("strong");
+    titre.textContent = entree.libelle;
+    const detail = document.createElement("small");
+    detail.textContent = entree.detail;
+    texte.append(titre, detail);
+    bouton.append(creerIcone("i-fleche"), texte);
+    li.appendChild(bouton);
+    return li;
+  });
+  $("recherche-resultats").replaceChildren(...elements);
+  $("recherche-vide").hidden = resultats.length > 0;
+}
+
+function surSaisieRecherche(evenement) {
+  afficherResultats(evenement.currentTarget.value);
+}
+
+function surToucheRecherche(evenement) {
+  if (evenement.key !== "Enter") return;
+  evenement.preventDefault();
+  const premier = $("recherche-resultats").querySelector(".recherche-resultat");
+  if (premier) premier.click();
+}
+
+function surChoixResultat(evenement) {
+  const bouton = evenement.target.closest(".recherche-resultat");
+  if (!bouton) return;
+  const entree = RECHERCHE[Number(bouton.dataset.index)];
+  fermerRecherche();
+  montrer(entree.ecran);
+  if (entree.cible && $(entree.cible)) reperer($(entree.cible));
+}
+
+function surClicFondRecherche(evenement) {
+  if (evenement.target === evenement.currentTarget) fermerRecherche();
+}
+
+function reperer(element) {
+  element.scrollIntoView({ block: "start", behavior: defilementDoux() });
+  element.classList.remove("reperee");
+  void element.offsetWidth;
+  element.classList.add("reperee");
+}
+
+/* ---------- Profil ---------- */
+
+async function enregistrerCompte(modifie) {
+  if (!etat.compte) return false;
+  const comptes = await lireComptes();
+  const index = comptes.findIndex((c) => c.id === modifie.id);
+  if (index < 0 || !compteValide(modifie)) return false;
+  comptes[index] = modifie;
+  if (!await ecrireComptes(comptes)) return false;
+  etat.compte = modifie;
+  afficherCompte(modifie);
+  return true;
+}
+
+function message(id, texte, reussi) {
+  const element = $(id);
+  element.textContent = texte;
+  element.classList.toggle("ok", Boolean(reussi));
+}
+
+function majCompteurConditions() {
+  $("compteur-conditions").textContent = $("pro-conditions").value.length + " / " + BORNES.conditionsMax;
+}
+
+async function afficherStatistiques() {
+  if (!etat.compte) return;
+  const compte = etat.compte;
+  const stats = statistiques(await lireDevis(compte.id));
+  $("stat-devis").textContent = formaterEntier(stats.total);
+  $("stat-acceptes").textContent = formaterEntier(stats.acceptes);
+  $("stat-taux").textContent = stats.taux === null ? "—" : stats.taux + "\u00A0%";
+  $("stat-montant").textContent = formaterMontant(stats.montant, compte.devise);
+  $("stat-clients").textContent = formaterEntier(stats.clients);
+}
+
+function remplirProfil() {
+  const compte = etat.compte;
+  if (!compte) return;
+  ["pro-nom", "pro-entreprise", "pro-telephone", "pro-ville", "pro-conditions", "pro-ancien", "pro-nouveau", "pro-confirmation"]
+    .forEach((id) => effacerErreur($(id)));
+  ["msg-profil", "msg-photo", "msg-logo", "msg-conditions", "msg-code", "msg-sauvegarde"].forEach((id) => message(id, ""));
+  $("pro-nom").value = compte.nom;
+  $("pro-entreprise").value = compte.entreprise || "";
+  $("pro-telephone").value = formaterTelephone(compte.telephone, compte.pays);
+  $("pro-ville").value = compte.ville;
+  remplirListes("pro", compte.pays, compte.devise);
+  $("apercu-pro-telephone").replaceChildren();
+  $("pro-conditions").value = typeof compte.conditions === "string" ? compte.conditions : CONDITIONS_DEFAUT;
+  majCompteurConditions();
+  afficherImage($("apercu-logo"), compte.logo);
+  $("logo-vide").hidden = Boolean(compte.logo);
+  $("bouton-retirer-logo").hidden = !compte.logo;
+  $("bouton-retirer-photo").hidden = !compte.photo;
+  ["pro-ancien", "pro-nouveau", "pro-confirmation"].forEach(viderCode);
+  activerCode("pro-ancien");
+  afficherStatistiques();
+}
+
+function lireFormulaireProfil() {
+  let premier = "";
+  const signaler = (id, texte) => {
+    afficherErreur(id, texte);
+    premier = premier || id;
+  };
+  ["pro-nom", "pro-entreprise", "pro-telephone", "pro-ville"].forEach((id) => effacerErreur($(id)));
+  const nom = nettoyerTexte($("pro-nom").value);
+  if (!texteValide(nom, true)) signaler("pro-nom", "Indiquez votre nom complet (120 caractères au maximum).");
+  const entreprise = nettoyerTexte($("pro-entreprise").value);
+  if (!texteValide(entreprise, false)) signaler("pro-entreprise", "120 caractères au maximum.");
+  const analyse = analyserTelephone($("pro-telephone").value, $("pro-pays").value);
+  if (!telephoneValide(analyse)) signaler("pro-telephone", messageTelephone(analyse));
+  const ville = nettoyerTexte($("pro-ville").value);
+  if (!texteValide(ville, true)) signaler("pro-ville", "Indiquez votre ville (120 caractères au maximum).");
+  if (premier) {
+    allerAuChamp(premier);
+    return null;
+  }
+  const devise = Object.prototype.hasOwnProperty.call(DEVISES, $("pro-devise").value) ? $("pro-devise").value : analyse.pays.devise;
+  return { nom, entreprise, telephone: versE164(analyse), pays: analyse.pays.iso, devise, ville };
+}
+
+async function surEnregistrerProfil(evenement) {
+  evenement.preventDefault();
+  if (!etat.compte) return;
+  message("msg-profil", "");
+  const donnees = lireFormulaireProfil();
+  if (!donnees) return;
+  const comptes = await lireComptes();
+  if (comptes.some((c) => c.id !== etat.compte.id && c.telephone === donnees.telephone)) {
+    afficherErreur("pro-telephone", "Ce numéro ne peut pas être utilisé pour ce compte.");
+    return;
+  }
+  const ok = await enregistrerCompte({ ...etat.compte, ...donnees });
+  message("msg-profil", ok ? "Informations enregistrées." : "Enregistrement impossible. Réessayez.", ok);
+  if (ok) {
+    vibrer();
+    $("pro-telephone").value = formaterTelephone(donnees.telephone, donnees.pays);
+    afficherStatistiques();
+  }
+}
+
+function nettoyerParagraphes(valeur) {
+  return String(valeur || "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, "")
+    .replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+async function surEnregistrerConditions(evenement) {
+  evenement.preventDefault();
+  if (!etat.compte) return;
+  effacerErreur($("pro-conditions"));
+  const conditions = nettoyerParagraphes($("pro-conditions").value);
+  if (conditions.length > BORNES.conditionsMax) {
+    afficherErreur("pro-conditions", BORNES.conditionsMax + " caractères au maximum.");
+    return;
+  }
+  const ok = await enregistrerCompte({ ...etat.compte, conditions });
+  message("msg-conditions", ok ? "Conditions enregistrées." : "Enregistrement impossible. Réessayez.", ok);
+  if (ok) $("pro-conditions").value = conditions;
+}
+
+async function surChangerCode(evenement) {
+  evenement.preventDefault();
+  if (!etat.compte) return;
+  ["pro-ancien", "pro-nouveau", "pro-confirmation"].forEach((id) => effacerErreur($(id)));
+  message("msg-code", "");
+  const verrou = await lireVerrou();
+  if (verrou.jusqua > Date.now()) {
+    message("msg-code", "Trop d'essais. Réessayez dans " + formaterDuree(verrou.jusqua - Date.now()) + ".");
+    return;
+  }
+  if (!cryptoDisponible()) {
+    message("msg-code", "Cet appareil ne permet pas de protéger votre code.");
+    return;
+  }
+  const ancien = codes["pro-ancien"];
+  const nouveau = codes["pro-nouveau"];
+  if (!/^\d{4,6}$/.test(ancien)) {
+    afficherErreur("pro-ancien", "Saisissez votre code actuel.");
+    return;
+  }
+  const erreur = erreurCodeNeuf(nouveau);
+  if (erreur) {
+    afficherErreur("pro-nouveau", erreur);
+    return;
+  }
+  if (nouveau === ancien) {
+    afficherErreur("pro-nouveau", "Le nouveau code doit être différent de l'actuel.");
+    return;
+  }
+  if (codes["pro-confirmation"] !== nouveau) {
+    afficherErreur("pro-confirmation", "Les deux codes ne sont pas identiques.");
+    return;
+  }
+  const bouton = $("bouton-changer-code");
+  bouton.setAttribute("aria-busy", "true");
+  try {
+    const compte = await verifierIdentifiants(etat.compte.telephone, ancien);
+    if (!compte) {
+      const apres = await enregistrerEchec();
+      viderCode("pro-ancien");
+      activerCode("pro-ancien");
+      afficherErreur("pro-ancien", apres.jusqua > Date.now()
+        ? "Code actuel incorrect. Trop d'essais : réessayez dans " + formaterDuree(apres.jusqua - Date.now()) + "."
+        : "Code actuel incorrect.");
+      return;
+    }
+    await reinitialiserVerrou();
+    const sel = crypto.getRandomValues(new Uint8Array(CODE.octetsSel));
+    const empreinte = await deriverEmpreinte(nouveau, sel, CODE.iterations);
+    const ok = await enregistrerCompte({ ...etat.compte, sel: versBase64(sel), empreinte: versBase64(empreinte), iterations: CODE.iterations });
+    ["pro-ancien", "pro-nouveau", "pro-confirmation"].forEach(viderCode);
+    activerCode("pro-ancien");
+    message("msg-code", ok ? "Code secret changé. Utilisez-le dès la prochaine connexion." : "Enregistrement impossible. Réessayez.", ok);
+    if (ok) vibrer();
+  } finally {
+    bouton.removeAttribute("aria-busy");
+  }
+}
+
+/* ---------- Images importées : type vérifié, 5 Mo max, REDESSINÉES (métadonnées et
+   position GPS supprimées), puis compressées. Le SVG est refusé. ---------- */
+
+async function lireOctets(blob, longueur) {
+  const morceau = blob.slice(0, longueur);
+  if (typeof morceau.arrayBuffer === "function") return new Uint8Array(await morceau.arrayBuffer());
+  return new Promise((resoudre, rejeter) => {
+    const lecteur = new FileReader();
+    lecteur.addEventListener("load", () => resoudre(new Uint8Array(lecteur.result)));
+    lecteur.addEventListener("error", () => rejeter(new Error("illisible")));
+    lecteur.readAsArrayBuffer(morceau);
+  });
+}
+
+/* Le type est lu dans les premiers octets du fichier, pas dans son nom. */
+function typeReel(octets) {
+  const texte = (debut, fin) => String.fromCharCode(...octets.slice(debut, fin));
+  if (octets[0] === 0xFF && octets[1] === 0xD8 && octets[2] === 0xFF) return "image/jpeg";
+  if (octets[0] === 0x89 && texte(1, 4) === "PNG") return "image/png";
+  if (texte(0, 4) === "RIFF" && texte(8, 12) === "WEBP") return "image/webp";
+  return "";
+}
+
+async function decoderImage(blob) {
+  if (typeof createImageBitmap === "function") return createImageBitmap(blob);
+  const adresse = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.src = adresse;
+    await image.decode();
+    return image;
+  } finally {
+    URL.revokeObjectURL(adresse);
+  }
+}
+
+function exporterImage(toile, mode, qualite) {
+  const webp = toile.toDataURL("image/webp", qualite);
+  if (webp.startsWith("data:image/webp")) return webp;
+  return mode === "logo" ? toile.toDataURL("image/png") : toile.toDataURL("image/jpeg", qualite);
+}
+
+async function preparerImage(blob, mode) {
+  if (!blob || blob.size > IMAGES.octetsMax) throw new Error("taille");
+  if (!IMAGES.types.includes(typeReel(await lireOctets(blob, 12)))) throw new Error("type");
+  let source;
+  try {
+    source = await decoderImage(blob);
+  } catch (erreur) {
+    throw new Error("illisible");
+  }
+  const largeur = source.width;
+  const hauteur = source.height;
+  if (!largeur || !hauteur || largeur * hauteur > IMAGES.pixelsMax) throw new Error("illisible");
+  const toile = document.createElement("canvas");
+  const ctx = toile.getContext("2d");
+  if (mode === "photo") {
+    const cote = IMAGES.photo.cote;
+    const coupe = Math.min(largeur, hauteur);
+    toile.width = cote;
+    toile.height = cote;
+    ctx.drawImage(source, (largeur - coupe) / 2, (hauteur - coupe) / 2, coupe, coupe, 0, 0, cote, cote);
+  } else {
+    const echelle = Math.min(1, IMAGES.logo.largeur / largeur, IMAGES.logo.hauteur / hauteur);
+    toile.width = Math.max(1, Math.round(largeur * echelle));
+    toile.height = Math.max(1, Math.round(hauteur * echelle));
+    ctx.drawImage(source, 0, 0, toile.width, toile.height);
+  }
+  if (typeof source.close === "function") source.close();
+  let qualite = IMAGES.qualite;
+  let donnees = exporterImage(toile, mode, qualite);
+  while (donnees.length > IMAGES.donneesMax && qualite > 0.4) {
+    qualite -= 0.14;
+    donnees = toile.toDataURL(mode === "logo" ? "image/webp" : "image/jpeg", qualite);
+  }
+  if (donnees.length > IMAGES.donneesMax || !DONNEES_IMAGE.test(donnees)) throw new Error("taille");
+  return donnees;
+}
+
+function messageImage(erreur) {
+  const raison = erreur && erreur.message;
+  if (raison === "type") return "Format refusé : choisissez une image JPEG, PNG ou WebP.";
+  if (raison === "taille") return "Image trop lourde : 5 Mo maximum.";
+  return "Image illisible. Essayez une autre image.";
+}
+
+async function importerImage(evenement, champ, idMessage) {
+  const entree = evenement.currentTarget;
+  const fichier = entree.files && entree.files[0];
+  entree.value = "";
+  if (!fichier) return;
+  message(idMessage, "");
+  try {
+    const donnees = await preparerImage(fichier, champ === "photo" ? "photo" : "logo");
+    const ok = await enregistrerCompte({ ...etat.compte, [champ]: donnees });
+    message(idMessage, ok ? (champ === "photo" ? "Photo mise à jour." : "Logo mis à jour.") : "Enregistrement impossible. Réessayez.", ok);
+    if (ok) remplirImagesProfil();
+  } catch (erreur) {
+    message(idMessage, messageImage(erreur));
+  }
+}
+
+function remplirImagesProfil() {
+  const compte = etat.compte;
+  afficherImage($("apercu-logo"), compte.logo);
+  $("logo-vide").hidden = Boolean(compte.logo);
+  $("bouton-retirer-logo").hidden = !compte.logo;
+  $("bouton-retirer-photo").hidden = !compte.photo;
+}
+
+function surFichierPhoto(evenement) {
+  if (!etat.compte) return;
+  importerImage(evenement, "photo", "msg-photo");
+}
+
+function surFichierLogo(evenement) {
+  if (!etat.compte) return;
+  importerImage(evenement, "logo", "msg-logo");
+}
+
+function surChoisirPhoto() {
+  $("fichier-photo").click();
+}
+
+function surChoisirLogo() {
+  $("fichier-logo").click();
+}
+
+async function surRetirerPhoto() {
+  if (!etat.compte) return;
+  const ok = await enregistrerCompte({ ...etat.compte, photo: "" });
+  message("msg-photo", ok ? "Photo retirée." : "Enregistrement impossible. Réessayez.", ok);
+  if (ok) remplirImagesProfil();
+}
+
+async function surRetirerLogo() {
+  if (!etat.compte) return;
+  const ok = await enregistrerCompte({ ...etat.compte, logo: "" });
+  message("msg-logo", ok ? "Logo retiré." : "Enregistrement impossible. Réessayez.", ok);
+  if (ok) remplirImagesProfil();
+}
+
+/* ---------- Sauvegarde : export et import contrôlé ---------- */
+
+function construireSauvegarde(compte) {
+  return {
+    format: SAUVEGARDE.format,
+    version: SAUVEGARDE.version,
+    exporteLe: new Date().toISOString(),
+    profil: {
+      nom: compte.nom,
+      entreprise: compte.entreprise || "",
+      ville: compte.ville,
+      pays: compte.pays,
+      devise: compte.devise,
+      conditions: typeof compte.conditions === "string" ? compte.conditions : CONDITIONS_DEFAUT,
+      photo: compte.photo || "",
+      logo: compte.logo || ""
+    }
+  };
+}
+
+async function surExporter() {
+  if (!etat.compte) return;
+  const json = JSON.stringify(construireSauvegarde(etat.compte), null, 2);
+  const nom = "batiplus-sauvegarde-" + new Date().toISOString().slice(0, 10) + ".json";
+  const fichiers = plugin("Filesystem");
+  try {
+    if (fichiers) {
+      await fichiers.writeFile({ path: "BatiPlus/" + nom, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
+      message("msg-sauvegarde", "Sauvegarde enregistrée dans Documents/BatiPlus.", true);
+    } else {
+      const adresse = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+      const lien = document.createElement("a");
+      lien.href = adresse;
+      lien.download = nom;
+      document.body.appendChild(lien);
+      lien.click();
+      lien.remove();
+      setTimeout(() => URL.revokeObjectURL(adresse), 1000);
+      message("msg-sauvegarde", "Sauvegarde téléchargée : " + nom, true);
+    }
+    vibrer();
+  } catch (erreur) {
+    message("msg-sauvegarde", "Impossible d'enregistrer la sauvegarde sur cet appareil.");
+  }
+}
+
+function estObjetSimple(valeur) {
+  return Boolean(valeur) && typeof valeur === "object" && !Array.isArray(valeur) && Object.getPrototypeOf(valeur) === Object.prototype;
+}
+
+function verifierCles(objet, autorisees, nomBloc) {
+  const inconnue = Object.keys(objet).find((cle) => !autorisees.includes(cle));
+  if (inconnue) throw new Error("Fichier refusé : champ inattendu « " + inconnue.slice(0, 30) + " » dans " + nomBloc + ".");
+}
+
+/* Structure validée champ par champ, valeurs typées, clés inconnues rejetées.
+   Une sauvegarde ne peut JAMAIS toucher au code secret, au téléphone ni à l'abonnement. */
+function validerSauvegarde(donnees) {
+  const refus = (texte) => { throw new Error(texte); };
+  if (!estObjetSimple(donnees)) refus("Ce fichier n'est pas une sauvegarde BâtiPlus.");
+  verifierCles(donnees, ["format", "version", "exporteLe", "profil"], "la sauvegarde");
+  if (donnees.format !== SAUVEGARDE.format) refus("Ce fichier n'est pas une sauvegarde BâtiPlus.");
+  if (donnees.version !== SAUVEGARDE.version) refus("Version de sauvegarde non prise en charge.");
+  if (typeof donnees.exporteLe !== "string" || Number.isNaN(Date.parse(donnees.exporteLe))) refus("Date de sauvegarde invalide.");
+  const p = donnees.profil;
+  if (!estObjetSimple(p)) refus("Profil absent de la sauvegarde.");
+  verifierCles(p, ["nom", "entreprise", "ville", "pays", "devise", "conditions", "photo", "logo"], "le profil");
+  const texte = (valeur, obligatoire, nomChamp) => {
+    if (valeur === undefined && !obligatoire) return "";
+    if (typeof valeur !== "string") refus("Champ « " + nomChamp + " » invalide.");
+    const propre = nettoyerTexte(valeur);
+    if (!texteValide(propre, obligatoire)) refus("Champ « " + nomChamp + " » invalide.");
+    return propre;
+  };
+  const image = (valeur, nomChamp) => {
+    if (valeur === undefined || valeur === "") return "";
+    if (typeof valeur !== "string" || valeur.length > IMAGES.donneesMax || !DONNEES_IMAGE.test(valeur)) refus("Image « " + nomChamp + " » invalide.");
+    return valeur;
+  };
+  const profil = {
+    nom: texte(p.nom, true, "nom"),
+    entreprise: texte(p.entreprise, false, "entreprise"),
+    ville: texte(p.ville, true, "ville"),
+    pays: p.pays,
+    devise: p.devise,
+    conditions: CONDITIONS_DEFAUT,
+    photo: image(p.photo, "photo"),
+    logo: image(p.logo, "logo")
+  };
+  if (typeof p.pays !== "string" || !PAYS_PAR_ISO.has(p.pays)) refus("Pays inconnu dans la sauvegarde.");
+  if (typeof p.devise !== "string" || !Object.prototype.hasOwnProperty.call(DEVISES, p.devise)) refus("Devise inconnue dans la sauvegarde.");
+  if (p.conditions !== undefined) {
+    if (typeof p.conditions !== "string") refus("Champ « conditions » invalide.");
+    profil.conditions = nettoyerParagraphes(p.conditions);
+    if (profil.conditions.length > BORNES.conditionsMax) refus("Conditions trop longues.");
+  }
+  return profil;
+}
+
+function dataUrlVersBlob(donnees) {
+  const [entete, base64] = donnees.split(",");
+  const type = entete.slice(5, entete.indexOf(";"));
+  return new Blob([depuisBase64(base64)], { type });
+}
+
+async function lireTexte(fichier) {
+  if (typeof fichier.text === "function") return fichier.text();
+  return new Promise((resoudre, rejeter) => {
+    const lecteur = new FileReader();
+    lecteur.addEventListener("load", () => resoudre(String(lecteur.result)));
+    lecteur.addEventListener("error", () => rejeter(new Error("illisible")));
+    lecteur.readAsText(fichier);
+  });
+}
+
+function surChoisirSauvegarde() {
+  $("fichier-sauvegarde").click();
+}
+
+async function surFichierSauvegarde(evenement) {
+  if (!etat.compte) return;
+  const entree = evenement.currentTarget;
+  const fichier = entree.files && entree.files[0];
+  entree.value = "";
+  if (!fichier) return;
+  message("msg-sauvegarde", "");
+  if (fichier.size > SAUVEGARDE.octetsMax) {
+    message("msg-sauvegarde", "Fichier trop lourd : 2 Mo maximum.");
+    return;
+  }
+  let profil;
+  try {
+    let donnees;
+    try {
+      donnees = JSON.parse(await lireTexte(fichier));
+    } catch (erreur) {
+      throw new Error("Ce fichier n'est pas une sauvegarde BâtiPlus.");
+    }
+    profil = validerSauvegarde(donnees);
+  } catch (erreur) {
+    message("msg-sauvegarde", erreur.message);
+    return;
+  }
+  const accord = await demanderConfirmation("Importer cette sauvegarde ?",
+    "Votre nom, votre entreprise, votre ville, votre pays, votre devise, vos conditions, votre photo et votre logo seront remplacés. Votre téléphone, votre code secret et votre abonnement ne changent pas.",
+    "Importer");
+  if (!accord) return;
+  try {
+    /* Les images importées repassent par le même contrôle que les images choisies. */
+    if (profil.photo) profil.photo = await preparerImage(dataUrlVersBlob(profil.photo), "photo");
+    if (profil.logo) profil.logo = await preparerImage(dataUrlVersBlob(profil.logo), "logo");
+  } catch (erreur) {
+    message("msg-sauvegarde", "Fichier refusé : " + messageImage(erreur).toLocaleLowerCase("fr-FR"));
+    return;
+  }
+  const ok = await enregistrerCompte({ ...etat.compte, ...profil });
+  if (ok) remplirProfil();
+  message("msg-sauvegarde", ok ? "Sauvegarde importée." : "Import impossible. Réessayez.", ok);
+}
+
+/* ---------- Session : déconnexion et changement de compte ---------- */
+
+function masquerTelephone(e164, iso) {
+  const affiche = formaterTelephone(e164, iso);
+  const pays = PAYS_PAR_ISO.get(iso);
+  const debut = pays ? pays.indicatif.length + 2 : 0;
+  const chiffres = affiche.slice(debut).replace(/\D/g, "").length;
+  let rang = 0;
+  return affiche.slice(0, debut) + affiche.slice(debut).replace(/\d/g, (chiffre) => (rang++ < chiffres - 4 ? "•" : chiffre));
+}
+
+async function afficherComptesAppareil() {
+  const comptes = await lireComptes();
+  const puces = comptes.map((compte) => {
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "compte-puce";
+    bouton.dataset.compte = compte.id;
+    const nom = document.createElement("strong");
+    nom.textContent = compte.nom;
+    const telephone = document.createElement("span");
+    telephone.textContent = masquerTelephone(compte.telephone, compte.pays);
+    bouton.append(nom, telephone);
+    return bouton;
+  });
+  $("comptes-liste").replaceChildren(...puces);
+  $("comptes-appareil").hidden = puces.length === 0;
+}
+
+async function surChoixCompte(evenement) {
+  const bouton = evenement.target.closest(".compte-puce");
+  if (!bouton) return;
+  const compte = (await lireComptes()).find((c) => c.id === bouton.dataset.compte);
+  if (!compte) return;
+  $("cnx-telephone").value = formaterTelephone(compte.telephone, compte.pays);
+  surSaisieTelephoneConnexion();
+  viderCode("cnx-code");
+  $("cnx-code").focus({ preventScroll: true });
+}
+
+function surDeconnexion() {
+  fermerSession();
+}
+
+async function surChangerCompte() {
+  await fermerSession();
+  const premier = $("comptes-liste").querySelector(".compte-puce");
+  if (premier) premier.focus({ preventScroll: true });
+}
+
+/* ---------- Administration (accès caché) ----------
+   Appui long de 3 s sur le logo de « À propos ». Le code est envoyé en HTTPS à
+   l'API qui seule le vérifie : rien n'est comparé ni stocké sur le téléphone. */
+
+function surDebutAppuiAdmin(evenement) {
+  if (evenement.pointerType === "mouse" && evenement.button !== 0) return;
+  clearTimeout(etat.minuterieAdmin);
+  etat.minuterieAdmin = setTimeout(ouvrirAdmin, DUREE_APPUI_ADMIN);
+}
+
+function surFinAppuiAdmin() {
+  clearTimeout(etat.minuterieAdmin);
+}
+
+function surMenuContextuelLogo(evenement) {
+  evenement.preventDefault();
+}
+
+function ouvrirAdmin() {
+  vibrer();
+  montrer("admin");
+}
+
+function reinitialiserAdmin() {
+  $("adm-code").value = "";
+  effacerErreur($("adm-code"));
+  message("msg-admin", "");
+}
+
+async function surAdmin(evenement) {
+  evenement.preventDefault();
+  const champ = $("adm-code");
+  const code = champ.value;
+  champ.value = "";
+  effacerErreur(champ);
+  message("msg-admin", "");
+  if (code.length < ADMIN.codeMin || code.length > ADMIN.codeMax) {
+    afficherErreur("adm-code", "Code incomplet.");
+    return;
+  }
+  if (etat.adminBloqueJusqua > Date.now()) {
+    message("msg-admin", "Trop d'essais. Réessayez dans " + formaterDuree(etat.adminBloqueJusqua - Date.now()) + ".");
+    return;
+  }
+  if (!navigator.onLine) {
+    message("msg-admin", "Connexion Internet nécessaire pour vérifier ce code.");
+    return;
+  }
+  if (typeof fetch !== "function" || typeof AbortController !== "function") {
+    message("msg-admin", "Vérification impossible sur cet appareil.");
+    return;
+  }
+  const bouton = $("bouton-admin");
+  const arret = new AbortController();
+  const minuterie = setTimeout(() => arret.abort(), ADMIN.delaiMs);
+  bouton.setAttribute("aria-busy", "true");
+  try {
+    const reponse = await fetch(API_URL + ADMIN.chemin, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+      credentials: "omit",
+      cache: "no-store",
+      referrerPolicy: "no-referrer",
+      signal: arret.signal
+    });
+    if (reponse.status === 401 || reponse.status === 403) {
+      etat.adminEchecs += 1;
+      if (etat.adminEchecs >= 3) etat.adminBloqueJusqua = Date.now() + 60000;
+      message("msg-admin", "Code incorrect.");
+    } else if (!reponse.ok) {
+      message("msg-admin", "Vérification impossible pour le moment. Réessayez plus tard.");
+    } else {
+      etat.adminEchecs = 0;
+      message("msg-admin", "Code accepté.", true);
+    }
+  } catch (erreur) {
+    message("msg-admin", "Vérification impossible pour le moment. Vérifiez votre connexion puis réessayez.");
+  } finally {
+    clearTimeout(minuterie);
+    bouton.removeAttribute("aria-busy");
+  }
 }
 
 /* ---------- Écran de démarrage natif ---------- */
@@ -2471,12 +4002,19 @@ function masquerSplashNatif() {
    ========================================================================== */
 
 function brancherEvenements() {
+  document.addEventListener("click", surClicNavigation);
   $("bouton-menu").addEventListener("click", ouvrirTiroir);
   $("bouton-fermer-tiroir").addEventListener("click", fermerTiroir);
   $("voile").addEventListener("click", fermerTiroir);
   $("bouton-theme").addEventListener("click", basculerTheme);
-  $("bouton-verifier").addEventListener("click", verifierDemarrage);
-  $("bouton-deconnexion").addEventListener("click", fermerSession);
+  $("bouton-deconnexion").addEventListener("click", surDeconnexion);
+
+  $("bouton-recherche").addEventListener("click", ouvrirRecherche);
+  $("bouton-fermer-recherche").addEventListener("click", fermerRecherche);
+  $("recherche").addEventListener("click", surClicFondRecherche);
+  $("recherche-saisie").addEventListener("input", surSaisieRecherche);
+  $("recherche-saisie").addEventListener("keydown", surToucheRecherche);
+  $("recherche-resultats").addEventListener("click", surChoixResultat);
 
   $("bouton-passer").addEventListener("click", terminerPresentation);
   $("bouton-diapo-suivante").addEventListener("click", surDiapoSuivante);
@@ -2494,9 +4032,11 @@ function brancherEvenements() {
   $("panneau-inscription").addEventListener("submit", surInscription);
   $("panneau-connexion").addEventListener("submit", surConnexion);
   $("ins-telephone").addEventListener("input", surSaisieTelephoneInscription);
-  $("ins-pays").addEventListener("change", surChangementPays);
+  $("ins-pays").addEventListener("change", surChangementPaysInscription);
   $("cnx-telephone").addEventListener("input", surSaisieTelephoneConnexion);
-  ["ins-nom", "ins-entreprise", "ins-ville", "ins-conditions"].forEach((id) => $(id).addEventListener("input", surSaisieChamp));
+  $("comptes-liste").addEventListener("click", surChoixCompte);
+  ["ins-nom", "ins-entreprise", "ins-ville", "ins-conditions", "pro-nom", "pro-entreprise", "pro-ville", "pro-conditions"]
+    .forEach((id) => $(id).addEventListener("input", surSaisieChamp));
   document.querySelectorAll(".code-cases").forEach((champ) => {
     champ.addEventListener("focus", surActivationCode);
     champ.addEventListener("click", surActivationCode);
@@ -2504,11 +4044,39 @@ function brancherEvenements() {
   });
   document.querySelectorAll(".code-oeil").forEach((bouton) => bouton.addEventListener("click", surOeil));
   $("bouton-conditions").addEventListener("click", ouvrirConditions);
+  $("bouton-conditions-apropos").addEventListener("click", ouvrirConditions);
   $("contenu").addEventListener("focusin", surFocusChamp);
 
+  $("carte-infos").addEventListener("submit", surEnregistrerProfil);
+  $("pro-telephone").addEventListener("input", surSaisieTelephoneProfil);
+  $("pro-pays").addEventListener("change", surChangementPaysProfil);
+  $("carte-conditions").addEventListener("submit", surEnregistrerConditions);
+  $("pro-conditions").addEventListener("input", majCompteurConditions);
+  $("carte-code").addEventListener("submit", surChangerCode);
+  $("bouton-photo").addEventListener("click", surChoisirPhoto);
+  $("bouton-retirer-photo").addEventListener("click", surRetirerPhoto);
+  $("fichier-photo").addEventListener("change", surFichierPhoto);
+  $("bouton-logo").addEventListener("click", surChoisirLogo);
+  $("bouton-retirer-logo").addEventListener("click", surRetirerLogo);
+  $("fichier-logo").addEventListener("change", surFichierLogo);
+  $("bouton-exporter").addEventListener("click", surExporter);
+  $("bouton-importer").addEventListener("click", surChoisirSauvegarde);
+  $("fichier-sauvegarde").addEventListener("change", surFichierSauvegarde);
+  $("bouton-deconnexion-profil").addEventListener("click", surDeconnexion);
+  $("bouton-changer-compte").addEventListener("click", surChangerCompte);
+
+  const logo = $("logo-apropos");
+  logo.addEventListener("pointerdown", surDebutAppuiAdmin);
+  logo.addEventListener("pointerup", surFinAppuiAdmin);
+  logo.addEventListener("pointerleave", surFinAppuiAdmin);
+  logo.addEventListener("pointercancel", surFinAppuiAdmin);
+  logo.addEventListener("contextmenu", surMenuContextuelLogo);
+  $("form-admin").addEventListener("submit", surAdmin);
+
   $("modale").addEventListener("click", surClicFondModale);
-  $("bouton-fermer-modale").addEventListener("click", fermerModale);
-  $("bouton-modale-ok").addEventListener("click", fermerModale);
+  $("bouton-fermer-modale").addEventListener("click", surAnnulerModale);
+  $("bouton-modale-annuler").addEventListener("click", surAnnulerModale);
+  $("bouton-modale-ok").addEventListener("click", surOkModale);
 
   document.addEventListener("keydown", surToucheClavier);
   document.addEventListener("pointerdown", surAppuiOnde);
@@ -2520,15 +4088,17 @@ function brancherEvenements() {
 function preparerInterface() {
   $("etat-version").textContent = APP.version;
   $("etat-plateforme").textContent = nomPlateforme();
-  afficherAnimations();
   surveillerLogos();
   construireNavigation();
-  construireListesPays();
+  masquerLiensAbsents();
+  remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);
   creerClavier("clavier-inscription");
   creerClavier("clavier-connexion");
+  creerClavier("clavier-profil");
   Object.keys(codes).forEach(afficherCode);
   activerCode("ins-code");
   activerCode("cnx-code");
+  activerCode("pro-ancien");
   construirePoints();
   allerDiapo(0);
   majLienCodeOublie(null);
@@ -2538,16 +4108,19 @@ function preparerInterface() {
 
 /* Pendant l'écran de démarrage : thème, compte et choix du premier écran. */
 async function choisirPremierEcran() {
+  await migrerStockage();
   await initialiserTheme();
   const presentationVue = await lireValeur(CLES_STOCKAGE.presentationVue) === "1";
   const comptes = await lireComptes();
   choisirOnglet(comptes.length ? "connexion" : "inscription");
+  await afficherComptesAppareil();
   const verrou = await lireVerrou();
   if (verrou.jusqua > Date.now()) afficherBlocage(verrou.jusqua);
   const session = await lireSession();
   const compte = session ? comptes.find((c) => c.id === session.compteId) : null;
   if (compte) {
     etat.compte = compte;
+    etat.abonnement = abonnementCourant();
     afficherCompte(compte);
   }
   if (!presentationVue) return "presentation";

@@ -77,13 +77,16 @@ function assembler() {
   const gabarit = lire("gabarit.html");
   const css = lire("charte.css");
   const corps = lire("corps.html");
-  const js = '(() => {\n"use strict";\n\n' + lire("donnees.js") + "\n\n" + lire("moteur.js") + "\n})();";
+  const api = adresseApi();
+  const donnees = lire("donnees.js");
+  if (!donnees.includes('const API_URL = "@@API_URL@@";')) arreter("donnees.js doit déclarer API_URL = \"@@API_URL@@\"");
+  const js = '(() => {\n"use strict";\n\n' + donnees.replace('"@@API_URL@@"', () => JSON.stringify(api)) + "\n\n" + lire("moteur.js") + "\n})();";
   verifierSources(css, corps, js);
 
   /* Le contenu exact entre les balises (sauts de ligne compris) est haché. */
   const contenuStyle = "\n" + css + "\n";
   const contenuScript = "\n" + js + "\n";
-  const csp = politique(empreinte(contenuStyle), empreinte(contenuScript), adresseApi());
+  const csp = politique(empreinte(contenuStyle), empreinte(contenuScript), api);
 
   const html = gabarit
     .replace("<style>\n@@CHARTE@@\n</style>", () => "<style>" + contenuStyle + "</style>")

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* ==========================================================================
    BâtiPlus — vérificateur
-   Rapporte les contrôles bloquants des étapes 1-2 (①…⑫, ⑭, ⑮, ⑰ ; ⑬ et ⑯ dans verifier-navigateur.mjs) et les contrôles de
+   Rapporte les contrôles bloquants des étapes 1-3 (①…⑫, ⑮, ⑰, ⑳, ㉑ ; ⑬, ⑭, ⑯, ⑱, ⑲ dans verifier-navigateur.mjs) et les contrôles de
    sécurité du front (S①…S⑪) sur le fichier livré www/index.html.
    Code de sortie 1 si un seul contrôle échoue.
    Le contrôle ⑩ (console au chargement) exécute la page dans jsdom :
@@ -103,7 +103,11 @@ const metiers = /plombi|ma[çc]on|menuisi|peintre|carreleu|soudeu|couvreu|m[ée]
 const metierTrouve = html.match(metiers);
 controle("⑨", "aucune mention d'un autre métier", !metierTrouve, metierTrouve ? "trouvé : " + metierTrouve[0] : "électricien uniquement");
 
-/* ⑩ ⑭ ⑮ ⑰ exécution réelle de la page dans jsdom (contexte https).
+/* ⑨b le mot « serveur » n'apparaît jamais (texte visible, attributs, messages du script) */
+const motInterdit = html.match(/serveur/i);
+controle("⑨b", "le mot « serveur » n'apparaît nulle part dans l'application", !motInterdit, motInterdit ? "trouvé" : "0 occurrence dans index.html (interface, attributs, messages)");
+
+/* ⑩ ⑮ ⑰ ⑳ ㉑ exécution réelle de la page dans jsdom (contexte https).
    Le script est enfermé dans une IIFE : rien n'est exposé, tout passe par l'interface. */
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -112,7 +116,7 @@ async function controlesExecution() {
   try {
     ({ JSDOM, VirtualConsole } = await import("jsdom"));
   } catch {
-    for (const n of ["⑩", "⑭", "⑮", "⑰"]) controle(n, "exécution dans jsdom", false, "jsdom absent : npm i --no-save jsdom");
+    for (const n of ["⑩", "⑮", "⑰", "⑳", "㉑"]) controle(n, "exécution dans jsdom", false, "jsdom absent : npm i --no-save jsdom");
     return;
   }
   const { webcrypto } = await import("node:crypto");
@@ -124,7 +128,7 @@ async function controlesExecution() {
   process.on("uncaughtException", surRejet);
   const fenetres = [];
 
-  function ouvrirPage(stockage) {
+  function ouvrirPage(stockage, capacitor) {
     const consoleVirtuelle = new VirtualConsole();
     consoleVirtuelle.on("error", (m) => erreurs.push(String(m)));
     consoleVirtuelle.on("warn", (m) => erreurs.push("warn: " + String(m)));
@@ -132,7 +136,7 @@ async function controlesExecution() {
     consoleVirtuelle.on("jsdomError", (e) => {
       const msg = String(e.message || e);
       /* jsdom n'implémente ni le dessin <canvas> ni le défilement : limites de l'outil, pas de l'application. */
-      if (/Not implemented: (HTMLCanvasElement(\.prototype\.|'s )getContext|(window\.|Window's )scrollTo)/.test(msg)) ignorees.push(msg.split("\n")[0]);
+      if (/Not implemented: (HTMLCanvasElement(\.prototype\.|'s )getContext|(window\.|Window's )scrollTo|navigation to another Document)/.test(msg)) ignorees.push(msg.split("\n")[0]);
       else erreurs.push(msg.split("\n")[0]);
     });
     const dom = new JSDOM(html, {
@@ -142,7 +146,7 @@ async function controlesExecution() {
       virtualConsole: consoleVirtuelle,
       beforeParse(window) {
         window.matchMedia = (requete) => ({
-          matches: false, media: requete, onchange: null,
+          matches: Boolean(capacitor) && /max-width/.test(requete), media: requete, onchange: null,
           addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return false; }
         });
         /* Ce que jsdom ne fournit pas et qu'un vrai WebView fournit. */
@@ -150,6 +154,7 @@ async function controlesExecution() {
         if (!window.TextEncoder) window.TextEncoder = TextEncoder;
         if (window.isSecureContext !== true) Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
         if (!window.Element.prototype.scrollIntoView) window.Element.prototype.scrollIntoView = function () {};
+        if (capacitor) window.Capacitor = capacitor;
         window.localStorage.clear();
         for (const [cle, valeur] of Object.entries(stockage || {})) window.localStorage.setItem(cle, valeur);
       }
@@ -183,16 +188,16 @@ async function controlesExecution() {
 
   try {
     /* ---------- Page 1 : première ouverture, stockage vierge ---------- */
+    const K = { pres: "bp_v1_presentation_vue", comptes: "bp_v1_comptes", session: "bp_v1_session", verrou: "bp_v1_verrou", devis: "bp_v1_devis" };
     const p = ouvrirPage();
     await pause(300);
     const splash = p.actif() === "ecran-demarrage" && p.doc.body.dataset.mode === "entree"
       && p.doc.querySelector("#ecran-demarrage [data-logo] img") !== null;
     await pause(1500);
     const apresSplash = p.actif();
-    controle("⑭", "écran de démarrage puis présentation à la 1re ouverture", splash && apresSplash === "ecran-presentation",
+    controle("D", "écran de démarrage puis présentation à la 1re ouverture", splash && apresSplash === "ecran-presentation",
       "démarrage plein écran (mode entrée, logo image) → " + apresSplash.replace("ecran-", "") + " après 1,5 s");
 
-    const theme = p.texte("etat-theme");
     const plateforme = p.texte("etat-plateforme");
     p.$("bouton-theme").click();
     await pause(50);
@@ -204,9 +209,9 @@ async function controlesExecution() {
     const derniere = p.texte("libelle-diapo-suivante") === "Commencer";
     p.$("bouton-diapo-suivante").click();
     await pause(100);
-    const versAuth = p.actif() === "ecran-connexion" && p.stockage()["bp.presentation-vue"] === "1"
+    const versAuth = p.actif() === "ecran-connexion" && p.stockage()[K.pres] === "1"
       && p.$("panneau-connexion").hidden && !p.$("panneau-inscription").hidden;
-    const fonctionne = theme !== "Détection…" && plateforme === "Navigateur web" && themeApres === "sombre" && diapo2 && derniere && versAuth;
+    const fonctionne = plateforme === "Navigateur web" && themeApres === "sombre" && diapo2 && derniere && versAuth;
 
     /* ⑮ détection du pays (saisie réelle dans le champ téléphone de l'inscription) */
     const cas = [
@@ -245,7 +250,7 @@ async function controlesExecution() {
 
     /* ⑰ inscription, session, déconnexion, connexion, blocage, injection */
     const problemes = [];
-    const nomPiege = "<img src=x onerror=alert(1)>Awa";
+    const nomPiege = "<img src=x onerror=alert(1)>Awa Traoré";
     p.$("ins-nom").value = "";
     await p.soumettre("panneau-inscription", 100);
     if (p.w.document.activeElement !== p.$("ins-nom") || !p.texte("err-ins-nom")) problemes.push("formulaire vide : pas d'erreur sur le 1er champ");
@@ -267,19 +272,20 @@ async function controlesExecution() {
     if (p.doc.querySelectorAll("#ins-code .code-case.pleine").length !== 6) problemes.push("cases du code non remplies");
     await p.soumettre("panneau-inscription", 1200);
     if (p.actif() !== "ecran-accueil") problemes.push("inscription n'ouvre pas l'accueil (" + p.actif() + " : " + p.texte("msg-inscription") + ")");
-    if (p.texte("compte-nom") !== nomPiege) problemes.push("nom mal affiché");
+    if (p.doc.querySelector("#tiroir [data-nom]").textContent !== nomPiege) problemes.push("nom mal affiché");
     if (p.doc.querySelector("img[src='x']")) problemes.push("XSS : balise injectée");
-    if (p.texte("compte-telephone") !== "+226 70 11 22 33") problemes.push("téléphone mal formaté : " + p.texte("compte-telephone"));
-    if (p.texte("compte-devise").replace(/\s/g, " ") !== "Franc CFA (UEMOA) · 25 000 FCFA") problemes.push("montant mal formaté : " + p.texte("compte-devise"));
+    if (p.texte("accueil-telephone") !== "+226 70 11 22 33") problemes.push("téléphone mal formaté : " + p.texte("accueil-telephone"));
     if (JSON.stringify(p.stockage()).includes("258071")) problemes.push("code en clair dans le stockage");
-    const comptes = JSON.parse(p.stockage()["bp.comptes"] || "[]");
+    const comptes = JSON.parse(p.stockage()[K.comptes] || "[]");
     const compte = comptes[0];
     if (!compte || compte.iterations < 150000 || !compte.sel || !compte.empreinte || compte.code) problemes.push("empreinte PBKDF2 absente");
     const stockageInscrit = p.stockage();
 
     p.$("bouton-deconnexion").click();
-    await pause(100);
-    if (p.actif() !== "ecran-connexion" || p.stockage()["bp.session"]) problemes.push("déconnexion incomplète");
+    await pause(150);
+    if (p.actif() !== "ecran-connexion" || p.stockage()[K.session]) problemes.push("déconnexion incomplète");
+    if (p.doc.querySelectorAll("#comptes-liste .compte-puce").length !== 1 || p.$("comptes-appareil").hidden) problemes.push("compte de l'appareil non proposé");
+    else if (p.texte("comptes-liste").includes("70 11 22 33")) problemes.push("numéro complet affiché dans la liste des comptes");
 
     p.remplir("cnx-telephone", "+226 70 11 22 33");
     for (let i = 1; i <= 4; i++) {
@@ -294,32 +300,35 @@ async function controlesExecution() {
     await p.soumettre("panneau-connexion", 700);
     if (p.actif() === "ecran-accueil") problemes.push("connexion acceptée pendant le blocage");
     const blocage = p.texte("texte-blocage");
-    const verrou = JSON.parse(p.stockage()["bp.verrou"] || "{}");
+    const verrou = JSON.parse(p.stockage()[K.verrou] || "{}");
 
     /* Inconnu : même message générique, rien ne révèle si le numéro existe. */
-    const q = ouvrirPage({ "bp.presentation-vue": "1", "bp.comptes": stockageInscrit["bp.comptes"] });
+    const q = ouvrirPage({ [K.pres]: "1", [K.comptes]: stockageInscrit[K.comptes] });
     await pause(1800);
     if (q.actif() !== "ecran-connexion" || q.$("panneau-connexion").hidden) problemes.push("sans session : connexion attendue");
     q.remplir("cnx-telephone", "+226 70 99 88 77");
     q.taper("cnx-code", ["2", "5", "8", "0", "7", "1"]);
     await q.soumettre("panneau-connexion", 700);
     if (!q.texte("msg-connexion").startsWith("Téléphone ou code incorrect.")) problemes.push("message différent pour un numéro inconnu");
-    q.remplir("cnx-telephone", "+22670112233");
+    /* Un appui sur le compte de l'appareil remplit le téléphone. */
+    q.doc.querySelector("#comptes-liste .compte-puce").click();
+    await pause(100);
+    if (q.$("cnx-telephone").value.replace(/\s/g, "") !== "+22670112233") problemes.push("le choix du compte ne remplit pas le téléphone");
     q.taper("cnx-code", ["2", "5", "8", "0", "7", "1"]);
     await q.soumettre("panneau-connexion", 900);
     if (q.actif() !== "ecran-accueil") problemes.push("bon code refusé (" + q.texte("msg-connexion") + ")");
-    if (q.stockage()["bp.verrou"]) problemes.push("compteur non remis à zéro après succès");
+    if (q.stockage()[K.verrou]) problemes.push("compteur non remis à zéro après succès");
 
     /* Session reprise au redémarrage ; compte affaibli (itérations) rejeté. */
     const r = ouvrirPage(q.stockage());
     await pause(1800);
-    if (r.actif() !== "ecran-accueil" || r.texte("compte-nom") !== nomPiege) problemes.push("session non reprise au redémarrage");
+    if (r.actif() !== "ecran-accueil" || r.doc.querySelector("#tiroir [data-nom]").textContent !== nomPiege) problemes.push("session non reprise au redémarrage");
     const affaibli = JSON.stringify([{ ...compte, iterations: 1 }]);
-    const t = ouvrirPage({ ...q.stockage(), "bp.comptes": affaibli });
+    const t = ouvrirPage({ ...q.stockage(), [K.comptes]: affaibli });
     await pause(1800);
     if (t.actif() !== "ecran-accueil" && t.actif() !== "ecran-connexion") problemes.push("état inattendu");
     if (t.actif() === "ecran-accueil") problemes.push("compte affaibli accepté");
-    const u = ouvrirPage({ "bp.presentation-vue": "1", "bp.verrou": JSON.stringify({ echecs: 9, jusqua: Date.now() + 9e12 }) });
+    const u = ouvrirPage({ [K.pres]: "1", [K.verrou]: JSON.stringify({ echecs: 9, jusqua: Date.now() + 9e12 }) });
     await pause(1800);
     const texteU = u.texte("texte-blocage");
     const minutes = Number((texteU.match(/(\d+):\d\d/) || [])[1]);
@@ -327,13 +336,262 @@ async function controlesExecution() {
 
     controle("⑰", "compte : inscription, connexion, blocage, aucune injection", problemes.length === 0,
       problemes.join(" ; ") || "1er champ invalide ciblé, 1234 refusé, codes différents refusés, code absent du DOM et du stockage (PBKDF2 "
-        + compte.iterations.toLocaleString("fr-FR") + "), nom piégé affiché en texte, déconnexion, 5 échecs → verrou " + verrou.echecs
+        + compte.iterations.toLocaleString("fr-FR") + "), nom piégé affiché en texte, déconnexion, comptes de l'appareil (numéro masqué), 5 échecs → verrou " + verrou.echecs
         + " et « " + blocage + " », message identique pour un inconnu, bon code accepté, session reprise, compte affaibli rejeté, verrou plafonné à 15 min");
+
+    /* ---------- Étape 3 : migration des anciennes clés ---------- */
+    const sessionActive = q.stockage()[K.session];
+    const migration = [];
+    const m = ouvrirPage({ "bp.presentation-vue": "1", "bp.comptes": stockageInscrit[K.comptes], "bp.session": sessionActive, "bp.theme": "sombre" });
+    await pause(1800);
+    const sm = m.stockage();
+    if (m.actif() !== "ecran-accueil") migration.push("session d'avant v1 non reprise (" + m.actif() + ")");
+    if (Object.keys(sm).some((cle) => cle.startsWith("bp."))) migration.push("anciennes clés non supprimées");
+    if (sm[K.comptes] !== stockageInscrit[K.comptes] || sm.bp_v1_theme !== "sombre") migration.push("valeurs non reprises");
+    const m2 = ouvrirPage({ [K.pres]: "1", "bp.comptes": "[]", [K.comptes]: stockageInscrit[K.comptes], [K.session]: sessionActive });
+    await pause(1800);
+    if (m2.stockage()[K.comptes] !== stockageInscrit[K.comptes]) migration.push("une ancienne clé a écrasé une clé v1");
+    controle("S⑤", "stockage versionné bp_v1_*, anciennes clés reprises une seule fois", migration.length === 0,
+      migration.join(" ; ") || "bp.* → bp_v1_* au démarrage, anciennes clés supprimées, jamais d'écrasement d'une clé v1 existante");
+
+    /* ---------- Étape 3 : accueil, compteurs, derniers devis ---------- */
+    const maintenant = Date.now();
+    const jour = 86400000;
+    const listeDevis = [
+      { id: "d1", compteId: compte.id, titre: "Villa R+1 Ouaga 2000", client: "<img src=x onerror=alert(2)>Kaboré", total: 125000000, statut: "accepte", creeLe: new Date(maintenant - 1000).toISOString() },
+      { id: "d2", compteId: compte.id, titre: "Boutique Zogona", client: "Mme Sawadogo", total: 850000, statut: "envoye", creeLe: new Date(maintenant - 2000).toISOString() },
+      { id: "d3", compteId: compte.id, titre: "Atelier Kossodo", client: "M. Ilboudo", total: 2400000, statut: "brouillon", creeLe: new Date(maintenant - 3000).toISOString() },
+      { id: "d4", compteId: compte.id, titre: "Ancien chantier", client: "M. Ilboudo", total: 100000, statut: "accepte", creeLe: new Date(maintenant - 400 * jour).toISOString() },
+      { id: "x1", compteId: "autre-compte", titre: "Pas à moi", client: "Inconnu", total: 999, statut: "accepte", creeLe: new Date(maintenant).toISOString() },
+      { id: "x2", compteId: compte.id, titre: "Invalide", client: "Faux", total: -5, statut: "accepte", creeLe: new Date(maintenant).toISOString() },
+      { id: "x3", compteId: compte.id, titre: "Statut inconnu", client: "Faux", total: 5, statut: "<b>pirate</b>", creeLe: new Date(maintenant).toISOString() }
+    ];
+    const a = ouvrirPage({ ...q.stockage(), [K.devis]: JSON.stringify(listeDevis), bp_v1_abonnement: JSON.stringify({ formule: "vie", fin: null }) });
+    /* Échantillonne le compteur pendant l'animation : il doit passer par des valeurs intermédiaires. */
+    const valeursCompteur = new Set();
+    for (let i = 0; i < 64; i++) {
+      await pause(40);
+      if (a.actif() === "ecran-accueil") valeursCompteur.add(a.texte("cpt-montant"));
+    }
+    const accueil = [];
+    const nb = (s) => s.replace(/[\s\u202f\u00a0]/g, " ");
+    const montantAttendu = nb(new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(128350000)) + " FCFA";
+    if (a.actif() !== "ecran-accueil") accueil.push("accueil absent");
+    if (a.texte("accueil-prenom") !== "<img") accueil.push("prénom : « " + a.texte("accueil-prenom") + " »");
+    if (nb(a.texte("cpt-montant")) !== montantAttendu) accueil.push("montant total : « " + a.texte("cpt-montant") + " » au lieu de « " + montantAttendu + " »");
+    if (a.texte("cpt-devis") !== "3") accueil.push("devis du mois : " + a.texte("cpt-devis"));
+    if (a.texte("cpt-acceptes") !== "2") accueil.push("acceptés : " + a.texte("cpt-acceptes"));
+    if (a.texte("cpt-jours") !== "∞") accueil.push("jours restants : " + a.texte("cpt-jours"));
+    if (a.texte("accueil-quota") !== "3 / 5 devis ce mois") accueil.push("quota : « " + a.texte("accueil-quota") + " »");
+    const lignes = [...a.doc.querySelectorAll("#accueil-devis li")];
+    if (lignes.length !== 3 || !lignes[0].textContent.includes("Villa R+1") || !lignes[2].textContent.includes("Atelier Kossodo")) accueil.push("3 derniers devis mal triés");
+    if (lignes[0] && !lignes[0].querySelector(".statut[data-ton='ok']")) accueil.push("statut en pastille absent");
+    if (a.doc.querySelector("img[src='x']") || a.doc.querySelector("#accueil-devis b")) accueil.push("XSS dans les devis");
+    if (!a.texte("astuce-texte") || !/\d{4}/.test(a.texte("accueil-date"))) accueil.push("astuce ou date absente");
+    if (!a.$("accueil-devis-vide").hidden) accueil.push("message « aucun devis » affiché");
+    if (a.$("bouton-nouveau-chantier").hidden !== true || [...a.doc.querySelectorAll("[data-ecran]")].some((l) => !l.hidden && !a.$("ecran-" + l.dataset.ecran))) accueil.push("lien vers un écran absent visible");
+    if (valeursCompteur.size < 3) accueil.push("compteur non animé (" + valeursCompteur.size + " valeur(s))");
+    controle("A", "accueil : compteurs animés, 3 derniers devis, astuce du jour", accueil.length === 0,
+      accueil.join(" ; ") || "4 compteurs animés (" + valeursCompteur.size + " valeurs vues en 700 ms) : " + a.texte("cpt-montant").replace(/\s/g, " ") + ", 3 ce mois, 2 acceptés, ∞ ; devis d'un autre compte et devis falsifiés ignorés ; client piégé affiché en texte");
+
+    /* ⑳ une seule formule partout, jamais lue dans le stockage */
+    const formules = [...a.doc.querySelectorAll("[data-formule]")].map((el) => el.textContent);
+    const formuleOk = formules.length >= 3 && formules.every((f) => f === "Gratuit");
+    controle("⑳", "la formule affichée est identique partout", formuleOk,
+      formuleOk ? formules.length + " emplacements (menu, accueil, profil) = « Gratuit » via libelleFormule() ; « vie » injecté dans le stockage ignoré"
+        : "affichages : " + JSON.stringify(formules));
+
+    /* Recherche, navigation, historique */
+    const nav = [];
+    a.$("bouton-recherche").click();
+    await pause(50);
+    if (a.$("recherche").hidden) nav.push("recherche fermée");
+    a.remplir("recherche-saisie", "CODE secret");
+    const resultats = [...a.doc.querySelectorAll("#recherche-resultats .recherche-resultat")].map((b) => b.textContent);
+    if (!resultats.length || !/code secret/i.test(resultats[0])) nav.push("recherche « CODE secret » : " + JSON.stringify(resultats));
+    a.remplir("recherche-saisie", "electricite");
+    a.remplir("recherche-saisie", "zzzz");
+    if (a.$("recherche-vide").hidden) nav.push("aucun message si rien ne correspond");
+    a.remplir("recherche-saisie", "propos");
+    a.$("recherche-saisie").dispatchEvent(new a.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await pause(100);
+    if (a.actif() !== "ecran-a-propos" || !a.$("recherche").hidden) nav.push("Entrée n'ouvre pas À propos (" + a.actif() + ")");
+    a.doc.querySelector("#tiroir-menu [data-ecran='profil']").click();
+    await pause(100);
+    if (a.actif() !== "ecran-profil") nav.push("menu → profil : " + a.actif());
+    const menu = [...a.doc.querySelectorAll("#tiroir-menu [data-ecran]")].map((l) => l.dataset.ecran);
+    if (menu.some((e) => !a.$("ecran-" + e))) nav.push("menu vers un écran absent : " + menu.join(","));
+    if (a.doc.querySelector("#tiroir-menu [data-ecran='profil']").getAttribute("aria-current") !== "page") nav.push("aria-current absent");
+    if (a.texte("etat-version") !== "1.0.0") nav.push("version absente");
+    controle("N3", "navigation : recherche, menu, liens filtrés", nav.length === 0,
+      nav.join(" ; ") || "recherche sans accents ni majuscules, Entrée ouvre le 1er résultat, menu limité aux écrans existants (" + menu.join(", ") + "), aria-current");
+
+    /* Profil : informations, conditions, code secret */
+    const profil = [];
+    if (a.$("pro-nom").value !== nomPiege || a.$("pro-ville").value !== "Ouagadougou" || a.$("pro-pays").value !== "BF" || a.$("pro-devise").value !== "XOF") profil.push("profil mal rempli");
+    if (a.texte("profil-telephone") !== "+226 70 11 22 33") profil.push("téléphone du profil : " + a.texte("profil-telephone"));
+    if (a.texte("stat-devis") !== "4" || a.texte("stat-clients") !== "3" || a.texte("stat-acceptes") !== "2" || a.texte("stat-taux") !== "50\u00A0%") profil.push("statistiques : " + ["stat-devis", "stat-clients", "stat-taux", "stat-acceptes"].map((id) => a.texte(id)).join(" | "));
+    a.remplir("pro-nom", "");
+    await a.soumettre("carte-infos", 200);
+    if (!a.texte("err-pro-nom") || a.doc.activeElement !== a.$("pro-nom")) profil.push("nom vide accepté");
+    a.remplir("pro-nom", "Awa Traoré");
+    a.remplir("pro-entreprise", "Lumière Pro");
+    a.remplir("pro-ville", "Bobo-Dioulasso");
+    a.remplir("pro-telephone", "+225 07 08 09 10 11");
+    await a.soumettre("carte-infos", 300);
+    if (a.$("pro-pays").value !== "CI" || a.$("pro-devise").value !== "XOF") profil.push("détection du pays dans le profil");
+    const apresProfil = JSON.parse(a.stockage()[K.comptes])[0];
+    if (apresProfil.nom !== "Awa Traoré" || apresProfil.ville !== "Bobo-Dioulasso" || apresProfil.telephone !== "+2250708091011" || apresProfil.pays !== "CI") profil.push("profil non enregistré : " + a.texte("msg-profil"));
+    if ([...a.doc.querySelectorAll("[data-nom]")].some((el) => el.textContent !== "Awa Traoré")) profil.push("nom non propagé au menu");
+    a.doc.querySelector("#tiroir-menu [data-ecran='accueil']").click();
+    await pause(100);
+    if (a.texte("accueil-prenom") !== "Awa") profil.push("prénom de l'accueil : " + a.texte("accueil-prenom"));
+    a.doc.querySelector("#tiroir-menu [data-ecran='profil']").click();
+    await pause(100);
+    if ([...a.doc.querySelectorAll("[data-initiales]")].some((el) => el.textContent !== "AT")) profil.push("initiales : " + a.doc.querySelector("[data-initiales]").textContent);
+    if (apresProfil.empreinte !== compte.empreinte) profil.push("le profil a modifié l'empreinte du code");
+    a.remplir("pro-conditions", "Acompte de 50 % à la commande.\n\n\n\n<b>Solde</b> à la réception.");
+    if (!/\d+ \/ 1000/.test(a.texte("compteur-conditions").replace(/\s/g, " "))) profil.push("compteur des conditions : " + a.texte("compteur-conditions"));
+    await a.soumettre("carte-conditions", 200);
+    const conditions = JSON.parse(a.stockage()[K.comptes])[0].conditions;
+    if (conditions !== "Acompte de 50 % à la commande.\n\n<b>Solde</b> à la réception.") profil.push("conditions : " + JSON.stringify(conditions));
+    a.taper("pro-ancien", ["1", "1", "1", "1", "1", "2"]);
+    a.taper("pro-nouveau", ["3", "6", "9", "2", "4", "7"]);
+    a.taper("pro-confirmation", ["3", "6", "9", "2", "4", "7"]);
+    await a.soumettre("carte-code", 900);
+    if (!a.texte("err-pro-ancien").includes("incorrect")) profil.push("ancien code faux accepté : " + a.texte("err-pro-ancien"));
+    a.taper("pro-ancien", ["2", "5", "8", "0", "7", "1"]);
+    a.taper("pro-nouveau", ["3", "6", "9", "2", "4", "7"]);
+    a.taper("pro-confirmation", ["3", "6", "9", "2", "4", "7"]);
+    if (a.doc.documentElement.outerHTML.includes("369247")) profil.push("nouveau code visible dans le DOM");
+    await a.soumettre("carte-code", 1500);
+    const apresCode = JSON.parse(a.stockage()[K.comptes])[0];
+    if (!a.texte("msg-code").startsWith("Code secret changé") || apresCode.empreinte === compte.empreinte || apresCode.sel === compte.sel) profil.push("code non changé : " + a.texte("msg-code") + a.texte("err-pro-ancien") + a.texte("err-pro-nouveau"));
+    if (JSON.stringify(a.stockage()).includes("369247")) profil.push("nouveau code en clair");
+    controle("P", "profil : infos, conditions, code secret, statistiques", profil.length === 0,
+      profil.join(" ; ") || "nom vide refusé, pays/devise détectés (CI), nom et initiales propagés, conditions nettoyées (texte brut, 1000 max), ancien code faux refusé, nouveau code dérivé avec un nouveau sel, jamais en clair");
+
+    /* Export et import de sauvegarde */
+    const sauvegarde = [];
+    let exporte = null;
+    a.w.URL.createObjectURL = (blob) => { exporte = blob; return "blob:https://batiplus.local/test"; };
+    a.w.URL.revokeObjectURL = () => {};
+    a.$("bouton-exporter").click();
+    await pause(100);
+    const contenuExport = exporte ? JSON.parse(await exporte.text()) : {};
+    if (contenuExport.format !== "batiplus-sauvegarde" || contenuExport.version !== 1 || contenuExport.profil?.nom !== "Awa Traoré") sauvegarde.push("export incomplet");
+    const texteExport = JSON.stringify(contenuExport);
+    if (/empreinte|sel|iterations|telephone|formule|abonnement|session/.test(texteExport)) sauvegarde.push("l'export contient des données sensibles");
+    async function importer(contenu, nom, ok) {
+      const fichier = new a.w.File([contenu], nom || "sauvegarde.json", { type: "application/json" });
+      Object.defineProperty(a.$("fichier-sauvegarde"), "files", { value: [fichier], configurable: true });
+      a.$("fichier-sauvegarde").dispatchEvent(new a.w.Event("change", { bubbles: true }));
+      await pause(300);
+      if (ok && !a.$("modale").hidden) {
+        a.$("bouton-modale-ok").click();
+        await pause(400);
+      }
+      return a.texte("msg-sauvegarde");
+    }
+    const valide = { format: "batiplus-sauvegarde", version: 1, exporteLe: new Date().toISOString(),
+      profil: { nom: "Issa Ouédraogo", entreprise: "BRG test", ville: "Koudougou", pays: "BF", devise: "XOF", conditions: "Paiement à 30 jours." } };
+    const msgValide = await importer(JSON.stringify(valide), "ok.json", true);
+    const apresImport = JSON.parse(a.stockage()[K.comptes])[0];
+    if (msgValide !== "Sauvegarde importée." || apresImport.nom !== "Issa Ouédraogo" || apresImport.ville !== "Koudougou") sauvegarde.push("import valide refusé : " + msgValide);
+    if (apresImport.telephone !== "+2250708091011" || apresImport.empreinte !== apresCode.empreinte) sauvegarde.push("l'import a touché au téléphone ou au code");
+    if (a.$("pro-ville").value !== "Koudougou") sauvegarde.push("profil non rafraîchi");
+    const refusImport = [
+      ["formule à la racine", JSON.stringify({ ...valide, formule: "vie" })],
+      ["abonnement dans le profil", JSON.stringify({ ...valide, profil: { ...valide.profil, abonnement: { formule: "vie" } } })],
+      ["prototype", "{\"format\":\"batiplus-sauvegarde\",\"version\":1,\"exporteLe\":\"2026-01-01\",\"profil\":{\"nom\":\"A\",\"ville\":\"B\",\"pays\":\"BF\",\"devise\":\"XOF\",\"__proto__\":{\"x\":1}}}"],
+      ["JSON invalide", "{pas du json"],
+      ["autre format", JSON.stringify({ ...valide, format: "autre" })],
+      ["pays inconnu", JSON.stringify({ ...valide, profil: { ...valide.profil, pays: "XX" } })],
+      ["image SVG", JSON.stringify({ ...valide, profil: { ...valide.profil, photo: "data:image/svg+xml;base64,PHN2Zz4=" } })],
+      ["plus de 2 Mo", "x".repeat(2 * 1024 * 1024 + 10)]
+    ];
+    for (const [nomCas, contenu] of refusImport) {
+      const msg = await importer(contenu, nomCas + ".json", false);
+      if (!a.$("modale").hidden) { a.$("bouton-modale-annuler").click(); await pause(100); sauvegarde.push(nomCas + " : confirmation proposée"); }
+      if (msg === "Sauvegarde importée." || !msg) sauvegarde.push(nomCas + " : accepté");
+    }
+    if (JSON.parse(a.stockage()[K.comptes])[0].nom !== "Issa Ouédraogo") sauvegarde.push("un import refusé a modifié le compte");
+    if ([...a.doc.querySelectorAll("[data-formule]")].some((el) => el.textContent !== "Gratuit")) sauvegarde.push("formule modifiée par un import");
+    controle("S⑥", "sauvegarde : export sans secret, import validé champ par champ", sauvegarde.length === 0,
+      sauvegarde.join(" ; ") || "export JSON (profil seul, ni code ni téléphone ni abonnement) ; import valide confirmé ; " + refusImport.length + " fichiers refusés (formule, abonnement, __proto__, JSON invalide, format, pays, SVG, > 2 Mo)");
+
+    /* Accès admin caché : appui long 3 s, code vérifié par l'API uniquement */
+    const admin = [];
+    const appels = [];
+    a.w.fetch = async (url, options) => { appels.push({ url, options }); return { status: 401, ok: false }; };
+    a.w.AbortController = a.w.AbortController || AbortController;
+    a.doc.querySelector("#tiroir-menu [data-ecran='a-propos']").click();
+    await pause(100);
+    const logoApropos = a.$("logo-apropos");
+    logoApropos.dispatchEvent(new a.w.MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    await pause(1000);
+    logoApropos.dispatchEvent(new a.w.MouseEvent("pointerup", { bubbles: true }));
+    await pause(2300);
+    if (a.actif() === "ecran-admin") admin.push("appui court de 1 s accepté");
+    logoApropos.dispatchEvent(new a.w.MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    await pause(3150);
+    if (a.actif() !== "ecran-admin") admin.push("appui long de 3 s sans effet (" + a.actif() + ")");
+    a.$("adm-code").value = "123456";
+    await a.soumettre("form-admin", 200);
+    if (appels.length !== 1 || appels[0].url !== "https://api.batiplus.bf/api/admin/session" || appels[0].options.credentials !== "omit") admin.push("appel API inattendu : " + JSON.stringify(appels.map((x) => x.url)));
+    if (a.texte("msg-admin") !== "Code incorrect." || a.$("adm-code").value !== "") admin.push("réponse 401 : " + a.texte("msg-admin"));
+    if (/admin.{0,20}[:=]\s*["']\d{4,}/i.test(js)) admin.push("code admin dans le script");
+    controle("S⑦", "accès admin caché, code vérifié par l'API seulement", admin.length === 0,
+      admin.join(" ; ") || "appui de 1 s ignoré, appui de 3 s → écran de code ; code envoyé en POST à l'API (credentials omit), 401 → « Code incorrect. », champ vidé ; aucun code dans l'application");
+
+    /* ㉑ bouton retour Android : modale → recherche → tiroir → historique → accueil → quitter */
+    const retour = [];
+    const ecouteursNatifs = {};
+    let quitte = 0;
+    const preferences = new Map(Object.entries(q.stockage()));
+    const capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => "android",
+      Plugins: {
+        App: { addListener: (nom, fn) => { ecouteursNatifs[nom] = fn; return Promise.resolve({ remove() {} }); }, exitApp: () => { quitte += 1; } },
+        Preferences: {
+          get: async ({ key }) => ({ value: preferences.has(key) ? preferences.get(key) : null }),
+          set: async ({ key, value }) => { preferences.set(key, value); },
+          remove: async ({ key }) => { preferences.delete(key); }
+        }
+      }
+    };
+    const n = ouvrirPage({}, capacitor);
+    await pause(1800);
+    const presser = async () => { await ecouteursNatifs.backButton(); await pause(450); };
+    if (typeof ecouteursNatifs.backButton !== "function") retour.push("aucun écouteur backButton");
+    else {
+      if (n.actif() !== "ecran-accueil") retour.push("session native non reprise (" + n.actif() + ")");
+      n.doc.querySelector(".raccourci[data-ecran='profil']").click();
+      await pause(80);
+      n.doc.querySelector("#tiroir-menu [data-ecran='a-propos']").click();
+      await pause(80);
+      n.$("bouton-menu").click();
+      await pause(80);
+      n.$("bouton-recherche").click();
+      await pause(80);
+      n.$("bouton-conditions-apropos").click();
+      await pause(80);
+      const etapes = [];
+      const etatCourant = () => (!n.$("modale").hidden ? "modale" : !n.$("recherche").hidden ? "recherche" : n.$("tiroir").classList.contains("ouvert") ? "tiroir" : n.actif().replace("ecran-", ""));
+      etapes.push(etatCourant());
+      for (let i = 0; i < 6; i++) { await presser(); etapes.push(etatCourant()); }
+      const attendu = ["modale", "recherche", "tiroir", "a-propos", "profil", "accueil", "accueil"];
+      if (JSON.stringify(etapes) !== JSON.stringify(attendu)) retour.push("ordre : " + etapes.join(" → "));
+      if (quitte !== 1) retour.push("exitApp appelé " + quitte + " fois");
+    }
+    controle("㉑", "le bouton retour Android ferme dans le bon ordre", retour.length === 0,
+      retour.join(" ; ") || "modale → recherche → tiroir → À propos → Profil → Accueil → quitter (Capacitor simulé : App + Preferences)");
 
     controle("⑩", "aucune erreur dans la console au chargement", erreurs.length === 0 && fonctionne,
       erreurs.length ? erreurs.join(" | ")
-        : (fonctionne ? "0 erreur sur 6 ouvertures ; thème, 4 diapositives, Commencer → inscription" : "script exécuté mais état incomplet")
-          + (ignorees.length ? " (limites jsdom ignorées : canvas, scrollTo)" : ""));
+        : (fonctionne ? "0 erreur sur " + fenetres.length + " ouvertures ; thème, 4 diapositives, Commencer → inscription" : "script exécuté mais état incomplet")
+          + (ignorees.length ? " (limites jsdom ignorées : canvas, scrollTo, téléchargement)" : ""));
   } catch (e) {
     controle("⑩", "aucune erreur dans la console au chargement", false, "exception du vérificateur : " + e.message);
   } finally {
@@ -435,7 +693,7 @@ controleCapacitor();
 controleGitignore();
 controlesSecurite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫", "⑭", "⑮", "⑰"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
