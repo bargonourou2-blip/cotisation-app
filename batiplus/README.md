@@ -22,7 +22,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 3 | Accueil, profil, à propos, réglages, thème, navigation complète | ✔ livrée |
 | 4 | Identités visuelles : logos réels, icônes, photos | ✔ livrée |
 | 5 | Assistant Nouveau chantier (5 étapes) et moteur de calcul NF C 15-100 | ✔ livrée |
-| 6 | Résultat de l'étude : circuits, schéma du tableau, conformité | à venir |
+| 6 | Résultat de l'étude : circuits, schéma du tableau, conformité | ✔ livrée |
 | 7 | Le devis : catalogue lié, lignes modifiables, main-d'œuvre 4 modes | à venir |
 | 8 | Feuille A4 imprimable, PDF natif, partage WhatsApp | à venir |
 | 9 | Clients, chantiers, historique des devis, statistiques | à venir |
@@ -169,7 +169,7 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   relu passe par `chantierValide()` (champ par champ, bornes, pièces invalides écartées) puis est
   réécrit propre.
 - **Enregistrement** : « Enregistrer le chantier » range le chantier (statut « étudié ») dans
-  `bp_v1_chantiers`, efface le brouillon et revient à l'accueil avec une confirmation.
+  `bp_v1_chantiers`, efface le brouillon et ouvre l'écran Résultat avec une confirmation.
 - **Moteur** : fonctions pures dans `src/moteur.js`, entre `/* ==== MOTEUR NF C 15-100 ==== */` et
   `/* ==== FIN DU MOTEUR ==== */` (aucun accès au DOM ni au stockage). Les règles chiffrées
   (prises par pièce, 8 points par circuit, sections, calibres, différentiels, réserve du coffret,
@@ -181,6 +181,35 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   à jour `ATTENDUS` dans `src/scripts/chantiers-types.mjs`.
 - **Bornes** : surface de 0,5 à 2 000 m² par pièce, 60 pièces, 50 prises et 50 points par pièce,
   20 appareils de chaque type, distance 0 à 500 m, hauteur 2 à 6 m, montants ≤ 100 000 000.
+
+### Résultat de l'étude (étape 6)
+
+- **Écran `resultat`** : en-tête (chantier, client, lieu, surface), mention obligatoire « Étude
+  indicative. L'électricien vérifie et reste responsable de l'exécution conforme. », rappel du total
+  général et 6 onglets ARIA (clic, flèches, Début, Fin ; 3 × 2 sur téléphone, 6 en ligne dès 900 px) :
+  1. **Circuits** : n°, pièces, section, calibre, points, différentiel, longueur ; liste des différentiels.
+  2. **Tableau** : schéma SVG construit élément par élément (`createElementNS`, jamais de balisage en
+     texte), rangées de 13 modules, accolade sous chaque différentiel et ses disjoncteurs, légende
+     et détail rangée par rangée en texte.
+  3. **Matériel** : quantités du moteur × prix du catalogue, chaque quantité et chaque prix modifiable
+     pour ce chantier (champ vidé = retour au calcul) ; prix à 0 → étiquette jaune « Prix à compléter ».
+  4. **Main-d'œuvre** : au point, forfait, journées, lignes libres ; total en gros caractères jaunes.
+  5. **Conformité** : chaque point « Conforme » ou « À vérifier », expliqué en français simple.
+  6. **Total** : matériel, main-d'œuvre, remise (% ou montant), TVA activable (désactivée par défaut,
+     18 % modifiable), TOTAL GÉNÉRAL, acompte (40 % par défaut) et reste à payer ; bouton « Créer le
+     devis » (visible dès que l'écran Devis existera, étape 7).
+- **Recalcul** : chaque frappe met à jour le chantier en mémoire, relance `chiffrerChantier()` et
+  réécrit seulement les valeurs calculées (le champ en cours de saisie ne bouge pas). Enregistrement
+  automatique 600 ms après la dernière saisie, en quittant l'écran, en arrière-plan et à la
+  déconnexion (« Modifications enregistrées à HH:MM »).
+- **Moteur** : `disposerTableau()` (un groupe différentiel + disjoncteurs n'est jamais coupé entre deux
+  rangées, les places libres sont comblées), `verifierConformite()`, `calculerTotal()` et
+  `chiffrerChantier()` sont des fonctions pures, arrondies aux décimales de la devise (0 en FCFA).
+- **Prix** : `lireCatalogue()` est le seul accès aux prix du matériel : catalogue de départ indicatif
+  en FCFA (`CATALOGUE_DEFAUT`, `src/donnees.js`), remplacé référence par référence par les prix de
+  l'électricien (`bp_v1_catalogue`, écran « Mes prix » à l'étape 7). Autre devise : prix à 0, à compléter.
+- **Accès** : bloc « Dernières études » sur l'accueil (3 dernières) ; « Modifier le chantier » renvoie
+  l'étude dans l'assistant, qui la réenregistre sur le même chantier.
 
 ## Structure
 

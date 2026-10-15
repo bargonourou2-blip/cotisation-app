@@ -26,7 +26,8 @@ const CLES_STOCKAGE = Object.freeze({
   verrou: "bp_v1_verrou",
   devis: "bp_v1_devis",
   chantiers: "bp_v1_chantiers",
-  brouillonChantier: "bp_v1_brouillon_chantier"
+  brouillonChantier: "bp_v1_brouillon_chantier",
+  catalogue: "bp_v1_catalogue"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -291,7 +292,7 @@ const SEJOUR_GRAND = Object.freeze({ surface: 28, prisesMin: 7 });
 /* Circuits : sections en mm², calibres en A. */
 const REGLES_CIRCUITS = Object.freeze({
   prises: Object.freeze({ section: 1.5, calibre: 16, max: 8 }),
-  prisesCuisine: Object.freeze({ section: 2.5, calibre: 20, max: 12 }),
+  prisesCuisine: Object.freeze({ section: 2.5, calibre: 20, max: 6 }),
   eclairage: Object.freeze({ section: 1.5, calibre: 10, max: 8 }),
   differentiel: Object.freeze({ circuitsMax: 8, minimum: 2, sensibilite: 30 }),
   margeCable: 0.12,
@@ -325,6 +326,45 @@ const MAIN_OEUVRE_POINTS = Object.freeze({
 });
 const TARIF_JOURNEE_DEFAUT = 10000;
 const DEVISES_PRIX_DEFAUT = Object.freeze(["XOF", "XAF"]);
+
+/* ==========================================================================
+   Résultat de l'étude (étape 6)
+   ========================================================================== */
+const MENTION_ETUDE = "Étude indicative. L'électricien vérifie et reste responsable de l'exécution conforme.";
+const ONGLETS_RESULTAT = Object.freeze([
+  Object.freeze({ id: "circuits", libelle: "Circuits" }),
+  Object.freeze({ id: "tableau", libelle: "Tableau" }),
+  Object.freeze({ id: "materiel", libelle: "Matériel" }),
+  Object.freeze({ id: "main-oeuvre", libelle: "Main-d'œuvre" }),
+  Object.freeze({ id: "conformite", libelle: "Conformité" }),
+  Object.freeze({ id: "total", libelle: "Total" })
+]);
+const CATEGORIES_MATERIEL = Object.freeze({
+  tableau: "Tableau et protections",
+  cables: "Câbles et gaines",
+  appareillage: "Appareillage",
+  terre: "Prise de terre"
+});
+const TVA_DEFAUT = 18;
+const TVA_MAX = 30;
+const ACOMPTE_DEFAUT = 40;
+
+/* Catalogue de départ : prix INDICATIFS en FCFA (XOF/XAF), un par référence de matériel.
+   lireCatalogue() est la SEULE source des prix ; les prix de l'électricien (« Mes prix »,
+   étape 7) remplaceront ceux-ci. Dans une autre devise, tous les prix partent de 0
+   et la ligne est signalée « Prix à compléter ». */
+const CATALOGUE_DEFAUT = Object.freeze({
+  "coffret-1r": 15000, "coffret-2r": 30000, "coffret-3r": 45000, "coffret-4r": 60000, "coffret-5r": 75000, "coffret-6r": 90000,
+  peigne: 2500, bornier: 2000,
+  "disjoncteur-10": 3000, "disjoncteur-16": 3000, "disjoncteur-20": 3500, "disjoncteur-32": 4500,
+  "differentiel-2p-40-AC": 20000, "differentiel-2p-63-AC": 25000, "differentiel-2p-40-A": 30000, "differentiel-2p-63-A": 35000,
+  "differentiel-4p-40-AC": 45000, "differentiel-4p-63-AC": 55000, "differentiel-4p-40-A": 60000, "differentiel-4p-63-A": 70000,
+  "parafoudre-2p": 30000, "parafoudre-4p": 55000,
+  "cable-1.5": 400, "cable-2.5": 600, "cable-6": 1500, "gaine-20": 150, "gaine-25": 250,
+  "alimentation-3g10": 2500, "alimentation-5g10": 4000,
+  prise: 1500, "prise-etanche": 3500, interrupteur: 1200, "va-et-vient": 1500, point: 1000, boite: 200, derivation: 500,
+  piquet: 7500, "cable-terre": 1500, barrette: 3500, regard: 5000
+});
 
 /* ---------- Identité visuelle (étape 4) ---------- */
 /* Remplace toute photo d'électricien manquante : jamais de cadre vide. */

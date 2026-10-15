@@ -239,6 +239,7 @@ function montrer(id, options) {
   }
   const precedent = montrer.ecranCourant;
   const retour = Boolean(options && options.retour);
+  if (precedent === "resultat" && destination !== "resultat" && resultat.minuterie) enregistrerResultat();
   if (estEcranEntree(destination) || destination === ECRAN_DEPART) {
     etat.historique = [];
   } else if (!retour && precedent && precedent !== destination && !estEcranEntree(precedent)) {
@@ -265,6 +266,7 @@ function preparerEcran(id) {
   else if (id === "profil") remplirProfil();
   else if (id === "admin") reinitialiserAdmin();
   else if (id === "nouveau-chantier") ouvrirAssistant();
+  else if (id === "resultat") ouvrirResultat();
 }
 
 /* Un seul écouteur pour tous les éléments [data-ecran] (menu, onglets, raccourcis…). */
@@ -1127,7 +1129,10 @@ async function ouvrirSession(compte) {
 
 async function fermerSession() {
   if (assistant.minuterie) await enregistrerBrouillon();
+  if (resultat.minuterie) await enregistrerResultat();
   assistant.chantier = null;
+  resultat.chantier = null;
+  resultat.id = null;
   await supprimerValeur(CLES_STOCKAGE.session);
   etat.compte = null;
   etat.abonnement = null;
@@ -1584,6 +1589,7 @@ async function afficherAccueil() {
   $("accueil-devis").replaceChildren(...derniers.map((d) => creerLigneDevis(d, compte.devise)));
   $("accueil-devis-vide").hidden = derniers.length > 0;
   $("astuce-texte").textContent = astuceDuJour();
+  await afficherEtudesAccueil(compte);
 }
 
 /* ---------- Recherche ---------- */
@@ -2306,9 +2312,23 @@ function entierBorne(valeur, min, max, defaut) {
   return Math.round(borner(valeur, min, max, defaut));
 }
 
+/* « + 0 » : jamais de « -0 » affiché. */
 function arrondi(valeur, decimales) {
   const facteur = Math.pow(10, decimales);
-  return Math.round(valeur * facteur) / facteur;
+  return Math.round(valeur * facteur) / facteur + 0;
+}
+
+function decimalesDevise(codeDevise) {
+  return Object.prototype.hasOwnProperty.call(DEVISES, codeDevise) ? DEVISES[codeDevise].decimales : 0;
+}
+
+/* Montant borné de 0 au plafond, arrondi aux décimales de la devise (0 en FCFA, 2 sinon). */
+function montantBorne(valeur, decimales, defaut) {
+  return arrondi(borner(valeur, 0, BORNES_CHANTIER.prixMax, defaut), decimales);
+}
+
+function saisieManuelle(valeur) {
+  return valeur !== null && valeur !== undefined && valeur !== "";
 }
 
 /* Arrondi supérieur protégé contre les erreurs de virgule flottante (28,000000001 → 28). */
@@ -2457,8 +2477,8 @@ function repartirDifferentiels(circuits, tri) {
   return differentiels;
 }
 
-function ajouterMateriel(liste, ref, designation, unite, quantite) {
-  if (quantite > 0) liste.push({ ref, designation, unite, quantite });
+function ajouterMateriel(liste, categorie, ref, designation, unite, quantite) {
+  if (quantite > 0) liste.push({ categorie, ref, designation, unite, quantite });
 }
 
 function formaterSection(section) {
@@ -2473,34 +2493,175 @@ function prixDefautMainOeuvre(id, codeDevise) {
 function calculerMainOeuvre(saisie, quantitesAuto, codeDevise) {
   const mo = saisie && typeof saisie === "object" ? saisie : {};
   const points = mo.points && typeof mo.points === "object" ? mo.points : {};
-  const prixMax = BORNES_CHANTIER.prixMax;
+  const dec = decimalesDevise(codeDevise);
   const lignes = Object.keys(MAIN_OEUVRE_POINTS).map((id) => {
     const reglage = points[id] && typeof points[id] === "object" ? points[id] : {};
     const auto = quantitesAuto[id] || 0;
-    const quantiteManuelle = reglage.quantite !== null && reglage.quantite !== undefined && reglage.quantite !== "";
-    const prixManuel = reglage.prix !== null && reglage.prix !== undefined && reglage.prix !== "";
-    const quantite = quantiteManuelle ? entierBorne(reglage.quantite, 0, BORNES_CHANTIER.quantiteMax, auto) : auto;
-    const prix = prixManuel ? entierBorne(reglage.prix, 0, prixMax, 0) : prixDefautMainOeuvre(id, codeDevise);
-    return { id, libelle: MAIN_OEUVRE_POINTS[id].libelle, auto, quantite, prix, montant: quantite * prix };
+    const quantite = saisieManuelle(reglage.quantite) ? entierBorne(reglage.quantite, 0, BORNES_CHANTIER.quantiteMax, auto) : auto;
+    const prix = saisieManuelle(reglage.prix) ? montantBorne(reglage.prix, dec, 0) : prixDefautMainOeuvre(id, codeDevise);
+    return { id, libelle: MAIN_OEUVRE_POINTS[id].libelle, auto, quantite, prix, montant: arrondi(quantite * prix, dec) };
   });
   const journees = mo.journees && typeof mo.journees === "object" ? mo.journees : {};
   const ouvriers = entierBorne(journees.ouvriers, 0, BORNES_CHANTIER.ouvriersMax, 0);
   const jours = arrondi(borner(journees.jours, 0, BORNES_CHANTIER.joursMax, 0), 1);
-  const tarifSaisi = journees.tarif !== null && journees.tarif !== undefined && journees.tarif !== "";
-  const tarif = tarifSaisi ? entierBorne(journees.tarif, 0, prixMax, 0)
+  const tarif = saisieManuelle(journees.tarif) ? montantBorne(journees.tarif, dec, 0)
     : (DEVISES_PRIX_DEFAUT.includes(codeDevise) ? TARIF_JOURNEE_DEFAUT : 0);
   const libres = (Array.isArray(mo.libres) ? mo.libres : []).slice(0, BORNES_CHANTIER.lignesLibresMax)
     .filter((l) => l && typeof l === "object")
-    .map((l) => ({ libelle: texteBorne(l.libelle, 120), montant: entierBorne(l.montant, 0, prixMax, 0) }));
-  const totalPoints = lignes.reduce((s, l) => s + l.montant, 0);
-  const forfait = entierBorne(mo.forfait, 0, prixMax, 0);
-  const totalJournees = Math.round(ouvriers * jours * tarif);
-  const totalLibres = libres.reduce((s, l) => s + l.montant, 0);
+    .map((l) => ({ libelle: texteBorne(l.libelle, 120), montant: montantBorne(l.montant, dec, 0) }));
+  const totalPoints = arrondi(lignes.reduce((s, l) => s + l.montant, 0), dec);
+  const forfait = montantBorne(mo.forfait, dec, 0);
+  const totalJournees = arrondi(ouvriers * jours * tarif, dec);
+  const totalLibres = arrondi(libres.reduce((s, l) => s + l.montant, 0), dec);
   return {
     lignes, totalPoints, forfait,
     journees: { ouvriers, jours, tarif, total: totalJournees },
     libres, totalLibres,
-    total: totalPoints + forfait + totalJournees + totalLibres
+    total: arrondi(totalPoints + forfait + totalJournees + totalLibres, dec)
+  };
+}
+
+/* Disposition du tableau : chaque différentiel est suivi de ses disjoncteurs, et un groupe
+   n'est jamais coupé entre deux rangées (au plus 4 + 8 = 12 modules, une rangée en a 13).
+   Un groupe suit le précédent s'il tient dans la même rangée ; sinon il comble la place
+   libre d'une rangée précédente avant d'en ouvrir une nouvelle : pas de rangée gaspillée. */
+function disposerTableau(circuits, differentiels, parafoudre, tri) {
+  const largeurDouble = tri ? 4 : 2;
+  const groupes = [];
+  if (parafoudre) groupes.push([{ type: "parafoudre", largeur: largeurDouble }]);
+  differentiels.forEach((d, index) => {
+    const groupe = [{ type: "differentiel", largeur: largeurDouble, numero: index + 1, calibre: d.calibre, typeDifferentiel: d.type }];
+    d.circuits.forEach((nom) => {
+      const circuit = circuits.find((c) => c.nom === nom);
+      if (circuit) groupe.push({ type: "disjoncteur", largeur: 1, numero: circuit.numero, calibre: circuit.calibre, genre: circuit.genre, differentiel: index + 1 });
+    });
+    groupes.push(groupe);
+  });
+  const N = REGLES_CIRCUITS.modulesParRangee;
+  const rangees = [];
+  groupes.forEach((groupe) => {
+    const largeur = groupe.reduce((s, m) => s + m.largeur, 0);
+    const derniere = rangees[rangees.length - 1];
+    let courante = derniere && derniere.occupe + largeur <= N ? derniere : rangees.find((r) => r.occupe + largeur <= N);
+    if (!courante) {
+      courante = { modules: [], occupe: 0 };
+      rangees.push(courante);
+    }
+    groupe.forEach((module) => {
+      courante.modules.push({ ...module, position: courante.occupe });
+      courante.occupe += module.largeur;
+    });
+  });
+  return rangees;
+}
+
+/* Complète chaque rangée par des emplacements libres (réserve) et ajoute les rangées vides. */
+function completerTableau(disposition, nombreRangees) {
+  const N = REGLES_CIRCUITS.modulesParRangee;
+  return Array.from({ length: nombreRangees }, (_, index) => {
+    const rangee = disposition[index] || { modules: [], occupe: 0 };
+    const modules = [...rangee.modules];
+    for (let position = rangee.occupe; position < N; position += 1) modules.push({ type: "libre", largeur: 1, position });
+    return { numero: index + 1, occupe: rangee.occupe, modules };
+  });
+}
+
+/* Liste de conformité : chaque point est « conforme » ou « à vérifier », expliqué simplement. */
+function verifierConformite(etude) {
+  const liste = [];
+  const ajouter = (conforme, titre, explication) => liste.push({ etat: conforme ? "conforme" : "verifier", titre, explication });
+  const R = REGLES_CIRCUITS;
+  const minimum = { sejour: true, chambre: true, cuisine: true };
+  const manquePrises = etude.pieces.filter((p) => minimum[p.type] && p.prises < p.proposition.prises);
+  ajouter(!manquePrises.length, "Nombre de prises par pièce", manquePrises.length
+    ? "Pas assez de prises : " + manquePrises.map((p) => p.nom + " " + p.prises + " au lieu de " + p.proposition.prises).join(", ") + ". Ajoutez-en pour éviter les multiprises."
+    : "Chaque pièce a assez de prises : séjour 1 pour 4 m² (5 au minimum), chambre 3, cuisine 6 dont 4 au-dessus du plan de travail.");
+  const sansLumiere = etude.pieces.filter((p) => p.points < 1);
+  ajouter(!sansLumiere.length, "Éclairage dans chaque pièce", sansLumiere.length
+    ? "Pièce sans point lumineux : " + sansLumiere.map((p) => p.nom).join(", ") + ". Chaque pièce doit avoir au moins une lampe commandée par un interrupteur."
+    : "Chaque pièce a au moins un point lumineux commandé par un interrupteur.");
+  const eclairages = etude.circuits.filter((c) => c.genre === "eclairage");
+  ajouter(eclairages.every((c) => c.points <= R.eclairage.max), "Circuits d'éclairage",
+    eclairages.length + (eclairages.length > 1 ? " circuits" : " circuit") + " : 8 lampes au plus par circuit, fil de 1,5 mm², disjoncteur de 10 A.");
+  const prises = etude.circuits.filter((c) => c.genre === "prises");
+  const cuisine = etude.circuits.filter((c) => c.genre === "cuisine");
+  ajouter(prises.every((c) => c.points <= R.prises.max) && cuisine.every((c) => c.points <= R.prisesCuisine.max), "Circuits de prises",
+    "8 prises au plus par circuit en 1,5 mm² avec un disjoncteur de 16 A" + (cuisine.length ? " ; cuisine sur son propre circuit en 2,5 mm² et 20 A, 6 prises au plus." : "."));
+  const dedies = etude.circuits.filter((c) => c.genre === "dedie");
+  if (dedies.length) ajouter(true, "Gros appareils", "Chaque gros appareil (" + dedies.map((c) => c.nom).join(", ") + ") a sa propre ligne et son propre disjoncteur.");
+  const coherence = { 1.5: [10, 16], 2.5: [20], 6: [32] };
+  ajouter(etude.circuits.every((c) => (coherence[c.section] || []).includes(c.calibre)), "Fils et disjoncteurs assortis",
+    "Chaque disjoncteur est adapté à la grosseur du fil qu'il protège : le fil ne peut pas chauffer.");
+  const protegees = new Set(etude.differentiels.flatMap((d) => d.circuits));
+  const assez = etude.circuits.length < 2 || etude.differentiels.length >= R.differentiel.minimum;
+  ajouter(protegees.size === etude.circuits.length && assez && etude.differentiels.every((d) => d.circuits.length <= R.differentiel.circuitsMax),
+    "Protection des personnes (30 mA)", "Tous les circuits passent par un différentiel 30 mA qui coupe le courant en cas de fuite : "
+      + etude.differentiels.length + (etude.differentiels.length > 1 ? " différentiels" : " différentiel") + ", 8 circuits au plus chacun.");
+  const typeA = etude.circuits.filter((c) => c.typeA);
+  if (typeA.length) {
+    const bienProteges = typeA.every((c) => etude.differentiels.some((d) => d.type === "A" && d.circuits.includes(c.nom)));
+    ajouter(bienProteges, "Différentiel de type A", "La plaque de cuisson et le lave-linge sont sur un différentiel de type A, le seul qui détecte leurs fuites particulières.");
+  }
+  ajouter(true, "Fil de terre partout", "Tous les câbles sont des 3G (phase, neutre et terre) : chaque prise et chaque lampe est reliée à la terre.");
+  ajouter(etude.options.terreNeuve, "Prise de terre", etude.options.terreNeuve
+    ? "Une prise de terre neuve est prévue. Mesurez sa résistance après la pose : elle doit être inférieure à 100 ohms."
+    : "La terre existante n'est pas refaite : mesurez sa résistance sur place (moins de 100 ohms), sinon prévoyez une terre neuve.");
+  if (etude.pieces.some((p) => p.type === "salle-eau")) {
+    ajouter(false, "Salle d'eau", "À vérifier sur place : aucune prise ni interrupteur à moins de 60 cm de la douche, prise étanche, et toutes les parties métalliques reliées à la terre.");
+  }
+  ajouter(etude.options.parafoudre, "Parafoudre", etude.options.parafoudre
+    ? "Un parafoudre protège les appareils contre les surtensions dues à la foudre."
+    : "Pas de parafoudre : il est fortement conseillé dans les zones à orages pour protéger les appareils.");
+  ajouter(etude.coffret.capacite >= etude.coffret.modules * (1 + R.reserveModules) - 1e-9, "Place libre dans le tableau",
+    etude.coffret.capacite - etude.coffret.modules + " emplacements libres sur " + etude.coffret.capacite + " : au moins 20 % de réserve pour ajouter des circuits plus tard.");
+  ajouter(etude.options.distance > 0, "Câble d'alimentation", etude.options.distance > 0
+    ? etude.cableAlimentation + " m de câble entre le compteur et le tableau sont comptés."
+    : "Distance compteur – tableau non indiquée : le câble d'alimentation n'est pas compté. Mesurez-la et corrigez le chantier.");
+  return liste;
+}
+
+/* Remise (% ou montant), TVA activable, acompte : tout est borné et arrondi à la devise. */
+function calculerTotal(totalMateriel, totalMainOeuvre, reglages, decimales) {
+  const r = reglages && typeof reglages === "object" ? reglages : {};
+  const sousTotal = arrondi(totalMateriel + totalMainOeuvre, decimales);
+  const typeRemise = r.remiseType === "montant" ? "montant" : "pourcent";
+  const valeurRemise = typeRemise === "pourcent" ? arrondi(borner(r.remise, 0, 100, 0), 2) : montantBorne(r.remise, decimales, 0);
+  const remise = typeRemise === "pourcent" ? arrondi(sousTotal * valeurRemise / 100, decimales) : Math.min(valeurRemise, sousTotal);
+  const base = arrondi(sousTotal - remise, decimales);
+  const tvaActive = r.tva === true;
+  const tauxTva = arrondi(borner(r.tauxTva, 0, TVA_MAX, TVA_DEFAUT), 2);
+  const tva = tvaActive ? arrondi(base * tauxTva / 100, decimales) : 0;
+  const totalGeneral = arrondi(base + tva, decimales);
+  const tauxAcompte = arrondi(borner(r.acompte, 0, 100, ACOMPTE_DEFAUT), 2);
+  const acompte = arrondi(totalGeneral * tauxAcompte / 100, decimales);
+  return {
+    materiel: totalMateriel, mainOeuvre: totalMainOeuvre, sousTotal, typeRemise, valeurRemise, remise, base,
+    tvaActive, tauxTva, tva, totalGeneral, tauxAcompte, acompte, reste: arrondi(totalGeneral - acompte, decimales)
+  };
+}
+
+/* Chiffrage complet : étude + prix du catalogue (ou prix modifiés sur la ligne) + totaux. */
+function chiffrerChantier(chantier, catalogue, codeDevise) {
+  const c = chantier && typeof chantier === "object" ? chantier : {};
+  const etude = etudierChantier(c, codeDevise);
+  const dec = decimalesDevise(codeDevise);
+  const cat = catalogue && typeof catalogue === "object" ? catalogue : {};
+  const reglages = c.materiel && typeof c.materiel === "object" ? c.materiel : {};
+  const materiel = etude.materiel.map((ligne) => {
+    const reglage = Object.prototype.hasOwnProperty.call(reglages, ligne.ref) && reglages[ligne.ref] && typeof reglages[ligne.ref] === "object" ? reglages[ligne.ref] : {};
+    const article = Object.prototype.hasOwnProperty.call(cat, ligne.ref) ? cat[ligne.ref] : null;
+    const prixCatalogue = article ? montantBorne(article.prix, dec, 0) : 0;
+    const quantite = saisieManuelle(reglage.quantite) ? entierBorne(reglage.quantite, 0, BORNES_CHANTIER.quantiteMax, ligne.quantite) : ligne.quantite;
+    const prix = saisieManuelle(reglage.prix) ? montantBorne(reglage.prix, dec, prixCatalogue) : prixCatalogue;
+    return { ...ligne, auto: ligne.quantite, quantite, prixCatalogue, prix, montant: arrondi(quantite * prix, dec), aCompleter: prix === 0 };
+  });
+  const totalMateriel = arrondi(materiel.reduce((s, l) => s + l.montant, 0), dec);
+  return {
+    etude,
+    materiel,
+    totalMateriel,
+    conformite: verifierConformite(etude),
+    total: calculerTotal(totalMateriel, etude.mainOeuvre.total, c.totaux, dec)
   };
 }
 
@@ -2544,8 +2705,10 @@ function etudierChantier(chantier, codeDevise) {
   const modulesDifferentiel = tri ? 4 : 2;
   const modules = circuits.length + differentiels.length * modulesDifferentiel + (options.parafoudre ? modulesDifferentiel : 0);
   const modulesReserves = plafond(modules * (1 + REGLES_CIRCUITS.reserveModules));
-  const rangees = modules > 0 ? Math.max(1, plafond(modulesReserves / REGLES_CIRCUITS.modulesParRangee)) : 0;
+  const disposition = disposerTableau(circuits, differentiels, options.parafoudre, tri);
+  const rangees = modules > 0 ? Math.max(1, plafond(modulesReserves / REGLES_CIRCUITS.modulesParRangee), disposition.length) : 0;
   const coffret = { modules, modulesReserves, rangees, capacite: rangees * REGLES_CIRCUITS.modulesParRangee };
+  const tableau = completerTableau(disposition, rangees);
 
   const cables = {};
   circuits.forEach((circuit) => {
@@ -2561,15 +2724,16 @@ function etudierChantier(chantier, codeDevise) {
   const vaEtVient = avecPoints.filter((p) => TYPES_PIECES[p.type].commande === "va-et-vient").length;
 
   const materiel = [];
+  const poles = tri ? "4p" : "2p";
   if (rangees > 0) {
-    ajouterMateriel(materiel, "coffret", "Coffret " + rangees + (rangees > 1 ? " rangées" : " rangée") + " de " + REGLES_CIRCUITS.modulesParRangee + " modules", "u", 1);
-    ajouterMateriel(materiel, "peigne", "Peigne d'alimentation " + REGLES_CIRCUITS.modulesParRangee + " modules", "u", rangees);
-    ajouterMateriel(materiel, "bornier", "Bornier de terre et de neutre", "u", rangees);
+    ajouterMateriel(materiel, "tableau", "coffret-" + rangees + "r", "Coffret " + rangees + (rangees > 1 ? " rangées" : " rangée") + " de " + REGLES_CIRCUITS.modulesParRangee + " modules", "u", 1);
+    ajouterMateriel(materiel, "tableau", "peigne", "Peigne d'alimentation " + REGLES_CIRCUITS.modulesParRangee + " modules", "u", rangees);
+    ajouterMateriel(materiel, "tableau", "bornier", "Bornier de terre et de neutre", "u", rangees);
   }
   const parCalibre = {};
   circuits.forEach((circuit) => { parCalibre[circuit.calibre] = (parCalibre[circuit.calibre] || 0) + 1; });
   Object.keys(parCalibre).map(Number).sort((a, b) => a - b).forEach((calibre) => {
-    ajouterMateriel(materiel, "disjoncteur-" + calibre, "Disjoncteur divisionnaire 1P+N " + calibre + " A", "u", parCalibre[calibre]);
+    ajouterMateriel(materiel, "tableau", "disjoncteur-" + calibre, "Disjoncteur divisionnaire 1P+N " + calibre + " A", "u", parCalibre[calibre]);
   });
   const parDifferentiel = {};
   differentiels.forEach((d) => {
@@ -2579,31 +2743,31 @@ function etudierChantier(chantier, codeDevise) {
   });
   Object.keys(parDifferentiel).sort().forEach((cle) => {
     const { d, quantite } = parDifferentiel[cle];
-    ajouterMateriel(materiel, "differentiel-" + cle, "Interrupteur différentiel " + (tri ? "4P " : "2P ") + d.calibre + " A 30 mA type " + d.type, "u", quantite);
+    ajouterMateriel(materiel, "tableau", "differentiel-" + poles + "-" + cle, "Interrupteur différentiel " + poles.toUpperCase() + " " + d.calibre + " A 30 mA type " + d.type, "u", quantite);
   });
   if (options.parafoudre && rangees > 0) {
-    ajouterMateriel(materiel, "parafoudre", "Parafoudre " + (tri ? "4P" : "2P") + " avec protection intégrée", "u", 1);
+    ajouterMateriel(materiel, "tableau", "parafoudre-" + poles, "Parafoudre " + poles.toUpperCase() + " avec protection intégrée", "u", 1);
   }
   Object.keys(cables).map(Number).sort((a, b) => a - b).forEach((section) => {
-    ajouterMateriel(materiel, "cable-" + section, "Câble 3G" + formaterSection(section) + " mm²", "m", cables[section]);
+    ajouterMateriel(materiel, "cables", "cable-" + section, "Câble 3G" + formaterSection(section) + " mm²", "m", cables[section]);
   });
   const gaine20 = circuits.filter((ci) => ci.section < 6).reduce((s, ci) => s + ci.longueur, 0);
   const gaine25 = circuits.filter((ci) => ci.section >= 6).reduce((s, ci) => s + ci.longueur, 0);
-  ajouterMateriel(materiel, "gaine-20", "Gaine ICTA 20", "m", gaine20);
-  ajouterMateriel(materiel, "gaine-25", "Gaine ICTA 25", "m", gaine25);
-  ajouterMateriel(materiel, "alimentation", "Câble d'alimentation " + (tri ? "5G10" : "3G10") + " mm²", "m", alimentation);
-  ajouterMateriel(materiel, "prise", "Prise 2P+T 16 A", "u", prisesTotal - prisesEtanches);
-  ajouterMateriel(materiel, "prise-etanche", "Prise 2P+T 16 A étanche IP44", "u", prisesEtanches);
-  ajouterMateriel(materiel, "interrupteur", "Interrupteur simple allumage", "u", interrupteurs);
-  ajouterMateriel(materiel, "va-et-vient", "Interrupteur va-et-vient", "u", vaEtVient * 2);
-  ajouterMateriel(materiel, "point", "Point lumineux (DCL et douille)", "u", pointsTotal);
-  ajouterMateriel(materiel, "boite", "Boîte d'encastrement", "u", prisesTotal + interrupteurs + vaEtVient * 2 + pointsTotal);
-  ajouterMateriel(materiel, "derivation", "Boîte de dérivation", "u", avecPoints.length);
+  ajouterMateriel(materiel, "cables", "gaine-20", "Gaine ICTA 20", "m", gaine20);
+  ajouterMateriel(materiel, "cables", "gaine-25", "Gaine ICTA 25", "m", gaine25);
+  ajouterMateriel(materiel, "cables", "alimentation-" + (tri ? "5g10" : "3g10"), "Câble d'alimentation " + (tri ? "5G10" : "3G10") + " mm²", "m", alimentation);
+  ajouterMateriel(materiel, "appareillage", "prise", "Prise 2P+T 16 A", "u", prisesTotal - prisesEtanches);
+  ajouterMateriel(materiel, "appareillage", "prise-etanche", "Prise 2P+T 16 A étanche IP44", "u", prisesEtanches);
+  ajouterMateriel(materiel, "appareillage", "interrupteur", "Interrupteur simple allumage", "u", interrupteurs);
+  ajouterMateriel(materiel, "appareillage", "va-et-vient", "Interrupteur va-et-vient", "u", vaEtVient * 2);
+  ajouterMateriel(materiel, "appareillage", "point", "Point lumineux (DCL et douille)", "u", pointsTotal);
+  ajouterMateriel(materiel, "appareillage", "boite", "Boîte d'encastrement", "u", prisesTotal + interrupteurs + vaEtVient * 2 + pointsTotal);
+  ajouterMateriel(materiel, "appareillage", "derivation", "Boîte de dérivation", "u", avecPoints.length);
   if (options.terreNeuve) {
-    ajouterMateriel(materiel, "piquet", "Piquet de terre 1,5 m", "u", 1);
-    ajouterMateriel(materiel, "cable-terre", "Câble de terre vert-jaune 16 mm²", "m", 5);
-    ajouterMateriel(materiel, "barrette", "Barrette de mesure de terre", "u", 1);
-    ajouterMateriel(materiel, "regard", "Regard de visite", "u", 1);
+    ajouterMateriel(materiel, "terre", "piquet", "Piquet de terre 1,5 m", "u", 1);
+    ajouterMateriel(materiel, "terre", "cable-terre", "Câble de terre vert-jaune 16 mm²", "m", 5);
+    ajouterMateriel(materiel, "terre", "barrette", "Barrette de mesure de terre", "u", 1);
+    ajouterMateriel(materiel, "terre", "regard", "Regard de visite", "u", 1);
   }
 
   const quantitesAuto = {
@@ -2628,6 +2792,7 @@ function etudierChantier(chantier, codeDevise) {
     comptes: { eclairage: eclairage.length, prises: prises.length, cuisine: cuisine.length, dedies: dedies.length },
     differentiels,
     coffret,
+    tableau,
     cables,
     cableTotal: circuits.reduce((s, ci) => s + ci.longueur, 0),
     cableAlimentation: alimentation,
@@ -2651,14 +2816,56 @@ function quantiteFacultative(valeur, max) {
   return Number.isFinite(nombre) ? Math.round(Math.min(max, Math.max(0, nombre))) : null;
 }
 
+/* Prix saisi : vide = prix par défaut ; sinon borné, 2 décimales au plus (le moteur arrondit à la devise). */
+function montantFacultatif(valeur) {
+  if (valeur === null || valeur === undefined || valeur === "") return null;
+  const nombre = lireNombre(valeur);
+  return Number.isFinite(nombre) ? arrondi(Math.min(BORNES_CHANTIER.prixMax, Math.max(0, nombre)), 2) : null;
+}
+
+function montantSaisi(valeur) {
+  const montant = montantFacultatif(valeur);
+  return montant === null ? 0 : montant;
+}
+
+/* Réglages de l'écran Résultat : quantités et prix modifiés par ligne de matériel, remise, TVA, acompte. */
+function reglagesMaterielValides(source) {
+  const brut = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+  const resultat = {};
+  Object.keys(brut).slice(0, 80).forEach((ref) => {
+    if (!/^[a-z0-9.-]{1,40}$/.test(ref) || !brut[ref] || typeof brut[ref] !== "object") return;
+    const quantite = quantiteFacultative(brut[ref].quantite, BORNES_CHANTIER.quantiteMax);
+    const prix = montantFacultatif(brut[ref].prix);
+    if (quantite !== null || prix !== null) resultat[ref] = { quantite, prix };
+  });
+  return resultat;
+}
+
+function reglagesTotauxValides(source) {
+  const r = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+  const typeRemise = r.remiseType === "montant" ? "montant" : "pourcent";
+  return {
+    remiseType: typeRemise,
+    remise: typeRemise === "pourcent" ? arrondi(borner(r.remise, 0, 100, 0), 2) : montantSaisi(r.remise),
+    tva: r.tva === true,
+    tauxTva: arrondi(borner(r.tauxTva, 0, TVA_MAX, TVA_DEFAUT), 2),
+    acompte: arrondi(borner(r.acompte, 0, 100, ACOMPTE_DEFAUT), 2)
+  };
+}
+
 function formaterDecimal(nombre) {
   return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2, useGrouping: false }).format(nombre);
 }
 
 /* Écrit un texte dont les mots composés (« Chauffe-eau », « Va-et-vient ») ne sont jamais
    coupés au trait d'union : chacun est placé dans un span insécable. */
+/* Un nombre et son unité restent sur la même ligne (10 A, 30 mA, 1,5 mm², 25 m). */
+function lierUnites(texte) {
+  return String(texte).replace(/(\d) (?=(A|mA|mm²|m|m²|modules)(?![\wÀ-ÿ]))/g, "$1\u00A0");
+}
+
 function ecrireInsecable(element, texte) {
-  element.replaceChildren(...String(texte).split(/(\s+)/).filter(Boolean).map((morceau) => {
+  element.replaceChildren(...lierUnites(texte).split(/(\s+)/).filter(Boolean).map((morceau) => {
     if (!morceau.includes("-") || /\s/.test(morceau)) return document.createTextNode(morceau);
     const span = document.createElement("span");
     span.className = "insecable";
@@ -2708,7 +2915,7 @@ function chantierValide(objet, compteId) {
   Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => {
     const reglage = moPoints[id] && typeof moPoints[id] === "object" ? moPoints[id] : {};
     const quantite = quantiteFacultative(reglage.quantite, BORNES_CHANTIER.quantiteMax);
-    const prix = quantiteFacultative(reglage.prix, BORNES_CHANTIER.prixMax);
+    const prix = montantFacultatif(reglage.prix);
     if (quantite !== null || prix !== null) points[id] = { quantite, prix };
   });
   const journees = mo.journees && typeof mo.journees === "object" ? mo.journees : {};
@@ -2729,16 +2936,18 @@ function chantierValide(objet, compteId) {
     options,
     mainOeuvre: {
       points,
-      forfait: entierBorne(mo.forfait, 0, BORNES_CHANTIER.prixMax, 0),
+      forfait: montantSaisi(mo.forfait),
       journees: {
         ouvriers: entierBorne(journees.ouvriers, 0, BORNES_CHANTIER.ouvriersMax, 0),
         jours: arrondi(borner(journees.jours, 0, BORNES_CHANTIER.joursMax, 0), 1),
-        tarif: quantiteFacultative(journees.tarif, BORNES_CHANTIER.prixMax)
+        tarif: montantFacultatif(journees.tarif)
       },
       libres: (Array.isArray(mo.libres) ? mo.libres : []).slice(0, BORNES_CHANTIER.lignesLibresMax)
         .filter((l) => l && typeof l === "object")
-        .map((l) => ({ libelle: texteBorne(l.libelle, 120), montant: entierBorne(l.montant, 0, BORNES_CHANTIER.prixMax, 0) }))
-    }
+        .map((l) => ({ libelle: texteBorne(l.libelle, 120), montant: montantSaisi(l.montant) }))
+    },
+    materiel: reglagesMaterielValides(objet.materiel),
+    totaux: reglagesTotauxValides(objet.totaux)
   };
 }
 
@@ -2807,6 +3016,7 @@ function planifierBrouillon() {
 /* L'application passe en arrière-plan : le brouillon en attente est écrit tout de suite. */
 function surVisibilite() {
   if (document.visibilityState === "hidden" && assistant.minuterie) enregistrerBrouillon();
+  if (document.visibilityState === "hidden" && resultat.minuterie) enregistrerResultat();
 }
 
 /* ----- Construction des éléments fixes (une fois au démarrage) ----- */
@@ -2974,6 +3184,7 @@ async function remplirClientsConnus() {
 
 function remplirAssistant() {
   const c = assistant.chantier;
+  $("titre-nouveau-chantier").textContent = c.statut === "etudie" ? "Modifier le chantier" : "Nouveau chantier";
   $("chantier-client").value = c.client.nom;
   $("chantier-telephone").value = c.client.telephone ? formaterTelephone(c.client.telephone, etat.compte.pays) : "";
   $("chantier-nom").value = c.nom;
@@ -3397,7 +3608,7 @@ function lireMainOeuvre() {
   Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => {
     const ligne = etude.mainOeuvre.lignes.find((l) => l.id === id);
     const quantite = quantiteFacultative($("mo-qte-" + id).value.trim(), BORNES_CHANTIER.quantiteMax);
-    const prix = quantiteFacultative($("mo-prix-" + id).value.trim(), BORNES_CHANTIER.prixMax);
+    const prix = montantFacultatif($("mo-prix-" + id).value.trim());
     const reglage = {
       quantite: quantite === null || quantite === ligne.auto ? null : quantite,
       prix: prix === null || prix === prixDefautMainOeuvre(id, etat.compte.devise) ? null : prix
@@ -3405,14 +3616,14 @@ function lireMainOeuvre() {
     if (reglage.quantite === null && reglage.prix === null) delete mo.points[id];
     else mo.points[id] = reglage;
   });
-  mo.forfait = entierBorne($("mo-forfait").value.trim(), 0, BORNES_CHANTIER.prixMax, 0);
+  mo.forfait = montantSaisi($("mo-forfait").value.trim());
   mo.journees.ouvriers = entierBorne($("mo-ouvriers").value.trim(), 0, BORNES_CHANTIER.ouvriersMax, 0);
   mo.journees.jours = arrondi(borner($("mo-jours").value.trim(), 0, BORNES_CHANTIER.joursMax, 0), 1);
-  const tarif = quantiteFacultative($("mo-tarif").value.trim(), BORNES_CHANTIER.prixMax);
+  const tarif = montantFacultatif($("mo-tarif").value.trim());
   mo.journees.tarif = tarif === null || tarif === (DEVISES_PRIX_DEFAUT.includes(etat.compte.devise) ? TARIF_JOURNEE_DEFAUT : 0) ? null : tarif;
   mo.libres = [...$("liste-lignes-libres").children].map((li) => ({
     libelle: texteBorne(li.querySelector("[data-libre=\"libelle\"]").value, 120),
-    montant: entierBorne(li.querySelector("[data-libre=\"montant\"]").value.trim(), 0, BORNES_CHANTIER.prixMax, 0)
+    montant: montantSaisi(li.querySelector("[data-libre=\"montant\"]").value.trim())
   }));
 }
 
@@ -3600,8 +3811,688 @@ async function enregistrerChantier() {
   await ecrireBrouillon(null);
   assistant.chantier = null;
   $("etat-brouillon").textContent = "";
-  montrer(ECRAN_DEPART);
-  afficherToast("Chantier « " + propre.nom + " » enregistré.");
+  /* L'étude s'ouvre ; le bouton retour ne ramène pas dans l'assistant vide. */
+  ouvrirEtude(propre.id);
+  etat.historique = etat.historique.filter((ecran) => ecran !== "nouveau-chantier");
+  afficherToast("Chantier « " + propre.nom + " » enregistré. Voici l'étude.");
+}
+
+/* ==========================================================================
+   Résultat de l'étude (étape 6) : 6 onglets, schéma du tableau en SVG,
+   matériel et main-d'œuvre modifiables, total recalculé à chaque saisie.
+   ========================================================================== */
+
+const resultat = { id: null, chantier: null, chiffrage: null, catalogue: {}, onglet: "circuits", minuterie: 0, lignes: new Map() };
+
+const ICONES_ONGLETS = Object.freeze({
+  circuits: "i-eclair", tableau: "i-plan", materiel: "i-chantier", "main-oeuvre": "i-profil", conformite: "i-norme", total: "i-prix"
+});
+const LIBELLES_GENRES = Object.freeze({
+  differentiel: "Différentiel 30 mA", parafoudre: "Parafoudre", eclairage: "Éclairage", prises: "Prises",
+  cuisine: "Prises cuisine", dedie: "Gros appareil", libre: "Emplacement libre (réserve)"
+});
+const SCHEMA = Object.freeze({ module: 40, marge: 10, titre: 30, hauteur: 112, accolade: 18, ecart: 12 });
+
+/* Le SEUL accès aux prix du matériel : catalogue de départ (FCFA uniquement), puis
+   les prix enregistrés par l'électricien pour son compte, validés un par un. */
+async function lireCatalogue() {
+  const compte = etat.compte;
+  const devise = compte ? compte.devise : "XOF";
+  const decimales = decimalesDevise(devise);
+  const catalogue = {};
+  if (DEVISES_PRIX_DEFAUT.includes(devise)) {
+    Object.entries(CATALOGUE_DEFAUT).forEach(([ref, prix]) => { catalogue[ref] = { prix }; });
+  }
+  const brut = await lireJson(CLES_STOCKAGE.catalogue);
+  const propres = compte && brut && typeof brut === "object" && !Array.isArray(brut)
+    && Object.prototype.hasOwnProperty.call(brut, compte.id) && brut[compte.id] && typeof brut[compte.id] === "object"
+    ? brut[compte.id] : {};
+  Object.keys(propres).slice(0, 500).forEach((ref) => {
+    if (!/^[a-z0-9.-]{1,40}$/.test(ref)) return;
+    const prix = montantFacultatif(propres[ref]);
+    if (prix !== null) catalogue[ref] = { prix: arrondi(prix, decimales) };
+  });
+  return catalogue;
+}
+
+function deviseCompte() {
+  return etat.compte ? etat.compte.devise : "XOF";
+}
+
+function montantTexte(valeur) {
+  return formaterMontant(valeur, deviseCompte());
+}
+
+function svgElement(nom, attributs) {
+  const element = document.createElementNS(SVG_NS, nom);
+  Object.entries(attributs || {}).forEach(([cle, valeur]) => element.setAttribute(cle, String(valeur)));
+  return element;
+}
+
+/* ----- Construction (une fois au démarrage) ----- */
+
+function construireResultat() {
+  $("resultat-onglets").replaceChildren(...ONGLETS_RESULTAT.map((onglet) => {
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "onglet-resultat";
+    bouton.id = "onglet-" + onglet.id;
+    bouton.dataset.onglet = onglet.id;
+    bouton.setAttribute("role", "tab");
+    bouton.setAttribute("aria-controls", "panneau-" + onglet.id);
+    const libelle = document.createElement("span");
+    libelle.textContent = onglet.libelle;
+    bouton.append(creerIcone(ICONES_ONGLETS[onglet.id]), libelle);
+    return bouton;
+  }));
+  $("legende-tableau").replaceChildren(...Object.entries(LIBELLES_GENRES).map(([genre, libelle]) => {
+    const li = document.createElement("li");
+    const pastille = document.createElement("span");
+    pastille.className = "legende-pastille";
+    pastille.dataset.genre = genre;
+    const texte = document.createElement("span");
+    texte.textContent = libelle;
+    li.append(pastille, texte);
+    return li;
+  }));
+}
+
+function choisirOngletResultat(id, avecFocus) {
+  if (!ONGLETS_RESULTAT.some((o) => o.id === id)) return;
+  resultat.onglet = id;
+  ONGLETS_RESULTAT.forEach((onglet) => {
+    const bouton = $("onglet-" + onglet.id);
+    const actif = onglet.id === id;
+    bouton.setAttribute("aria-selected", actif ? "true" : "false");
+    bouton.tabIndex = actif ? 0 : -1;
+    $("panneau-" + onglet.id).hidden = !actif;
+  });
+  if (avecFocus) $("onglet-" + id).focus();
+}
+
+function surClicOngletResultat(evenement) {
+  const bouton = evenement.target.closest("[data-onglet]");
+  if (bouton) choisirOngletResultat(bouton.dataset.onglet, false);
+}
+
+/* Clavier : flèches, Début et Fin déplacent l'onglet actif (motif ARIA « tablist »). */
+function surClavierOngletsResultat(evenement) {
+  const index = ONGLETS_RESULTAT.findIndex((o) => o.id === resultat.onglet);
+  const dernier = ONGLETS_RESULTAT.length - 1;
+  const cibles = { ArrowRight: index === dernier ? 0 : index + 1, ArrowLeft: index === 0 ? dernier : index - 1, Home: 0, End: dernier };
+  if (!Object.prototype.hasOwnProperty.call(cibles, evenement.key)) return;
+  evenement.preventDefault();
+  choisirOngletResultat(ONGLETS_RESULTAT[cibles[evenement.key]].id, true);
+}
+
+/* ----- Ouverture ----- */
+
+async function ouvrirResultat() {
+  if (!etat.compte) return;
+  if (resultat.minuterie) await enregistrerResultat();
+  const chantiers = (await lireChantiers(etat.compte.id)).filter((c) => c.statut === "etudie");
+  const chantier = chantiers.find((c) => c.id === resultat.id)
+    || [...chantiers].sort((a, b) => Date.parse(b.modifieLe) - Date.parse(a.modifieLe))[0];
+  if (!chantier) {
+    montrer("nouveau-chantier", { retour: true });
+    return;
+  }
+  resultat.id = chantier.id;
+  resultat.chantier = chantier;
+  resultat.catalogue = await lireCatalogue();
+  $("etat-resultat").textContent = "";
+  remplirResultat();
+  choisirOngletResultat(resultat.onglet, false);
+}
+
+function ouvrirEtude(id) {
+  resultat.id = id;
+  resultat.onglet = "circuits";
+  montrer("resultat");
+}
+
+function remplirResultat() {
+  const c = resultat.chantier;
+  resultat.chiffrage = chiffrerChantier(c, resultat.catalogue, deviseCompte());
+  const { etude } = resultat.chiffrage;
+  ecrireInsecable($("titre-resultat"), c.nom || "Chantier sans nom");
+  $("resultat-infos").replaceChildren(...[
+    c.client.nom, c.lieu, formaterDecimal(etude.surfaceTotale) + "\u00A0m²", ALIMENTATIONS[c.alimentation]
+  ].filter(Boolean).map((texte) => ecrireInsecable(document.createElement("span"), texte)));
+  $("res-devise-forfait").textContent = "(" + (DEVISES[deviseCompte()] || DEVISES.XOF).libelle + ")";
+  afficherCircuitsResultat(etude);
+  afficherTableauResultat(etude);
+  afficherMaterielResultat();
+  afficherMainOeuvreResultat();
+  afficherConformite(resultat.chiffrage.conformite);
+  remplirReglagesTotaux();
+  actualiserResultat();
+}
+
+/* ----- 1. Circuits ----- */
+
+function libellePoints(circuit) {
+  if (circuit.genre === "eclairage") return pluriel(circuit.points, "point lumineux", "points lumineux");
+  if (circuit.genre === "dedie") return "1\u00A0appareil";
+  return pluriel(circuit.points, "prise", "prises");
+}
+
+function differentielDuCircuit(etude, circuit) {
+  const index = etude.differentiels.findIndex((d) => d.circuits.includes(circuit.nom));
+  if (index < 0) return "Aucun";
+  const d = etude.differentiels[index];
+  return "ID\u00A0" + (index + 1) + " · " + d.calibre + "\u00A0A " + d.type;
+}
+
+function afficherCircuitsResultat(etude) {
+  const chiffres = $("circuits-chiffres");
+  chiffres.replaceChildren();
+  ajouterChiffre(chiffres, "Circuits", formaterEntier(etude.circuits.length));
+  ajouterChiffre(chiffres, "Différentiels 30 mA", formaterEntier(etude.differentiels.length));
+  ajouterChiffre(chiffres, "Prises", formaterEntier(etude.totaux.prises) + (etude.totaux.prisesEtanches ? " dont " + formaterEntier(etude.totaux.prisesEtanches) + " étanches" : ""));
+  ajouterChiffre(chiffres, "Points lumineux", formaterEntier(etude.totaux.points));
+  ajouterChiffre(chiffres, "Surface totale", formaterDecimal(etude.surfaceTotale) + "\u00A0m²");
+  ajouterChiffre(chiffres, "Câble des circuits", formaterEntier(etude.cableTotal) + "\u00A0m");
+  $("liste-circuits").replaceChildren(...etude.circuits.map((circuit) => {
+    const li = document.createElement("li");
+    li.className = "circuit";
+    li.dataset.genre = circuit.genre;
+    const tete = document.createElement("div");
+    tete.className = "circuit-tete";
+    const numero = document.createElement("span");
+    numero.className = "circuit-numero";
+    numero.textContent = String(circuit.numero);
+    const textes = document.createElement("div");
+    const nom = ecrireInsecable(document.createElement("strong"), circuit.nom);
+    const pieces = document.createElement("span");
+    pieces.className = "aide";
+    ecrireInsecable(pieces, circuit.pieces.length ? circuit.pieces.map((p) => p.replace(/ /g, "\u00A0")).join(", ") : "Ligne directe depuis le tableau");
+    textes.append(nom, pieces);
+    tete.append(numero, textes);
+    const details = document.createElement("dl");
+    details.className = "circuit-details";
+    [["Section", formaterSection(circuit.section) + "\u00A0mm²"], ["Calibre", circuit.calibre + "\u00A0A"],
+      ["Points", libellePoints(circuit)], ["Différentiel", differentielDuCircuit(etude, circuit)], ["Longueur", formaterEntier(circuit.longueur) + "\u00A0m"]
+    ].forEach(([terme, valeur]) => {
+      const bloc = document.createElement("div");
+      const dt = document.createElement("dt");
+      dt.textContent = terme;
+      const dd = document.createElement("dd");
+      ecrireInsecable(dd, valeur);
+      bloc.append(dt, dd);
+      details.appendChild(bloc);
+    });
+    li.append(tete, details);
+    return li;
+  }));
+  $("liste-differentiels").replaceChildren(...etude.differentiels.map((d, index) => {
+    const li = document.createElement("li");
+    const titre = document.createElement("strong");
+    titre.textContent = "ID\u00A0" + (index + 1) + " · " + d.calibre + "\u00A0A 30\u00A0mA type\u00A0" + d.type + " · " + (etude.alimentation === "tri" ? "4P" : "2P");
+    const detail = document.createElement("span");
+    const numeros = d.circuits.map((nom) => {
+      const circuit = etude.circuits.find((ci) => ci.nom === nom);
+      return circuit ? circuit.numero : "";
+    });
+    ecrireInsecable(detail, (numeros.length > 1 ? "Circuits " : "Circuit ") + numeros.join(", ") + " : " + d.circuits.map((n) => n.replace(/ /g, "\u00A0")).join(", "));
+    li.append(titre, detail);
+    return li;
+  }));
+}
+
+/* ----- 2. Tableau : schéma SVG construit élément par élément (jamais de balisage en texte) ----- */
+
+function texteSchema(groupe, x, y, texte, classe) {
+  const element = svgElement("text", { x, y, class: classe, "text-anchor": "middle" });
+  element.textContent = texte;
+  groupe.appendChild(element);
+}
+
+function lignesModule(module) {
+  if (module.type === "differentiel") return [["ID " + module.numero, "t-fort", 44], [module.calibre + " A", "t-moyen", 67], ["30 mA", "t-petit", 86], ["type " + module.typeDifferentiel, "t-petit", 104]];
+  if (module.type === "parafoudre") return [["PF", "t-fort", 52], [module.largeur > 2 ? "4P" : "2P", "t-moyen", 78]];
+  if (module.type === "disjoncteur") return [[String(module.numero), "t-fort", 50], [module.calibre + "A", "t-calibre", 76]];
+  return [];
+}
+
+function dessinerTableau(etude) {
+  const S = SCHEMA;
+  const N = REGLES_CIRCUITS.modulesParRangee;
+  const pas = S.titre + S.hauteur + S.accolade + S.ecart;
+  const largeur = N * S.module + 2 * S.marge;
+  const hauteur = etude.tableau.length * pas - S.ecart + 2 * S.marge;
+  const svg = svgElement("svg", {
+    viewBox: "0 0 " + largeur + " " + hauteur, class: "schema", role: "img",
+    "aria-labelledby": "schema-titre", preserveAspectRatio: "xMidYMin meet"
+  });
+  const titre = svgElement("title", { id: "schema-titre" });
+  titre.textContent = "Schéma du tableau : " + pluriel(etude.coffret.rangees, "rangée", "rangées") + " de " + N + " modules";
+  svg.appendChild(titre);
+  svg.appendChild(svgElement("rect", { x: 1, y: 1, width: largeur - 2, height: hauteur - 2, rx: 14, class: "schema-coffret" }));
+  etude.tableau.forEach((rangee, index) => {
+    const y0 = S.marge + index * pas;
+    const groupeRangee = svgElement("g", { class: "schema-rangee", "data-rangee": rangee.numero });
+    const libelle = svgElement("text", { x: S.marge + 4, y: y0 + 21, class: "t-rangee" });
+    libelle.textContent = "Rangée " + rangee.numero;
+    groupeRangee.appendChild(libelle);
+    const yModule = y0 + S.titre;
+    groupeRangee.appendChild(svgElement("rect", { x: S.marge, y: yModule + S.hauteur / 2 - 5, width: N * S.module, height: 10, rx: 3, class: "schema-rail" }));
+    rangee.modules.forEach((module) => {
+      const x = S.marge + module.position * S.module + 2;
+      const l = module.largeur * S.module - 4;
+      const groupe = svgElement("g", { class: "module", "data-type": module.type, "data-genre": module.genre || module.type });
+      groupe.appendChild(svgElement("rect", { x, y: yModule, width: l, height: S.hauteur, rx: 6, class: "module-corps" }));
+      if (module.type !== "libre") groupe.appendChild(svgElement("rect", { x: x + 4, y: yModule + 4, width: l - 8, height: 12, rx: 3, class: "module-bande" }));
+      lignesModule(module).forEach(([texte, classe, dy]) => texteSchema(groupe, x + l / 2, yModule + dy, texte, classe));
+      groupeRangee.appendChild(groupe);
+    });
+    /* Accolade sous chaque différentiel et les disjoncteurs qu'il protège. */
+    rangee.modules.filter((m) => m.type === "differentiel").forEach((d) => {
+      const membres = rangee.modules.filter((m) => m.type === "disjoncteur" && m.differentiel === d.numero);
+      const fin = membres.length ? membres[membres.length - 1] : d;
+      const x1 = S.marge + d.position * S.module + 6;
+      const x2 = S.marge + (fin.position + fin.largeur) * S.module - 6;
+      const y = yModule + S.hauteur + 4;
+      groupeRangee.appendChild(svgElement("path", { d: "M" + x1 + " " + y + "v8H" + x2 + "v-8", class: "schema-accolade" }));
+    });
+    svg.appendChild(groupeRangee);
+  });
+  return svg;
+}
+
+function afficherTableauResultat(etude) {
+  const coffret = etude.coffret;
+  const libres = coffret.capacite - coffret.modules;
+  $("tableau-resume").textContent = "Coffret " + pluriel(coffret.rangees, "rangée", "rangées") + " de " + REGLES_CIRCUITS.modulesParRangee
+    + " modules : " + formaterEntier(coffret.modules) + " modules occupés sur " + formaterEntier(coffret.capacite)
+    + ", " + pluriel(libres, "emplacement libre", "emplacements libres") + " pour ajouter des circuits plus tard.";
+  $("schema-tableau").replaceChildren(dessinerTableau(etude));
+  $("detail-rangees").replaceChildren(...etude.tableau.map((rangee) => {
+    const li = document.createElement("li");
+    const titre = document.createElement("strong");
+    titre.textContent = "Rangée " + rangee.numero;
+    const detail = document.createElement("span");
+    const morceaux = [];
+    rangee.modules.forEach((m) => {
+      if (m.type === "parafoudre") morceaux.push("parafoudre");
+      if (m.type === "differentiel") {
+        const numeros = rangee.modules.filter((x) => x.type === "disjoncteur" && x.differentiel === m.numero).map((x) => x.numero);
+        morceaux.push("ID\u00A0" + m.numero + " (" + m.calibre + "\u00A0A " + m.typeDifferentiel + ") → " + (numeros.length > 1 ? "circuits " : "circuit ") + numeros.join(", "));
+      }
+    });
+    const vides = REGLES_CIRCUITS.modulesParRangee - rangee.occupe;
+    morceaux.push(pluriel(vides, "emplacement libre", "emplacements libres"));
+    ecrireInsecable(detail, morceaux.join(" · "));
+    li.append(titre, detail);
+    return li;
+  }));
+}
+
+/* ----- Lignes modifiables (matériel et main-d'œuvre) ----- */
+
+function creerLigneModifiable(options) {
+  const li = document.createElement("li");
+  li.className = "ligne-mo ligne-modifiable";
+  const titre = document.createElement("div");
+  titre.className = "ligne-mo-titre";
+  const libelle = ecrireInsecable(document.createElement("strong"), options.libelle);
+  const aide = document.createElement("span");
+  aide.className = "aide";
+  ecrireInsecable(aide, options.aide);
+  titre.append(libelle, aide);
+  const quantite = creerEntreeTexte(options.id + "-qte", "numeric", 4, options.donneesQuantite);
+  quantite.value = String(options.quantite);
+  const prix = creerEntreeTexte(options.id + "-prix", "decimal", 12, options.donneesPrix);
+  prix.value = formaterDecimal(options.prix);
+  const montant = document.createElement("div");
+  montant.className = "ligne-mo-montant";
+  const etiquette = document.createElement("span");
+  etiquette.className = "etiquette-champ";
+  etiquette.textContent = "Montant";
+  const valeur = document.createElement("strong");
+  valeur.className = "montant";
+  const alerte = document.createElement("span");
+  alerte.className = "prix-a-completer";
+  alerte.textContent = "Prix à compléter";
+  alerte.hidden = true;
+  montant.append(etiquette, valeur, alerte);
+  li.append(titre, creerChamp(quantite.id, options.libelleQuantite, quantite), creerChamp(prix.id, "Prix unitaire", prix), montant);
+  return { li, valeur, alerte };
+}
+
+function afficherMaterielResultat() {
+  const lignes = resultat.chiffrage.materiel;
+  resultat.lignes = new Map();
+  $("liste-materiel").replaceChildren(...Object.entries(CATEGORIES_MATERIEL).map(([categorie, titre]) => {
+    const membres = lignes.filter((l) => l.categorie === categorie);
+    if (!membres.length) return null;
+    const bloc = document.createElement("section");
+    bloc.className = "groupe-materiel";
+    const h3 = document.createElement("h3");
+    h3.className = "sous-titre";
+    h3.textContent = titre;
+    const ul = document.createElement("ul");
+    ul.className = "lignes-mo";
+    membres.forEach((ligne) => {
+      const unite = ligne.unite === "m" ? "\u00A0m" : "";
+      const element = creerLigneModifiable({
+        id: "mat-" + ligne.ref.replace(/\./g, "_"),
+        libelle: ligne.designation,
+        aide: "Calcul : " + formaterEntier(ligne.auto) + unite + " · catalogue : " + (ligne.prixCatalogue ? montantTexte(ligne.prixCatalogue) + (ligne.unite === "m" ? " le mètre" : " l'unité") : "pas de prix"),
+        libelleQuantite: ligne.unite === "m" ? "Quantité (m)" : "Quantité",
+        quantite: ligne.quantite,
+        prix: ligne.prix,
+        donneesQuantite: { matQuantite: ligne.ref },
+        donneesPrix: { matPrix: ligne.ref }
+      });
+      resultat.lignes.set("mat:" + ligne.ref, element);
+      ul.appendChild(element.li);
+    });
+    bloc.append(h3, ul);
+    return bloc;
+  }).filter(Boolean));
+}
+
+function afficherMainOeuvreResultat() {
+  const mo = resultat.chiffrage.etude.mainOeuvre;
+  $("res-mo-points").replaceChildren(...mo.lignes.map((ligne) => {
+    const element = creerLigneModifiable({
+      id: "res-mo-" + ligne.id,
+      libelle: ligne.libelle,
+      aide: "Calcul : " + formaterEntier(ligne.auto),
+      libelleQuantite: "Quantité",
+      quantite: ligne.quantite,
+      prix: ligne.prix,
+      donneesQuantite: { resMoQuantite: ligne.id },
+      donneesPrix: { resMoPrix: ligne.id }
+    });
+    resultat.lignes.set("mo:" + ligne.id, element);
+    return element.li;
+  }));
+  const saisie = resultat.chantier.mainOeuvre;
+  $("res-mo-forfait").value = saisie.forfait ? formaterDecimal(saisie.forfait) : "";
+  $("res-mo-ouvriers").value = saisie.journees.ouvriers ? String(saisie.journees.ouvriers) : "";
+  $("res-mo-jours").value = saisie.journees.jours ? formaterDecimal(saisie.journees.jours) : "";
+  $("res-mo-tarif").value = formaterDecimal(mo.journees.tarif);
+  afficherLibresResultat();
+}
+
+function afficherLibresResultat() {
+  const libres = resultat.chantier.mainOeuvre.libres;
+  $("res-mo-libres").replaceChildren(...libres.map((ligne, index) => {
+    const li = document.createElement("li");
+    li.className = "ligne-libre";
+    const libelle = creerEntreeTexte("res-libre-libelle-" + index, "text", 120, { resLibre: "libelle", index: String(index) });
+    libelle.value = ligne.libelle;
+    const montant = creerEntreeTexte("res-libre-montant-" + index, "decimal", 12, { resLibre: "montant", index: String(index) });
+    montant.value = ligne.montant ? formaterDecimal(ligne.montant) : "";
+    const supprimer = document.createElement("button");
+    supprimer.type = "button";
+    supprimer.className = "bouton-icone bouton-outil outil-danger";
+    supprimer.dataset.supprimerLibre = String(index);
+    supprimer.setAttribute("aria-label", "Supprimer la ligne " + (index + 1));
+    supprimer.appendChild(creerIcone("i-poubelle"));
+    li.append(creerChamp(libelle.id, "Désignation", libelle), creerChamp(montant.id, "Montant", montant), supprimer);
+    return li;
+  }));
+  $("res-ajouter-libre").hidden = libres.length >= BORNES_CHANTIER.lignesLibresMax;
+}
+
+/* ----- 5. Conformité ----- */
+
+function afficherConformite(liste) {
+  const aVerifier = liste.filter((p) => p.etat !== "conforme").length;
+  $("conformite-resume").textContent = pluriel(liste.length - aVerifier, "point conforme", "points conformes")
+    + (aVerifier ? ", " + formaterEntier(aVerifier) + " à vérifier sur place." : ".");
+  $("liste-conformite").replaceChildren(...liste.map((point) => {
+    const li = document.createElement("li");
+    li.className = "point-conformite";
+    li.dataset.etat = point.etat;
+    const conforme = point.etat === "conforme";
+    const icone = creerIcone(conforme ? "i-coche" : "i-alerte");
+    const textes = document.createElement("div");
+    const tete = document.createElement("div");
+    tete.className = "point-tete";
+    const titre = ecrireInsecable(document.createElement("strong"), point.titre);
+    const badge = document.createElement("span");
+    badge.className = "statut";
+    badge.dataset.ton = conforme ? "ok" : "verifier";
+    badge.textContent = conforme ? "Conforme" : "À vérifier";
+    tete.append(titre, badge);
+    const explication = ecrireInsecable(document.createElement("p"), point.explication);
+    textes.append(tete, explication);
+    li.append(icone, textes);
+    return li;
+  }));
+}
+
+/* ----- 6. Total ----- */
+
+function remplirReglagesTotaux() {
+  const t = resultat.chantier.totaux;
+  cocherPuce("res-remise-type", t.remiseType);
+  $("res-remise").value = t.remise ? formaterDecimal(t.remise) : "";
+  $("res-tva").checked = t.tva;
+  $("res-taux-tva").value = formaterDecimal(t.tauxTva);
+  $("res-acompte").value = formaterDecimal(t.acompte);
+}
+
+/* Gros montant : jamais coupé ; plus il est long, plus la police est petite (3 paliers). */
+function ecrireMontantFort(id, valeur) {
+  const element = $(id);
+  const texte = montantTexte(valeur);
+  element.textContent = texte;
+  element.dataset.longueur = texte.length > 18 ? "tres-long" : (texte.length > 13 ? "long" : "court");
+}
+
+/* Recalcule tout et réécrit uniquement les valeurs calculées : les champs en cours de saisie ne bougent pas. */
+function actualiserResultat() {
+  const c = resultat.chantier;
+  resultat.chiffrage = chiffrerChantier(c, resultat.catalogue, deviseCompte());
+  const { materiel, totalMateriel, total, etude } = resultat.chiffrage;
+  materiel.forEach((ligne) => {
+    const element = resultat.lignes.get("mat:" + ligne.ref);
+    if (!element) return;
+    element.valeur.textContent = montantTexte(ligne.montant);
+    element.alerte.hidden = !ligne.aCompleter;
+  });
+  $("total-materiel").textContent = montantTexte(totalMateriel);
+  const mo = etude.mainOeuvre;
+  mo.lignes.forEach((ligne) => {
+    const element = resultat.lignes.get("mo:" + ligne.id);
+    if (element) element.valeur.textContent = montantTexte(ligne.montant);
+  });
+  $("res-mo-journees").textContent = montantTexte(mo.journees.total);
+  ecrireMontantFort("res-total-mo", mo.total);
+  $("tot-materiel").textContent = montantTexte(total.materiel);
+  $("tot-mo").textContent = montantTexte(total.mainOeuvre);
+  $("tot-sous-total").textContent = montantTexte(total.sousTotal);
+  $("res-remise-libelle").textContent = total.typeRemise === "pourcent" ? "Remise (%)" : "Remise (" + (DEVISES[deviseCompte()] || DEVISES.XOF).libelle + ")";
+  $("tot-remise").textContent = (total.remise ? "−\u00A0" : "") + montantTexte(total.remise);
+  $("bloc-taux-tva").hidden = !total.tvaActive;
+  $("tot-tva").textContent = total.tvaActive ? montantTexte(total.tva) : "Non appliquée";
+  ecrireMontantFort("tot-general", total.totalGeneral);
+  $("tot-acompte").textContent = montantTexte(total.acompte);
+  $("tot-reste").textContent = montantTexte(total.reste);
+  ecrireMontantFort("resume-total", total.totalGeneral);
+}
+
+/* ----- Saisie : chaque frappe met à jour le chantier, le total et planifie l'enregistrement ----- */
+
+function lireSaisieResultat(cible) {
+  const c = resultat.chantier;
+  const valeur = cible.type === "checkbox" ? cible.checked : cible.value.trim();
+  const d = cible.dataset;
+  const reglerLigne = (table, cle, champ, lu) => {
+    const ligne = Object.prototype.hasOwnProperty.call(table, cle) ? table[cle] : { quantite: null, prix: null };
+    ligne[champ] = lu;
+    if (ligne.quantite === null && ligne.prix === null) delete table[cle];
+    else table[cle] = ligne;
+  };
+  if (d.matQuantite) reglerLigne(c.materiel, d.matQuantite, "quantite", quantiteFacultative(valeur, BORNES_CHANTIER.quantiteMax));
+  else if (d.matPrix) reglerLigne(c.materiel, d.matPrix, "prix", montantFacultatif(valeur));
+  else if (d.resMoQuantite) reglerLigne(c.mainOeuvre.points, d.resMoQuantite, "quantite", quantiteFacultative(valeur, BORNES_CHANTIER.quantiteMax));
+  else if (d.resMoPrix) reglerLigne(c.mainOeuvre.points, d.resMoPrix, "prix", montantFacultatif(valeur));
+  else if (d.resLibre) {
+    const ligne = c.mainOeuvre.libres[Number(d.index)];
+    if (!ligne) return false;
+    if (d.resLibre === "libelle") ligne.libelle = texteBorne(valeur, 120);
+    else ligne.montant = montantSaisi(valeur);
+  } else if (d.res === "forfait") c.mainOeuvre.forfait = montantSaisi(valeur);
+  else if (d.res === "ouvriers") c.mainOeuvre.journees.ouvriers = entierBorne(valeur, 0, BORNES_CHANTIER.ouvriersMax, 0);
+  else if (d.res === "jours") c.mainOeuvre.journees.jours = arrondi(borner(valeur, 0, BORNES_CHANTIER.joursMax, 0), 1);
+  else if (d.res === "tarif") c.mainOeuvre.journees.tarif = montantFacultatif(valeur);
+  else if (d.res === "remiseType") {
+    if (!cible.checked) return false;
+    c.totaux.remiseType = cible.value === "montant" ? "montant" : "pourcent";
+    c.totaux.remise = 0;
+    $("res-remise").value = "";
+  } else if (d.res === "remise") c.totaux.remise = c.totaux.remiseType === "pourcent" ? arrondi(borner(valeur, 0, 100, 0), 2) : montantSaisi(valeur);
+  else if (d.res === "tva") c.totaux.tva = valeur === true;
+  else if (d.res === "tauxTva") c.totaux.tauxTva = arrondi(borner(valeur, 0, TVA_MAX, TVA_DEFAUT), 2);
+  else if (d.res === "acompte") c.totaux.acompte = arrondi(borner(valeur, 0, 100, ACOMPTE_DEFAUT), 2);
+  else return false;
+  return true;
+}
+
+function surSaisieResultat(evenement) {
+  if (!resultat.chantier || !lireSaisieResultat(evenement.target)) return;
+  actualiserResultat();
+  planifierResultat();
+}
+
+/* En quittant un champ, il affiche la valeur réellement retenue (bornée, arrondie, ou le calcul s'il est vide). */
+function surChangementResultat(evenement) {
+  const cible = evenement.target;
+  const d = cible.dataset;
+  if (!resultat.chantier || cible.type === "checkbox" || cible.type === "radio") return;
+  const { materiel, etude } = resultat.chiffrage;
+  const c = resultat.chantier;
+  if (d.matQuantite || d.matPrix) {
+    const ligne = materiel.find((l) => l.ref === (d.matQuantite || d.matPrix));
+    if (ligne) cible.value = d.matQuantite ? String(ligne.quantite) : formaterDecimal(ligne.prix);
+  } else if (d.resMoQuantite || d.resMoPrix) {
+    const ligne = etude.mainOeuvre.lignes.find((l) => l.id === (d.resMoQuantite || d.resMoPrix));
+    if (ligne) cible.value = d.resMoQuantite ? String(ligne.quantite) : formaterDecimal(ligne.prix);
+  } else if (d.resLibre === "montant") {
+    const ligne = c.mainOeuvre.libres[Number(d.index)];
+    if (ligne) cible.value = ligne.montant ? formaterDecimal(ligne.montant) : "";
+  } else if (d.res === "forfait") cible.value = c.mainOeuvre.forfait ? formaterDecimal(c.mainOeuvre.forfait) : "";
+  else if (d.res === "ouvriers") cible.value = c.mainOeuvre.journees.ouvriers ? String(c.mainOeuvre.journees.ouvriers) : "";
+  else if (d.res === "jours") cible.value = c.mainOeuvre.journees.jours ? formaterDecimal(c.mainOeuvre.journees.jours) : "";
+  else if (d.res === "tarif") cible.value = formaterDecimal(etude.mainOeuvre.journees.tarif);
+  else if (d.res === "remise") cible.value = c.totaux.remise ? formaterDecimal(c.totaux.remise) : "";
+  else if (d.res === "tauxTva") cible.value = formaterDecimal(c.totaux.tauxTva);
+  else if (d.res === "acompte") cible.value = formaterDecimal(c.totaux.acompte);
+}
+
+function surClicResultat(evenement) {
+  const supprimer = evenement.target.closest("[data-supprimer-libre]");
+  if (supprimer && resultat.chantier) {
+    resultat.chantier.mainOeuvre.libres.splice(Number(supprimer.dataset.supprimerLibre), 1);
+    afficherLibresResultat();
+    actualiserResultat();
+    planifierResultat();
+    $("res-ajouter-libre").focus({ preventScroll: true });
+  }
+}
+
+function ajouterLibreResultat() {
+  const libres = resultat.chantier && resultat.chantier.mainOeuvre.libres;
+  if (!libres || libres.length >= BORNES_CHANTIER.lignesLibresMax) return;
+  libres.push({ libelle: "", montant: 0 });
+  afficherLibresResultat();
+  $("res-libre-libelle-" + (libres.length - 1)).focus();
+  planifierResultat();
+}
+
+/* ----- Enregistrement automatique (600 ms après la dernière saisie, et en quittant) ----- */
+
+function planifierResultat() {
+  clearTimeout(resultat.minuterie);
+  resultat.minuterie = setTimeout(enregistrerResultat, DELAI_BROUILLON);
+}
+
+async function enregistrerResultat() {
+  clearTimeout(resultat.minuterie);
+  resultat.minuterie = 0;
+  const c = resultat.chantier;
+  if (!c || !etat.compte || c.compteId !== etat.compte.id) return;
+  const propre = chantierValide({ ...c, modifieLe: new Date().toISOString() }, etat.compte.id);
+  if (!propre) return;
+  const bruts = await lireChantiersBruts();
+  const index = bruts.findIndex((x) => x.id === propre.id);
+  if (index >= 0) bruts[index] = propre;
+  else bruts.push(propre);
+  const reussi = await ecrireValeur(CLES_STOCKAGE.chantiers, JSON.stringify(bruts));
+  c.modifieLe = propre.modifieLe;
+  $("etat-resultat").textContent = reussi
+    ? "Modifications enregistrées à " + heureCourte(new Date())
+    : "Modifications non enregistrées : mémoire de l'appareil indisponible.";
+}
+
+/* « Modifier le chantier » : l'étude repart dans l'assistant, qui la réenregistre à la fin. */
+async function surModifierChantier() {
+  const c = resultat.chantier;
+  if (!c || !etat.compte) return;
+  await enregistrerResultat();
+  if (assistant.minuterie) await enregistrerBrouillon();
+  const brouillon = await lireBrouillon(etat.compte.id);
+  if (brouillon && brouillon.id !== c.id) {
+    const ok = await demanderConfirmation("Remplacer le brouillon ?", "Un autre chantier est en cours de saisie. Son brouillon sera effacé. Les chantiers déjà enregistrés ne sont pas touchés.", "Remplacer", "Annuler");
+    if (!ok) return;
+  }
+  clearTimeout(assistant.minuterie);
+  assistant.minuterie = 0;
+  const copie = chantierValide(JSON.parse(JSON.stringify(c)), etat.compte.id);
+  copie.etape = 1;
+  copie.etapeMax = ETAPES_CHANTIER.length;
+  assistant.chantier = copie;
+  await ecrireBrouillon(copie);
+  montrer("nouveau-chantier");
+  $("etat-brouillon").textContent = "Modification en cours : enregistrez à la dernière étape pour mettre l'étude à jour.";
+}
+
+/* ----- Accueil : accès direct aux trois dernières études ----- */
+
+function creerLigneEtude(chantier, catalogue, codeDevise) {
+  const chiffrage = chiffrerChantier(chantier, catalogue, codeDevise);
+  const li = document.createElement("li");
+  const bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.className = "ligne-etude";
+  bouton.dataset.chantier = chantier.id;
+  const texte = document.createElement("div");
+  texte.className = "devis-texte";
+  const titre = ecrireInsecable(document.createElement("strong"), chantier.nom || "Chantier sans nom");
+  const detail = document.createElement("span");
+  ecrireInsecable(detail, [chantier.client.nom, formaterDecimal(chiffrage.etude.surfaceTotale) + "\u00A0m²", pluriel(chiffrage.etude.circuits.length, "circuit", "circuits")].filter(Boolean).join(" · "));
+  texte.append(titre, detail);
+  const droite = document.createElement("div");
+  droite.className = "devis-droite";
+  const montant = document.createElement("span");
+  montant.className = "devis-montant";
+  montant.textContent = formaterMontant(chiffrage.total.totalGeneral, codeDevise);
+  const voir = document.createElement("span");
+  voir.className = "lien-voir";
+  voir.textContent = "Voir l'étude";
+  droite.append(montant, voir);
+  bouton.append(texte, droite);
+  li.appendChild(bouton);
+  return li;
+}
+
+async function afficherEtudesAccueil(compte) {
+  const etudes = (await lireChantiers(compte.id)).filter((c) => c.statut === "etudie")
+    .sort((a, b) => Date.parse(b.modifieLe) - Date.parse(a.modifieLe)).slice(0, 3);
+  const catalogue = etudes.length ? await lireCatalogue() : {};
+  $("accueil-etudes").replaceChildren(...etudes.map((c) => creerLigneEtude(c, catalogue, compte.devise)));
+  $("bloc-etudes").hidden = etudes.length === 0;
+}
+
+function surClicEtude(evenement) {
+  const bouton = evenement.target.closest("[data-chantier]");
+  if (bouton) ouvrirEtude(bouton.dataset.chantier);
 }
 
 /* ---------- Écran de démarrage natif ---------- */
@@ -3696,6 +4587,19 @@ function brancherEvenements() {
   $("bouton-etape-precedente").addEventListener("click", surEtapePrecedente);
   $("progression-chantier").addEventListener("click", surClicProgression);
   $("bouton-recommencer-chantier").addEventListener("click", surRecommencerChantier);
+  $("resultat-onglets").addEventListener("click", surClicOngletResultat);
+  $("resultat-onglets").addEventListener("keydown", surClavierOngletsResultat);
+  $("ecran-resultat").addEventListener("input", (evenement) => {
+    if (evenement.target.type !== "radio" && evenement.target.type !== "checkbox") surSaisieResultat(evenement);
+  });
+  $("ecran-resultat").addEventListener("change", (evenement) => {
+    if (evenement.target.type === "radio" || evenement.target.type === "checkbox") surSaisieResultat(evenement);
+    else surChangementResultat(evenement);
+  });
+  $("ecran-resultat").addEventListener("click", surClicResultat);
+  $("res-ajouter-libre").addEventListener("click", ajouterLibreResultat);
+  $("bouton-modifier-chantier").addEventListener("click", surModifierChantier);
+  $("accueil-etudes").addEventListener("click", surClicEtude);
   $("bouton-ajouter-piece").addEventListener("click", surAjouterPiece);
   $("piece-surface").addEventListener("input", surSaisieSurfaceAjout);
   $("piece-surface").addEventListener("keydown", surToucheSurfaceAjout);
@@ -3727,6 +4631,7 @@ function preparerInterface() {
   surveillerLogos();
   surveillerPhotos();
   construireAssistant();
+  construireResultat();
   construireNavigation();
   masquerLiensAbsents();
   remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);

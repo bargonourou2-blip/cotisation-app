@@ -316,6 +316,11 @@
           </div>
         </section>
 
+        <section class="bloc carte cascade" data-rang="5" id="bloc-etudes" aria-labelledby="titre-etudes" hidden>
+          <h2 class="bloc-titre" id="titre-etudes">Dernières études</h2>
+          <ul class="liste-devis liste-etudes" id="accueil-etudes"></ul>
+        </section>
+
         <section class="bloc carte cascade" data-rang="5" aria-labelledby="titre-derniers">
           <h2 class="bloc-titre" id="titre-derniers">Derniers devis</h2>
           <ul class="liste-devis" id="accueil-devis"></ul>
@@ -496,6 +501,147 @@
     </section>
 
     <!-- Mon profil -->
+    <section class="ecran" id="ecran-resultat" aria-labelledby="titre-resultat">
+      <div class="resultat">
+        <div class="resultat-tete">
+          <div class="resultat-titres">
+            <p class="surtitre">Résultat de l'étude</p>
+            <h1 class="titre-ecran" id="titre-resultat">Chantier</h1>
+            <p class="resultat-infos" id="resultat-infos"></p>
+          </div>
+          <button type="button" class="bouton bouton-discret bouton-compact" id="bouton-modifier-chantier">
+            <svg class="icone" aria-hidden="true"><use href="#i-crayon"/></svg>
+            <span class="bouton-libelle">Modifier le chantier</span>
+          </button>
+        </div>
+
+        <p class="mention-etude" id="mention-etude">
+          <svg class="icone" aria-hidden="true"><use href="#i-info"/></svg>
+          <span id="mention-etude-texte">Étude indicative. L'électricien vérifie et reste responsable de l'exécution conforme.</span>
+        </p>
+
+        <div class="resultat-onglets" id="resultat-onglets" role="tablist" aria-label="Parties de l'étude"></div>
+
+        <p class="resultat-resume" id="resultat-resume" aria-live="polite">
+          <span>Total général</span>
+          <strong class="montant" id="resume-total">0</strong>
+        </p>
+
+        <!-- 1. Circuits -->
+        <section class="carte panneau" id="panneau-circuits" role="tabpanel" aria-labelledby="onglet-circuits" tabindex="0">
+          <h2 class="bloc-titre">Circuits</h2>
+          <dl class="chiffres" id="circuits-chiffres"></dl>
+          <ol class="liste-circuits" id="liste-circuits"></ol>
+          <h3 class="sous-titre">Différentiels 30 mA</h3>
+          <ul class="liste-simple" id="liste-differentiels"></ul>
+        </section>
+
+        <!-- 2. Tableau -->
+        <section class="carte panneau" id="panneau-tableau" role="tabpanel" aria-labelledby="onglet-tableau" tabindex="0" hidden>
+          <h2 class="bloc-titre">Tableau électrique</h2>
+          <p class="aide" id="tableau-resume"></p>
+          <div class="schema-cadre" id="schema-tableau"></div>
+          <ul class="legende" id="legende-tableau" aria-label="Légende du schéma"></ul>
+          <h3 class="sous-titre">Rangée par rangée</h3>
+          <ol class="liste-simple" id="detail-rangees"></ol>
+        </section>
+
+        <!-- 3. Matériel -->
+        <section class="carte panneau" id="panneau-materiel" role="tabpanel" aria-labelledby="onglet-materiel" tabindex="0" hidden>
+          <h2 class="bloc-titre">Matériel</h2>
+          <p class="aide">Quantités calculées par l'étude et prix du catalogue. Touchez une quantité ou un prix pour le changer : la modification ne vaut que pour ce chantier. Videz le champ pour revenir au calcul.</p>
+          <div class="groupes-materiel" id="liste-materiel"></div>
+          <p class="total-ligne"><span>Total matériel</span><strong class="montant" id="total-materiel">0</strong></p>
+        </section>
+
+        <!-- 4. Main-d'œuvre -->
+        <section class="carte panneau" id="panneau-main-oeuvre" role="tabpanel" aria-labelledby="onglet-main-oeuvre" tabindex="0" hidden>
+          <h2 class="bloc-titre">Main-d'œuvre</h2>
+          <h3 class="sous-titre">Au point</h3>
+          <ul class="lignes-mo" id="res-mo-points"></ul>
+          <h3 class="sous-titre">Forfait</h3>
+          <div class="champ">
+            <label for="res-mo-forfait">Montant du forfait <span class="facultatif" id="res-devise-forfait"></span></label>
+            <input id="res-mo-forfait" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-res="forfait">
+          </div>
+          <h3 class="sous-titre">À la journée</h3>
+          <div class="trio">
+            <div class="champ"><label for="res-mo-ouvriers">Ouvriers</label><input id="res-mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" data-res="ouvriers"></div>
+            <div class="champ"><label for="res-mo-jours">Jours</label><input id="res-mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-res="jours"></div>
+            <div class="champ"><label for="res-mo-tarif">Tarif par jour</label><input id="res-mo-tarif" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-res="tarif"></div>
+          </div>
+          <p class="total-ligne total-partiel"><span>Journées</span><strong class="montant" id="res-mo-journees">0</strong></p>
+          <h3 class="sous-titre">Lignes libres</h3>
+          <ul class="lignes-libres" id="res-mo-libres"></ul>
+          <button type="button" class="bouton bouton-discret" id="res-ajouter-libre">
+            <svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg>
+            <span class="bouton-libelle">Ajouter une ligne</span>
+          </button>
+          <div class="total-mo">
+            <span>Total main-d'œuvre</span>
+            <strong class="montant" id="res-total-mo">0</strong>
+          </div>
+        </section>
+
+        <!-- 5. Conformité -->
+        <section class="carte panneau" id="panneau-conformite" role="tabpanel" aria-labelledby="onglet-conformite" tabindex="0" hidden>
+          <h2 class="bloc-titre">Conformité NF C 15-100</h2>
+          <p class="resume-ligne" id="conformite-resume"></p>
+          <ul class="liste-conformite" id="liste-conformite"></ul>
+        </section>
+
+        <!-- 6. Total -->
+        <section class="carte panneau" id="panneau-total" role="tabpanel" aria-labelledby="onglet-total" tabindex="0" hidden>
+          <h2 class="bloc-titre">Total</h2>
+          <dl class="totaux">
+            <div><dt>Matériel</dt><dd class="montant" id="tot-materiel">0</dd></div>
+            <div><dt>Main-d'œuvre</dt><dd class="montant" id="tot-mo">0</dd></div>
+            <div class="totaux-fort"><dt>Sous-total</dt><dd class="montant" id="tot-sous-total">0</dd></div>
+          </dl>
+          <fieldset class="reglage-total">
+            <legend class="etiquette-champ">Remise</legend>
+            <div class="puces">
+              <label class="puce"><input type="radio" name="res-remise-type" value="pourcent" data-res="remiseType"><span>En %</span></label>
+              <label class="puce"><input type="radio" name="res-remise-type" value="montant" data-res="remiseType"><span>En montant</span></label>
+            </div>
+            <div class="champ">
+              <label for="res-remise" id="res-remise-libelle">Remise (%)</label>
+              <input id="res-remise" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-res="remise">
+            </div>
+            <p class="ligne-calcul"><span>Remise</span><strong class="montant" id="tot-remise">0</strong></p>
+          </fieldset>
+          <fieldset class="reglage-total">
+            <legend class="etiquette-champ">TVA</legend>
+            <label class="case"><input type="checkbox" id="res-tva" data-res="tva"><span>Appliquer la TVA</span></label>
+            <div class="champ" id="bloc-taux-tva">
+              <label for="res-taux-tva">Taux de TVA (%)</label>
+              <input id="res-taux-tva" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-res="tauxTva">
+            </div>
+            <p class="ligne-calcul"><span>TVA</span><strong class="montant" id="tot-tva">0</strong></p>
+          </fieldset>
+          <div class="total-general">
+            <span>TOTAL GÉNÉRAL</span>
+            <strong class="montant" id="tot-general">0</strong>
+          </div>
+          <fieldset class="reglage-total">
+            <legend class="etiquette-champ">Acompte à la commande</legend>
+            <div class="champ">
+              <label for="res-acompte">Acompte (%)</label>
+              <input id="res-acompte" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-res="acompte">
+            </div>
+            <p class="ligne-calcul"><span>Acompte</span><strong class="montant" id="tot-acompte">0</strong></p>
+            <p class="ligne-calcul"><span>Reste à payer à la fin</span><strong class="montant" id="tot-reste">0</strong></p>
+          </fieldset>
+          <button type="button" class="bouton bouton-principal" id="bouton-creer-devis" data-ecran="devis">
+            <svg class="icone" aria-hidden="true"><use href="#i-devis"/></svg>
+            <span class="bouton-libelle">Créer le devis</span>
+          </button>
+        </section>
+
+        <p class="brouillon-etat" id="etat-resultat" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
     <section class="ecran" id="ecran-profil" aria-labelledby="titre-profil">
       <div class="colonnes">
         <h1 class="titre-ecran cascade" id="titre-profil">Mon profil</h1>

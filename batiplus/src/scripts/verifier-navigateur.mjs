@@ -11,6 +11,8 @@
         tiroir (360 et 1440 px, clair et sombre, devis de 125 000 000)
      ⑲ le contenu ne passe jamais sous le menu latéral (1440 et 1025 px)
      AS assistant Nouveau chantier : 5 étapes, 360 et 1440 px, rien de coupé, Suivant visible
+     SV schéma SVG du tableau : textes dans leurs modules, aucun chevauchement, taille lisible
+     RE écran Résultat : 6 onglets, 360 et 1440 px, clair et sombre, rien de coupé
      ㉒ tous les logos chargent et sont détourés, aucune image cassée, photo absente
         remplacée par l'illustration de repli
      ㉓ icônes maskable (navigateur et Android) : le pictogramme reste dans la zone sûre
@@ -472,6 +474,117 @@ async function main() {
   controle("AS", "assistant chantier : rien ne déborde ni n'est coupé (360 et 1440)", fautesAS.length === 0,
     fautesAS.length ? fautesAS.slice(0, 3).join(" | ")
       : vuesAS + " vues (5 étapes de la villa, clair et sombre), " + motsAS.toLocaleString("fr-FR") + " mots mesurés, montants jusqu'à 125 000 000 FCFA sur une ligne, Suivant toujours au-dessus des onglets, rien sous le menu fixe");
+
+  /* SV schéma du tableau mesuré dans le vrai moteur de rendu ; RE écran Résultat : 6 onglets,
+     360 et 1440 px, clair et sombre, rien ne déborde, aucun mot ni montant coupé. */
+  const fautesSV = [];
+  const fautesRE = [];
+  let vuesRE = 0;
+  let motsRE = 0;
+  const mesuresSV = [];
+  {
+    const piece = (id, type, surface) => ({ id, type, surface, prises: null, points: null });
+    const quand = new Date().toISOString();
+    const commun = { compteId, creeLe: quand, modifieLe: quand, statut: "etudie", etape: 5, etapeMax: 5 };
+    const villa = {
+      ...commun, id: "villa-etude-0001",
+      client: { nom: "Société Immobilière du Kadiogo", telephone: "+22605608608" },
+      nom: "Villa R+1 Ouaga 2000 — famille Compaoré-Ouédraogo", lieu: "Ouaga 2000, Ouagadougou", type: "villa", alimentation: "mono",
+      pieces: [piece("p1", "sejour", 36), piece("p2", "cuisine", 12), piece("p3", "chambre", 14), piece("p4", "chambre", 12), piece("p5", "chambre", 12),
+        piece("p6", "salle-eau", 6), piece("p7", "salle-eau", 5), piece("p8", "wc", 2), piece("p9", "couloir", 9), piece("p10", "veranda", 12)],
+      appareils: { "chauffe-eau": 1, cuisiniere: 1, "lave-linge": 1, climatiseur: 2 },
+      options: { distance: 15, hauteur: 2.8, parafoudre: true, terreNeuve: true, tableauARemplacer: true },
+      mainOeuvre: { points: {}, forfait: 100000000, journees: { ouvriers: 3, jours: 4.5, tarif: null }, libres: [{ libelle: "Saignées et rebouchage dans le béton banché", montant: 99999999 }] },
+      materiel: { "cable-1.5": { quantite: 9999, prix: 99999999 }, prise: { quantite: null, prix: 0 } },
+      totaux: { remiseType: "pourcent", remise: 7.5, tva: true, tauxTva: 18, acompte: 40 }
+    };
+    const grand = {
+      ...commun, id: "grand-etude-0002", modifieLe: new Date(Date.now() - 60000).toISOString(),
+      client: { nom: "Hôtel Laïco", telephone: "" }, nom: "Hôtel 3 étages", lieu: "Koulouba", type: "bureau", alimentation: "tri",
+      pieces: Array.from({ length: 14 }, (_, i) => piece("g" + i, i % 3 === 0 ? "sejour" : i % 3 === 1 ? "chambre" : "salle-eau", i % 3 === 0 ? 60 : 16)),
+      appareils: { "chauffe-eau": 4, climatiseur: 6, cuisiniere: 1 },
+      options: { distance: 40, hauteur: 3, parafoudre: true, terreNeuve: false, tableauARemplacer: false },
+      mainOeuvre: { points: {}, forfait: 0, journees: { ouvriers: 0, jours: 0, tarif: null }, libres: [] }
+    };
+    const avecEtudes = { ...base, bp_v1_chantiers: JSON.stringify([villa, grand]) };
+    const mesurerSchema = () => {
+      const svg = document.querySelector("#schema-tableau svg");
+      if (!svg) return { absent: true };
+      const cadre = svg.getBoundingClientRect();
+      const panneau = document.getElementById("panneau-tableau").getBoundingClientRect();
+      const echelle = cadre.width / svg.viewBox.baseVal.width;
+      const fautes = [];
+      let policeMin = 99;
+      let policeNumeros = 99;
+      const dedans = (b, c, marge) => b.x >= c.x + marge && b.y >= c.y && b.x + b.width <= c.x + c.width - marge && b.y + b.height <= c.y + c.height;
+      const coffret = svg.querySelector(".schema-coffret").getBBox();
+      for (const rangee of svg.querySelectorAll(".schema-rangee")) {
+        const corps = [...rangee.querySelectorAll(".module-corps")].map((r) => r.getBBox());
+        corps.forEach((c, i) => {
+          if (i && c.x < corps[i - 1].x + corps[i - 1].width) fautes.push("modules superposés rangée " + rangee.dataset.rangee);
+          if (!dedans(c, coffret, 0)) fautes.push("module hors du coffret");
+        });
+        if (corps.length && corps[corps.length - 1].x + corps[corps.length - 1].width > coffret.x + coffret.width) fautes.push("rangée trop longue");
+        const titre = rangee.querySelector(".t-rangee").getBBox();
+        if (corps.length && titre.y + titre.height > corps[0].y) fautes.push("titre de rangée sur les modules");
+        for (const g of rangee.querySelectorAll(".module")) {
+          const c = g.querySelector(".module-corps").getBBox();
+          const textes = [...g.querySelectorAll("text")].map((t) => ({ t, b: t.getBBox() }));
+          textes.forEach(({ t, b }, i) => {
+            const taille = parseFloat(getComputedStyle(t).fontSize) * echelle;
+            policeMin = Math.min(policeMin, taille);
+            if (t.classList.contains("t-fort")) policeNumeros = Math.min(policeNumeros, taille);
+            if (!dedans(b, c, 1)) fautes.push("« " + t.textContent + " » déborde de son module");
+            if (i && b.y < textes[i - 1].b.y + textes[i - 1].b.height - 0.5) fautes.push("« " + t.textContent + " » chevauche la ligne au-dessus");
+          });
+        }
+      }
+      return {
+        rangees: svg.querySelectorAll(".schema-rangee").length, modules: svg.querySelectorAll(".module").length,
+        largeur: Math.round(cadre.width), depasse: cadre.right > panneau.right + 0.5 || cadre.left < panneau.left - 0.5,
+        policeMin: Math.round(policeMin * 10) / 10, policeNumeros: Math.round(policeNumeros * 10) / 10, fautes: [...new Set(fautes)].slice(0, 5)
+      };
+    };
+    for (const [largeur, hauteur, sombre] of [[360, 640, false], [360, 640, true], [1440, 900, false], [1440, 900, true]]) {
+      const { page, contexte, nom } = await nouvellePage(largeur, hauteur, sombre, true, avecEtudes);
+      await pause(1800);
+      for (const etude of [villa, grand]) {
+        await page.evaluate((id) => document.querySelector("#accueil-etudes [data-chantier='" + id + "']").click(), etude.id);
+        await pause(500);
+        const actif = await page.evaluate(() => document.querySelector(".ecran.actif").id);
+        if (actif !== "ecran-resultat") { fautesRE.push(nom + " " + etude.id + " : écran " + actif); continue; }
+        const onglets = etude === villa ? ["circuits", "tableau", "materiel", "main-oeuvre", "conformite", "total"] : ["tableau"];
+        for (const onglet of onglets) {
+          await page.evaluate((o) => document.getElementById("onglet-" + o).click(), onglet);
+          await pause(250);
+          const t = await page.evaluate(mesurerTextes, [".ecran.actif", ".entete", largeur > 1024 ? "#tiroir" : ".onglets"]);
+          vuesRE++;
+          motsRE += t.mots;
+          if (t.motsCoupes.length || t.rognes.length || t.deborde.length || t.defileX) fautesRE.push(nom + " " + etude.id + " " + onglet + " " + JSON.stringify(t));
+          if (largeur > 1024) {
+            const m = await page.evaluate(mesurerSousMenu);
+            if (m.total) fautesRE.push(nom + " " + onglet + " sous le menu " + JSON.stringify(m));
+          }
+          if (onglet === "tableau") {
+            const s = await page.evaluate(mesurerSchema);
+            mesuresSV.push(s);
+            if (s.absent || s.depasse || s.fautes.length || s.policeNumeros < 10 || s.policeMin < 8) fautesSV.push(nom + " " + etude.id + " " + JSON.stringify(s));
+          }
+          await capturer(page, nom + "-resultat-" + (etude === villa ? "" : "grand-") + onglet, true);
+        }
+        await page.evaluate(() => document.querySelector("#onglets [data-ecran='accueil'], #tiroir-menu [data-ecran='accueil']").click());
+        await pause(400);
+      }
+      await contexte.close();
+    }
+  }
+  const rangeesSV = [...new Set(mesuresSV.map((m) => m.rangees))].join(" et ");
+  controle("SV", "schéma du tableau : textes dans leurs modules, rien ne dépasse", fautesSV.length === 0,
+    fautesSV.length ? fautesSV.slice(0, 3).join(" | ")
+      : mesuresSV.length + " schémas (" + rangeesSV + " rangées, mono 2P et tri 4P avec parafoudre) : chaque texte dans son module, aucun chevauchement, coffret jamais plus large que la carte, numéros ≥ " + Math.min(...mesuresSV.map((m) => m.policeNumeros)) + " px et textes ≥ " + Math.min(...mesuresSV.map((m) => m.policeMin)) + " px à 360 px");
+  controle("RE", "écran Résultat : rien ne déborde ni n'est coupé (360 et 1440)", fautesRE.length === 0,
+    fautesRE.length ? fautesRE.slice(0, 3).join(" | ")
+      : vuesRE + " vues (6 onglets, clair et sombre), " + motsRE.toLocaleString("fr-FR") + " mots mesurés, montants jusqu'à 13 chiffres (1 091 610 041 974 FCFA) sur une ligne, rien sous le menu fixe");
 
   /* I images réelles : photo et logo redessinés, fichiers piégés refusés */
   {

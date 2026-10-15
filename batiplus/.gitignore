@@ -18,6 +18,10 @@ android/capacitor-cordova-android-plugins/build/
 *.apk
 *.aab
 
+# Python (scripts d'outillage)
+__pycache__/
+*.pyc
+
 # Éditeurs et système
 .idea/
 .vscode/

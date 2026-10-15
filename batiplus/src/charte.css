@@ -33,6 +33,7 @@
   --ligne: #E8E4F0;
   --erreur: #C41414;
   --accent-texte: #6A0DAD;
+  --orange-texte: #8A5100;
 
   --entete-fond: rgba(244, 242, 249, 0.72);
   --ombre-1: 0 1px 2px rgba(23, 19, 31, 0.06), 0 4px 14px rgba(78, 10, 128, 0.07);
@@ -66,6 +67,7 @@
   --violet-doux: #251A35;
   --erreur: #FF6B6B;
   --accent-texte: #D2B0F7;
+  --orange-texte: #F59E0B;
   --entete-fond: rgba(8, 7, 12, 0.68);
   --ombre-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
   --ombre-2: 0 6px 18px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(106, 13, 173, 0.25);
@@ -85,6 +87,7 @@
     --violet-doux: #251A35;
     --erreur: #FF6B6B;
   --accent-texte: #D2B0F7;
+  --orange-texte: #F59E0B;
     --entete-fond: rgba(8, 7, 12, 0.68);
     --ombre-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
     --ombre-2: 0 6px 18px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(106, 13, 173, 0.25);
@@ -922,6 +925,154 @@ a.bouton { text-decoration: none; }
   .ligne-libre > .champ:first-child { grid-column: auto; }
   .chiffres { grid-template-columns: 1fr 1fr; }
   .chiffres > .chiffre-large { grid-column: 1 / -1; }
+}
+
+/* ---------- 7e. Résultat de l'étude (étape 6) ---------- */
+.resultat { display: grid; gap: 14px; }
+.resultat-tete { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 16px; }
+.resultat-titres { min-width: 0; flex: 1 1 220px; }
+.surtitre { margin: 0 0 2px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-texte); }
+.resultat-titres .titre-ecran { margin: 0; overflow-wrap: anywhere; }
+.resultat-infos { display: flex; flex-wrap: wrap; gap: 2px 0; margin: 6px 0 0; font-size: 14px; color: var(--texte-2); }
+.resultat-infos span:not(:last-child)::after { content: "·"; margin: 0 8px; color: var(--texte-3); }
+.resultat-tete .bouton-compact .icone { width: 18px; height: 18px; }
+
+.mention-etude {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 12px 14px;
+  border-radius: var(--rayon-petit); border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(255, 212, 0, 0.14); color: var(--texte); font-size: 14px; font-weight: 600;
+}
+.mention-etude .icone { width: 20px; height: 20px; flex: none; color: var(--orange-texte); }
+
+/* Onglets : 3 × 2 sur téléphone, 6 sur une ligne dès 900 px ; libellés jamais coupés. */
+.resultat-onglets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 6px; border-radius: var(--rayon); background: var(--violet-doux); }
+.onglet-resultat {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  min-height: 60px; padding: 6px 4px; border: 0; border-radius: 12px; background: transparent;
+  color: var(--texte-2); font-weight: 700; font-size: 13px; line-height: 1.15; text-align: center; cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+.onglet-resultat span { white-space: nowrap; }
+.onglet-resultat .icone { width: 20px; height: 20px; }
+.onglet-resultat[aria-selected="true"] { background: var(--carte); color: var(--accent-texte); box-shadow: var(--ombre-1); }
+.onglet-resultat[aria-selected="true"] .icone { color: var(--violet-2); }
+.onglet-resultat:focus-visible { outline: 3px solid var(--violet-2); outline-offset: 1px; }
+
+.resultat-resume {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin: 0;
+  padding: 10px 16px; border-radius: var(--rayon-petit); background: var(--violet-3); color: #fff; font-weight: 600;
+}
+.resultat-resume strong { font-family: var(--police-titre); font-size: 18px; color: var(--jaune); }
+.panneau { display: grid; gap: 14px; align-content: start; }
+.panneau[hidden] { display: none; }
+.panneau:focus-visible { outline: 3px solid var(--violet-2); outline-offset: 2px; }
+.panneau > .bloc-titre { margin: 0; }
+
+/* Circuits */
+.liste-circuits { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.circuit { display: grid; gap: 10px; padding: 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2); border-left: 5px solid var(--genre, var(--violet-2)); }
+.circuit[data-genre="eclairage"], .legende-pastille[data-genre="eclairage"], .module[data-genre="eclairage"] { --genre: var(--jaune); }
+.circuit[data-genre="prises"], .legende-pastille[data-genre="prises"], .module[data-genre="prises"] { --genre: var(--violet-2); }
+.circuit[data-genre="cuisine"], .legende-pastille[data-genre="cuisine"], .module[data-genre="cuisine"] { --genre: var(--orange); }
+.circuit[data-genre="dedie"], .legende-pastille[data-genre="dedie"], .module[data-genre="dedie"] { --genre: var(--rouge); }
+.legende-pastille[data-genre="differentiel"], .module[data-genre="differentiel"] { --genre: var(--violet); }
+.legende-pastille[data-genre="parafoudre"], .module[data-genre="parafoudre"] { --genre: var(--vert); }
+.circuit-tete { display: flex; align-items: flex-start; gap: 10px; }
+.circuit-tete > div { display: grid; gap: 2px; min-width: 0; }
+.circuit-numero {
+  flex: none; min-width: 32px; height: 32px; padding: 0 6px; display: inline-grid; place-items: center;
+  border-radius: 10px; background: var(--violet); color: #fff; font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums;
+}
+.circuit-details { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.circuit-details > div { display: grid; gap: 1px; min-width: 0; }
+.circuit-details dt { font-size: 11px; font-weight: 700; color: var(--texte-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.circuit-details dd { margin: 0; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
+
+/* Tableau : le schéma garde ses proportions et ne dépasse jamais la carte. */
+.schema-cadre { width: 100%; max-width: 760px; margin: 0 auto; }
+.schema { display: block; width: 100%; height: auto; }
+.schema-coffret { fill: var(--violet-doux); stroke: var(--violet-2); stroke-width: 2; }
+.schema-rail { fill: var(--texte-3); opacity: 0.35; }
+.t-rangee { fill: var(--accent-texte); font: 700 18px var(--police); }
+.module-corps { fill: var(--carte); stroke: var(--texte-3); stroke-width: 1.5; }
+.module-bande { fill: var(--genre, var(--violet-2)); }
+.module[data-type="libre"] .module-corps { fill: none; stroke-dasharray: 5 4; opacity: 0.8; }
+.module text { fill: var(--texte); font-family: var(--police); }
+.t-fort { font-size: 21px; font-weight: 800; }
+.t-moyen { font-size: 17px; font-weight: 700; }
+.t-petit { font-size: 15px; font-weight: 600; }
+.t-calibre { font-size: 15px; font-weight: 700; }
+.schema-accolade { fill: none; stroke: var(--violet-2); stroke-width: 2.5; stroke-linejoin: round; }
+.legende { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--texte-2); }
+.legende li { display: inline-flex; align-items: center; gap: 8px; }
+.legende-pastille { width: 18px; height: 12px; border-radius: 3px; background: var(--genre, transparent); flex: none; }
+.legende-pastille[data-genre="libre"] { border: 1.5px dashed var(--texte-3); }
+
+/* Matériel et main-d'œuvre : mêmes lignes que l'assistant, avec l'alerte « Prix à compléter ». */
+.groupes-materiel { display: grid; gap: 6px; }
+.groupe-materiel { display: grid; gap: 10px; }
+.prix-a-completer {
+  justify-self: start; display: inline-flex; padding: 3px 10px; border-radius: 999px;
+  background: var(--jaune); color: #17131F; font-size: 12px; font-weight: 800; white-space: nowrap;
+}
+.prix-a-completer[hidden] { display: none; }
+.ligne-modifiable .ligne-mo-montant { flex-wrap: wrap; }
+.total-mo {
+  display: grid; gap: 4px; padding: 16px 18px; border-radius: var(--rayon);
+  background: linear-gradient(135deg, var(--violet), var(--violet-3)); color: #fff; font-weight: 700;
+}
+.total-mo strong { font-family: var(--police-titre); font-size: clamp(22px, 6.6vw, 38px); line-height: 1.1; color: var(--jaune); overflow-wrap: normal; }
+
+/* Conformité */
+.liste-conformite { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.point-conformite { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2); }
+.point-conformite > .icone { width: 26px; height: 26px; flex: none; color: var(--vert); }
+.point-conformite[data-etat="verifier"] { border-color: rgba(245, 158, 11, 0.5); }
+.point-conformite[data-etat="verifier"] > .icone { color: var(--orange-texte); }
+.point-conformite > div { display: grid; gap: 4px; min-width: 0; flex: 1 1 auto; }
+.point-conformite p { margin: 0; font-size: 14px; color: var(--texte-2); }
+.point-tete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; }
+.statut[data-ton="verifier"] { background: rgba(245, 158, 11, 0.16); color: var(--orange-texte); }
+
+/* Total */
+.totaux { margin: 0; display: grid; gap: 0; }
+.totaux > div, .ligne-calcul { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; padding: 10px 0; border-bottom: 1px dashed var(--ligne); margin: 0; }
+.totaux dt, .ligne-calcul span { color: var(--texte-2); }
+.totaux dd { margin: 0; font-weight: 700; }
+.totaux-fort dt, .totaux-fort dd { color: var(--texte); font-weight: 800; font-size: 17px; }
+.reglage-total { display: grid; gap: 10px; margin: 0; padding: 14px; border: 1px solid var(--ligne); border-radius: var(--rayon-petit); background: var(--carte-2); min-width: 0; }
+.reglage-total legend { padding: 0 6px; }
+.reglage-total .ligne-calcul { padding: 4px 0 0; border: 0; }
+.reglage-total .champ[hidden] { display: none; }
+.total-general {
+  display: grid; gap: 4px; padding: 18px 20px; border-radius: var(--rayon);
+  background: linear-gradient(135deg, var(--violet-2), var(--violet) 55%, var(--violet-3)); color: #fff;
+  box-shadow: 0 10px 24px rgba(106, 13, 173, 0.28); font-weight: 800; letter-spacing: 0.04em;
+}
+.total-general strong { font-family: var(--police-titre); font-size: clamp(22px, 6.6vw, 42px); line-height: 1.1; color: var(--jaune); letter-spacing: 0; }
+.total-general strong[data-longueur="long"], .total-mo strong[data-longueur="long"] { font-size: clamp(18px, 5vw, 34px); }
+.total-general strong[data-longueur="tres-long"], .total-mo strong[data-longueur="tres-long"] { font-size: clamp(15px, 4.1vw, 28px); }
+.resultat-resume strong[data-longueur="tres-long"] { font-size: 15px; }
+
+/* Accueil : dernières études */
+.liste-etudes li { padding: 0; }
+.ligne-etude {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px;
+  width: 100%; min-height: 56px; padding: 10px 4px; border: 0; background: transparent; color: var(--texte); text-align: left; cursor: pointer; border-radius: 10px;
+}
+.ligne-etude:hover { background: var(--violet-doux); }
+.lien-voir { font-size: 13px; font-weight: 700; color: var(--accent-texte); white-space: nowrap; }
+
+@media (min-width: 640px) {
+  .circuit-details { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .reglage-total { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
+  .reglage-total > .puces, .reglage-total > .case, .reglage-total > .ligne-calcul { grid-column: 1 / -1; }
+}
+@media (min-width: 900px) {
+  .resultat-onglets { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+@media (max-width: 639px) {
+  .panneau { padding: 16px 14px; }
 }
 
 /* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */

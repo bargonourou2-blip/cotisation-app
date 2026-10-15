@@ -27,7 +27,7 @@ export function chargerMoteur() {
   const donnees = readFileSync(join(RACINE, "src", "donnees.js"), "utf8");
   const section = sectionMoteur();
   const contexte = vm.createContext({});
-  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { etudierChantier, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS };", contexte, { filename: "moteur-nfc15100.js" });
+  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { etudierChantier, chiffrerChantier, calculerTotal, verifierConformite, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS, CATALOGUE_DEFAUT, TVA_MAX };", contexte, { filename: "moteur-nfc15100.js" });
   return contexte.__moteur;
 }
 
@@ -152,12 +152,53 @@ export function invariants(moteur, etude) {
   const totalCables = Object.values(etude.cables).reduce((s, v) => s + v, 0);
   if (totalCables !== etude.cableTotal) ecarts.push("total des câbles incohérent");
   const mo = etude.mainOeuvre;
+  /* Comparaison au centime : les devises à 2 décimales additionnent des nombres à virgule. */
   const recalcul = mo.lignes.reduce((s, l) => s + l.quantite * l.prix, 0) + mo.forfait + mo.journees.total + mo.libres.reduce((s, l) => s + l.montant, 0);
-  if (recalcul !== mo.total) ecarts.push("total main-d'œuvre incohérent");
+  if (!egalAuCentime(recalcul, mo.total)) ecarts.push("total main-d'œuvre incohérent");
+  /* Tableau : rangées de 13 modules pleines (libres compris), sans chevauchement, chaque circuit
+     placé une fois, chaque différentiel dans la même rangée que ses disjoncteurs. */
+  if (etude.tableau.length !== etude.coffret.rangees) ecarts.push("nombre de rangées du schéma incohérent");
+  const places = [];
+  etude.tableau.forEach((rangee) => {
+    let position = 0;
+    rangee.modules.forEach((m) => {
+      if (m.position !== position) ecarts.push("rangée " + rangee.numero + " : module mal placé");
+      position += m.largeur;
+      if (m.type === "disjoncteur") {
+        places.push(m.numero);
+        if (!rangee.modules.some((d) => d.type === "differentiel" && d.numero === m.differentiel)) ecarts.push("circuit " + m.numero + " séparé de son différentiel");
+      }
+    });
+    if (position !== R.modulesParRangee) ecarts.push("rangée " + rangee.numero + " : " + position + " modules au lieu de " + R.modulesParRangee);
+  });
+  if (places.length !== etude.circuits.length || new Set(places).size !== places.length) ecarts.push("circuits absents ou en double dans le tableau");
   return ecarts;
 }
 
 /* Parcourt tout le résultat : aucun NaN, Infinity ni nombre négatif. */
+export function egalAuCentime(a, b) {
+  return Math.round(a * 100) === Math.round(b * 100);
+}
+
+/* Chiffrage : chaque montant = quantité × prix, totaux cohérents, remise et acompte jamais au-delà du total. */
+export function invariantsChiffrage(chiffrage) {
+  const ecarts = [];
+  const t = chiffrage.total;
+  chiffrage.materiel.forEach((l) => {
+    if (!egalAuCentime(l.quantite * l.prix, l.montant)) ecarts.push(l.ref + " : montant incohérent");
+    if (l.aCompleter !== (l.prix === 0)) ecarts.push(l.ref + " : alerte « Prix à compléter » incohérente");
+  });
+  if (!egalAuCentime(chiffrage.materiel.reduce((s, l) => s + l.montant, 0), chiffrage.totalMateriel)) ecarts.push("total matériel incohérent");
+  if (!egalAuCentime(t.materiel + t.mainOeuvre, t.sousTotal)) ecarts.push("sous-total incohérent");
+  if (t.remise > t.sousTotal || !egalAuCentime(t.sousTotal - t.remise, t.base)) ecarts.push("remise incohérente");
+  if (!t.tvaActive && t.tva !== 0) ecarts.push("TVA comptée alors qu'elle est désactivée");
+  if (t.tauxTva > 30 || t.tauxAcompte > 100 || t.valeurRemise < 0) ecarts.push("taux hors bornes");
+  if (!egalAuCentime(t.base + t.tva, t.totalGeneral)) ecarts.push("total général incohérent");
+  if (t.acompte > t.totalGeneral || !egalAuCentime(t.acompte + t.reste, t.totalGeneral)) ecarts.push("acompte incohérent");
+  if (!chiffrage.conformite.every((p) => (p.etat === "conforme" || p.etat === "verifier") && p.titre && p.explication)) ecarts.push("point de conformité incomplet");
+  return ecarts;
+}
+
 export function nombresInvalides(valeur, chemin = "etude", trouves = []) {
   if (typeof valeur === "number") {
     if (!Number.isFinite(valeur) || valeur < 0) trouves.push(chemin + " = " + valeur);
@@ -214,6 +255,14 @@ export function chantierAleatoire(moteur, alea) {
       forfait: nombre(0, 2e8),
       journees: { ouvriers: nombre(0, 60), jours: nombre(0, 400), tarif: nombre(0, 2e8) },
       libres: Array.from({ length: Math.floor(alea() * 25) }, () => ({ libelle: pioche(["Saignées", 42, null, "<b>x</b>"]), montant: nombre(0, 2e8) }))
+    },
+    materiel: alea() < 0.05 ? pioche(VALEURS_PIEGES) : Object.fromEntries(
+      ["cable-1.5", "prise", "coffret-2r", "disjoncteur-16", "__proto__", "inconnu"].filter(() => alea() < 0.4)
+        .map((ref) => [ref, { quantite: alea() < 0.5 ? null : nombre(0, 12000), prix: alea() < 0.5 ? null : nombre(0, 2e8) }])
+    ),
+    totaux: alea() < 0.05 ? pioche(VALEURS_PIEGES) : {
+      remiseType: pioche(["pourcent", "montant", "x", null]), remise: nombre(0, 2e8),
+      tva: pioche([true, false, "oui", 1]), tauxTva: nombre(0, 40), acompte: nombre(0, 120)
     }
   };
 }

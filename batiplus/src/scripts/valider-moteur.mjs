@@ -10,12 +10,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  ATTENDUS, CHANTIERS_TYPES, aleatoire, chantierAleatoire, chargerMoteur, invariants, moteurLivre, nombresInvalides, resumer
+  ATTENDUS, CHANTIERS_TYPES, aleatoire, chantierAleatoire, chargerMoteur, invariants, invariantsChiffrage, moteurLivre, nombresInvalides, resumer
 } from "./chantiers-types.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SORTIE = join(RACINE, "docs", "validation-moteur-nfc15100.md");
 const moteur = chargerMoteur();
+/* Le catalogue de départ au format de lireCatalogue() : { ref: { prix } }. */
+const catalogueDepart = Object.fromEntries(Object.entries(moteur.CATALOGUE_DEFAUT).map(([ref, prix]) => [ref, { prix }]));
 const nf = (n) => new Intl.NumberFormat("fr-FR").format(n).replace(/\u202F|\u00A0/g, " ");
 const sec = (s) => String(s).replace(".", ",");
 const lignes = [];
@@ -53,8 +55,9 @@ for (const type of CHANTIERS_TYPES) {
   const resume = resumer(etude);
   const reproductible = JSON.stringify(etude) === JSON.stringify(etude2);
   const conforme = JSON.stringify(resume) === JSON.stringify(ATTENDUS[type.cle]);
-  const ecarts = invariants(moteur, etude);
-  const invalides = nombresInvalides(etude);
+  const chiffrage = moteur.chiffrerChantier(type.chantier, catalogueDepart, "XOF");
+  const ecarts = [...invariants(moteur, etude), ...invariantsChiffrage(chiffrage)];
+  const invalides = nombresInvalides(chiffrage);
   const ok = reproductible && conforme && !ecarts.length && !invalides.length;
   if (!ok) echecs += 1;
 
@@ -78,9 +81,18 @@ for (const type of CHANTIERS_TYPES) {
   lignes.push("- Main-d'œuvre au point (prix de départ FCFA) : " + etude.mainOeuvre.lignes.filter((l) => l.quantite).map((l) => l.quantite + " × " + l.libelle.toLowerCase() + " à " + nf(l.prix)).join(", ")
     + " = **" + nf(etude.mainOeuvre.total) + " FCFA**", "");
   lignes.push("Matériel : " + etude.materiel.map((m) => m.quantite + " " + m.unite + " " + m.designation).join(" · "), "");
+  lignes.push("- Schéma du tableau : " + etude.tableau.map((r) => "rangée " + r.numero + " = " + r.modules.filter((m) => m.type !== "libre").map((m) => (m.type === "differentiel" ? "[ID" + m.numero + "]" : m.type === "parafoudre" ? "[PF]" : m.numero)).join(" ") + " + " + (13 - r.occupe) + " libres").join(" ; "));
+  const t = chiffrage.total;
+  lignes.push("- Chiffrage indicatif (catalogue de départ FCFA, sans remise ni TVA) : matériel " + nf(chiffrage.totalMateriel) + " + main-d'œuvre " + nf(t.mainOeuvre) + " = **" + nf(t.totalGeneral) + " FCFA**, acompte 40 % = " + nf(t.acompte));
+  lignes.push("- Conformité : " + chiffrage.conformite.filter((p) => p.etat === "conforme").length + " points conformes, " + chiffrage.conformite.filter((p) => p.etat !== "conforme").length + " à vérifier (" + chiffrage.conformite.filter((p) => p.etat !== "conforme").map((p) => p.titre.toLowerCase()).join(", ") + ")", "");
   lignes.push("Contrôle : reproductible " + (reproductible ? "✔" : "✘") + " · valeurs de référence " + (conforme ? "✔" : "✘")
     + " · règles " + (ecarts.length ? "✘ " + ecarts.join(" ; ") : "✔") + " · nombres valides " + (invalides.length ? "✘ " + invalides.slice(0, 3).join(" ; ") : "✔"), "");
   if (!conforme) lignes.push("```", "obtenu  : " + JSON.stringify(resume), "attendu : " + JSON.stringify(ATTENDUS[type.cle]), "```", "");
+}
+
+function cataloguePiege(alea) {
+  const pieges = [NaN, -5, 1e308, "abc", "12,5", null, {}, 2500];
+  return Object.fromEntries(Object.keys(moteur.CATALOGUE_DEFAUT).map((ref) => [ref, alea() < 0.5 ? { prix: pieges[Math.floor(alea() * pieges.length)] } : null]));
 }
 
 /* 1 000 chantiers aléatoires, graine fixe : aucune exception, aucun NaN/Infinity/négatif, règles tenues. */
@@ -92,9 +104,12 @@ const premiers = [];
 for (let i = 0; i < 1000; i += 1) {
   const chantier = chantierAleatoire(moteur, alea);
   try {
-    const etude = moteur.etudierChantier(chantier, i % 2 ? "XOF" : "EUR");
-    const inv = nombresInvalides(etude);
-    const ec = invariants(moteur, etude);
+    const devise = i % 2 ? "XOF" : "EUR";
+    const catalogue = i % 3 === 0 ? catalogueDepart : (i % 3 === 1 ? {} : cataloguePiege(alea));
+    const chiffrage = moteur.chiffrerChantier(chantier, catalogue, devise);
+    const etude = chiffrage.etude;
+    const inv = nombresInvalides(chiffrage);
+    const ec = [...invariants(moteur, etude), ...invariantsChiffrage(chiffrage)];
     if (inv.length) { invalidesFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " " + inv[0]); }
     if (ec.length) { ecartsFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " " + ec[0]); }
     if (etude.surfaceTotale > 60 * 2000 || etude.pieces.some((p) => p.surface < 0.5 || p.surface > 2000)) { ecartsFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " surface hors bornes"); }
@@ -106,7 +121,7 @@ for (let i = 0; i < 1000; i += 1) {
 const fuzzOk = !exceptions && !invalidesFuzz && !ecartsFuzz;
 if (!fuzzOk) echecs += 1;
 lignes.push("## Robustesse : 1 000 chantiers aléatoires", "");
-lignes.push("Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`).", "");
+lignes.push("Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé ; le schéma du tableau et la liste de conformité sont contrôlés aussi.", "");
 lignes.push("| Mesure | Résultat |", "|---|---:|");
 lignes.push("| Exceptions | " + exceptions + " |", "| Résultats avec NaN, Infinity ou négatif | " + invalidesFuzz + " |", "| Règles non tenues | " + ecartsFuzz + " |", "");
 if (premiers.length) lignes.push("Premiers écarts : " + premiers.join(" ; "), "");

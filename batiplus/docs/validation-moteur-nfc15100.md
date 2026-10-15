@@ -52,6 +52,10 @@ Le moteur est la section de `src/moteur.js` comprise entre les marqueurs « MOTE
 
 Matériel : 1 u Coffret 1 rangée de 13 modules · 1 u Peigne d'alimentation 13 modules · 1 u Bornier de terre et de neutre · 1 u Disjoncteur divisionnaire 1P+N 10 A · 1 u Disjoncteur divisionnaire 1P+N 16 A · 2 u Interrupteur différentiel 2P 40 A 30 mA type AC · 104 m Câble 3G1,5 mm² · 104 m Gaine ICTA 20 · 5 u Prise 2P+T 16 A · 1 u Prise 2P+T 16 A étanche IP44 · 3 u Interrupteur simple allumage · 3 u Point lumineux (DCL et douille) · 12 u Boîte d'encastrement · 3 u Boîte de dérivation
 
+- Schéma du tableau : rangée 1 = [ID1] 1 [ID2] 2 + 7 libres
+- Chiffrage indicatif (catalogue de départ FCFA, sans remise ni TVA) : matériel 144 200 + main-d'œuvre 53 500 = **197 700 FCFA**, acompte 40 % = 79 080
+- Conformité : 8 points conformes, 4 à vérifier (prise de terre, salle d'eau, parafoudre, câble d'alimentation)
+
 Contrôle : reproductible ✔ · valeurs de référence ✔ · règles ✔ · nombres valides ✔
 
 ## Villa 3 chambres 120 m²
@@ -98,6 +102,10 @@ Contrôle : reproductible ✔ · valeurs de référence ✔ · règles ✔ · no
 
 Matériel : 1 u Coffret 2 rangées de 13 modules · 2 u Peigne d'alimentation 13 modules · 2 u Bornier de terre et de neutre · 2 u Disjoncteur divisionnaire 1P+N 10 A · 3 u Disjoncteur divisionnaire 1P+N 16 A · 5 u Disjoncteur divisionnaire 1P+N 20 A · 1 u Disjoncteur divisionnaire 1P+N 32 A · 1 u Interrupteur différentiel 2P 40 A 30 mA type AC · 1 u Interrupteur différentiel 2P 63 A 30 mA type A · 1 u Interrupteur différentiel 2P 63 A 30 mA type AC · 1 u Parafoudre 2P avec protection intégrée · 451 m Câble 3G1,5 mm² · 111 m Câble 3G2,5 mm² · 16 m Câble 3G6 mm² · 562 m Gaine ICTA 20 · 16 m Gaine ICTA 25 · 17 m Câble d'alimentation 3G10 mm² · 25 u Prise 2P+T 16 A · 3 u Prise 2P+T 16 A étanche IP44 · 9 u Interrupteur simple allumage · 2 u Interrupteur va-et-vient · 11 u Point lumineux (DCL et douille) · 50 u Boîte d'encastrement · 10 u Boîte de dérivation · 1 u Piquet de terre 1,5 m · 5 m Câble de terre vert-jaune 16 mm² · 1 u Barrette de mesure de terre · 1 u Regard de visite
 
+- Schéma du tableau : rangée 1 = [PF] [ID1] 1 3 5 7 9 + 4 libres ; rangée 2 = [ID2] 2 4 6 8 [ID3] 10 11 + 3 libres
+- Chiffrage indicatif (catalogue de départ FCFA, sans remise ni TVA) : matériel 699 100 + main-d'œuvre 201 000 = **900 100 FCFA**, acompte 40 % = 360 040
+- Conformité : 13 points conformes, 1 à vérifier (salle d'eau)
+
 Contrôle : reproductible ✔ · valeurs de référence ✔ · règles ✔ · nombres valides ✔
 
 ## Boutique 40 m² avec climatiseur
@@ -128,11 +136,15 @@ Contrôle : reproductible ✔ · valeurs de référence ✔ · règles ✔ · no
 
 Matériel : 1 u Coffret 1 rangée de 13 modules · 1 u Peigne d'alimentation 13 modules · 1 u Bornier de terre et de neutre · 1 u Disjoncteur divisionnaire 1P+N 10 A · 1 u Disjoncteur divisionnaire 1P+N 16 A · 1 u Disjoncteur divisionnaire 1P+N 20 A · 2 u Interrupteur différentiel 2P 40 A 30 mA type AC · 135 m Câble 3G1,5 mm² · 11 m Câble 3G2,5 mm² · 146 m Gaine ICTA 20 · 9 m Câble d'alimentation 3G10 mm² · 7 u Prise 2P+T 16 A · 3 u Interrupteur simple allumage · 6 u Point lumineux (DCL et douille) · 16 u Boîte d'encastrement · 3 u Boîte de dérivation
 
+- Schéma du tableau : rangée 1 = [ID1] 1 3 [ID2] 2 + 6 libres
+- Chiffrage indicatif (catalogue de départ FCFA, sans remise ni TVA) : matériel 198 800 + main-d'œuvre 71 000 = **269 800 FCFA**, acompte 40 % = 107 920
+- Conformité : 10 points conformes, 2 à vérifier (prise de terre, parafoudre)
+
 Contrôle : reproductible ✔ · valeurs de référence ✔ · règles ✔ · nombres valides ✔
 
 ## Robustesse : 1 000 chantiers aléatoires
 
-Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`).
+Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé ; le schéma du tableau et la liste de conformité sont contrôlés aussi.
 
 | Mesure | Résultat |
 |---|---:|

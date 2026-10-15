@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* ==========================================================================
    BâtiPlus — vérificateur
-   Rapporte les contrôles bloquants des étapes 1-5 (①…⑫, ⑮, ⑰, ⑳, ㉑, ㉔…㉙ ; ⑬, ⑭, ⑯, ⑱, ⑲, ㉒, ㉓ dans verifier-navigateur.mjs) et les contrôles de
+   Rapporte les contrôles bloquants des étapes 1-6 (①…⑫, ⑮, ⑰, ⑳, ㉑, ㉔…㉜ ; ⑬, ⑭, ⑯, ⑱, ⑲, ㉒, ㉓ dans verifier-navigateur.mjs) et les contrôles de
    sécurité du front (S①…S⑪) sur le fichier livré www/index.html.
    Code de sortie 1 si un seul contrôle échoue.
    Le contrôle ⑩ (console au chargement) exécute la page dans jsdom :
@@ -24,6 +24,8 @@ const html = readFileSync(join(WWW, "index.html"), "utf8");
 const resultats = [];
 /* Constats de l'étape 5 relevés dans jsdom, complétés par le moteur exécuté seul (controlesMoteur). */
 const etape5 = { fait: false, cas: [], persistance: [], nombres: [], bornes: [] };
+/* Constats de l'étape 6 (écran Résultat) relevés dans jsdom. */
+const etape6 = { fait: false, svg: [], contenu: [], total: [] };
 
 function controle(numero, libelle, ok, detail) {
   resultats.push({ numero, libelle, ok: Boolean(ok), detail: detail || "" });
@@ -683,7 +685,7 @@ async function controlesExecution() {
       if (e0.client && e0.client.telephone !== "+22670112244") etape5.persistance.push("téléphone client : " + (e0.client && e0.client.telephone));
       if (e0.mainOeuvre && (e0.mainOeuvre.forfait !== 20000 || e0.mainOeuvre.libres.length !== 1)) etape5.persistance.push("main-d'œuvre non enregistrée");
       if (brouillonDe(c2)) etape5.persistance.push("brouillon non effacé après enregistrement");
-      if (c2.actif() !== "ecran-accueil" || c2.$("toast").hidden || !c2.texte("toast").includes("Studio Gounghin")) etape5.persistance.push("pas de retour à l'accueil avec confirmation");
+      if (c2.actif() !== "ecran-resultat" || c2.$("toast").hidden || !c2.texte("toast").includes("Studio Gounghin")) etape5.persistance.push("l'étude ne s'ouvre pas avec confirmation après l'enregistrement (" + c2.actif() + ")");
       c2.$("bouton-nouveau-chantier").click();
       await pause(250);
       if (etapeVisible(c2) !== 1 || c2.$("chantier-nom").value !== "" || c2.doc.querySelectorAll("#liste-pieces .piece").length) etape5.persistance.push("nouveau chantier non vierge après enregistrement");
@@ -717,6 +719,209 @@ async function controlesExecution() {
       await pause(900);
       const b3 = brouillonDe(c3);
       if (b3 && (b3.abonnement !== undefined || b3.pieces.some((p) => !(p.surface >= 0.5 && p.surface <= 2000)))) etape5.bornes.push("brouillon réécrit avec des champs falsifiés");
+
+      /* ---------- Étape 6 : écran Résultat (㉚ structure du schéma, ㉛ onglets, ㉜ total recalculé) ---------- */
+      {
+        const moteur = chargerMoteur();
+        const cat = Object.fromEntries(Object.entries(moteur.CATALOGUE_DEFAUT).map(([ref, prix]) => [ref, { prix }]));
+        const lireEnregistres = (page) => { try { return JSON.parse(page.stockage()[KC.chantiers] || "[]"); } catch { return []; } };
+        const montantUI = (page, id) => nb(page.texte(id));
+        const nombresResultat = (page, ou) => {
+          const ecran = page.$("ecran-resultat");
+          const tout = ecran.textContent + " " + [...ecran.querySelectorAll("input")].map((i) => i.value).join(" ");
+          const motif = /(?:^|[^0-9A-Za-zÀ-ÿ])(NaN|Infinity|undefined|null|-\s?\d)/;
+          if (motif.test(tout)) etape6.total.push(ou + " : « " + tout.slice(Math.max(0, tout.search(motif) - 20), tout.search(motif) + 20) + " »");
+        };
+        const r1 = ouvrirPage(c2.stockage());
+        await pause(1800);
+        const lignesEtudes = r1.doc.querySelectorAll("#accueil-etudes [data-chantier]");
+        const enr = lireEnregistres(r1)[0];
+        const ch = JSON.parse(JSON.stringify(enr));
+        let attendu = moteur.chiffrerChantier(ch, cat, "XOF");
+        if (r1.$("bloc-etudes").hidden || lignesEtudes.length !== 1) etape6.contenu.push("accueil : « Dernières études » absent");
+        else if (!nb(lignesEtudes[0].textContent).includes(fcfa(attendu.total.totalGeneral))) etape6.total.push("accueil : total de l'étude ≠ moteur (" + nb(lignesEtudes[0].textContent) + ")");
+        if (lignesEtudes[0]) lignesEtudes[0].click();
+        await pause(400);
+        if (r1.actif() !== "ecran-resultat") etape6.contenu.push("étude non ouverte depuis l'accueil (" + r1.actif() + ")");
+        if (r1.texte("mention-etude-texte") !== "Étude indicative. L'électricien vérifie et reste responsable de l'exécution conforme.") etape6.contenu.push("mention obligatoire absente ou modifiée");
+        if (r1.texte("titre-resultat") !== "Studio Gounghin" || !nb(r1.texte("resultat-infos")).includes("25 m²")) etape6.contenu.push("en-tête : « " + r1.texte("titre-resultat") + " / " + r1.texte("resultat-infos") + " »");
+
+        /* ㉛ Six onglets, un seul panneau visible, chacun avec son vrai contenu. */
+        const onglets = [...r1.doc.querySelectorAll("#resultat-onglets [role='tab']")];
+        const libelles = ["Circuits", "Tableau", "Matériel", "Main-d'œuvre", "Conformité", "Total"];
+        if (onglets.map((o) => o.textContent.trim()).join("|") !== libelles.join("|")) etape6.contenu.push("onglets : " + onglets.map((o) => o.textContent.trim()).join(", "));
+        const panneaux = [...r1.doc.querySelectorAll("#ecran-resultat [role='tabpanel']")];
+        const contenus = {
+          circuits: () => r1.doc.querySelectorAll("#liste-circuits .circuit").length === attendu.etude.circuits.length
+            && r1.doc.querySelectorAll("#liste-differentiels li").length === attendu.etude.differentiels.length
+            && nb(r1.texte("liste-circuits")).includes("1,5 mm²") && nb(r1.texte("liste-circuits")).includes("10 A"),
+          tableau: () => r1.doc.querySelectorAll("#schema-tableau svg .module").length > 0 && r1.doc.querySelectorAll("#detail-rangees li").length === attendu.etude.coffret.rangees,
+          materiel: () => r1.doc.querySelectorAll("#liste-materiel .ligne-modifiable").length === attendu.materiel.length && attendu.materiel.length >= 10,
+          "main-oeuvre": () => r1.doc.querySelectorAll("#res-mo-points .ligne-modifiable").length === attendu.etude.mainOeuvre.lignes.length
+            && r1.$("res-mo-forfait").value === "20000" && r1.doc.querySelectorAll("#res-mo-libres .ligne-libre").length === 1,
+          conformite: () => r1.doc.querySelectorAll("#liste-conformite .point-conformite").length === attendu.conformite.length
+            && [...r1.doc.querySelectorAll("#liste-conformite .point-conformite")].every((li, i) => li.dataset.etat === attendu.conformite[i].etat && li.querySelector("p").textContent.length > 30),
+          total: () => montantUI(r1, "tot-general") === fcfa(attendu.total.totalGeneral) && montantUI(r1, "tot-acompte") === fcfa(attendu.total.acompte)
+        };
+        for (const onglet of onglets) {
+          onglet.click();
+          await pause(30);
+          const id = onglet.dataset.onglet;
+          const visibles = panneaux.filter((p) => !p.hidden).map((p) => p.id);
+          if (visibles.join() !== "panneau-" + id || onglet.getAttribute("aria-selected") !== "true" || onglet.tabIndex !== 0) etape6.contenu.push(id + " : panneaux visibles " + visibles.join());
+          if (!contenus[id] || !contenus[id]()) etape6.contenu.push("onglet « " + onglet.textContent.trim() + " » sans le contenu attendu");
+        }
+        r1.$("onglet-total").focus();
+        r1.$("resultat-onglets").dispatchEvent(new r1.w.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+        if (r1.$("onglet-circuits").getAttribute("aria-selected") !== "true" || r1.doc.activeElement !== r1.$("onglet-circuits")) etape6.contenu.push("clavier : flèche droite depuis Total ne revient pas à Circuits");
+        r1.$("resultat-onglets").dispatchEvent(new r1.w.KeyboardEvent("keydown", { key: "End", bubbles: true }));
+        if (r1.$("onglet-total").getAttribute("aria-selected") !== "true") etape6.contenu.push("clavier : Fin ne mène pas à Total");
+        if (!r1.$("bouton-creer-devis").hidden) etape6.contenu.push("« Créer le devis » visible alors que l'écran Devis n'existe pas encore");
+
+        /* ㉚ Le schéma reprend exactement la disposition calculée par le moteur. */
+        const svg = r1.doc.querySelector("#schema-tableau svg");
+        if (!svg) etape6.svg.push("aucun SVG");
+        else {
+          const rangees = svg.querySelectorAll(".schema-rangee");
+          if (rangees.length !== attendu.etude.coffret.rangees) etape6.svg.push(rangees.length + " rangée(s) dessinée(s) au lieu de " + attendu.etude.coffret.rangees);
+          attendu.etude.tableau.forEach((rangee, i) => {
+            const dessines = rangees[i] ? [...rangees[i].querySelectorAll(".module")].map((m) => m.dataset.type) : [];
+            if (dessines.join() !== rangee.modules.map((m) => m.type).join()) etape6.svg.push("rangée " + (i + 1) + " : " + dessines.join(" "));
+          });
+          const disjoncteurs = [...svg.querySelectorAll(".module[data-type='disjoncteur']")].map((m) => m.querySelector("text").textContent);
+          if (disjoncteurs.join() !== attendu.etude.tableau.flatMap((r) => r.modules.filter((m) => m.type === "disjoncteur").map((m) => String(m.numero))).join()) etape6.svg.push("numéros des disjoncteurs : " + disjoncteurs.join(","));
+          if ([...svg.querySelectorAll("text")].some((t) => !t.textContent.trim())) etape6.svg.push("texte vide dans le schéma");
+          if (svg.querySelector("script, foreignObject, [onload], [onclick]") || /<script/i.test(svg.outerHTML)) etape6.svg.push("SVG porteur de code");
+          if (!/^0 0 \d+ \d+$/.test(svg.getAttribute("viewBox") || "") || svg.getAttribute("role") !== "img" || !svg.querySelector("title")) etape6.svg.push("SVG sans viewBox, rôle ou titre accessible");
+          if (svg.querySelectorAll(".schema-accolade").length !== attendu.etude.differentiels.length) etape6.svg.push("accolades différentiel → circuits : " + svg.querySelectorAll(".schema-accolade").length);
+        }
+
+        /* ㉜ Chaque saisie recalcule immédiatement le total ; l'attendu est recalculé par le moteur seul. */
+        const comparer = (ou) => {
+          attendu = moteur.chiffrerChantier(ch, cat, "XOF");
+          const t = attendu.total;
+          const paires = [["total-materiel", attendu.totalMateriel], ["res-total-mo", t.mainOeuvre], ["tot-sous-total", t.sousTotal], ["tot-general", t.totalGeneral], ["resume-total", t.totalGeneral], ["tot-acompte", t.acompte], ["tot-reste", t.reste]];
+          if (t.tvaActive) paires.push(["tot-tva", t.tva]);
+          const ecarts = paires.filter(([id, v]) => montantUI(r1, id) !== fcfa(v)).map(([id, v]) => id + " " + montantUI(r1, id) + " ≠ " + fcfa(v));
+          if (ecarts.length) etape6.total.push(ou + " : " + ecarts.join(", "));
+          nombresResultat(r1, ou);
+        };
+        /* Saisie puis sortie du champ (input puis change), comme au doigt. */
+        const saisir = (id, valeur) => {
+          r1.remplir(id, valeur);
+          r1.$(id).dispatchEvent(new r1.w.Event("change", { bubbles: true }));
+        };
+        const ligneMat = (ref, champ, valeur) => {
+          saisir("mat-" + ref.replace(/\./g, "_") + "-" + champ, valeur);
+          ch.materiel = ch.materiel || {};
+          const l = ch.materiel[ref] || { quantite: null, prix: null };
+          l[champ === "qte" ? "quantite" : "prix"] = valeur === "" ? null : Math.max(0, Number(valeur.replace(",", ".")));
+          ch.materiel[ref] = l;
+        };
+        const totalAvant = montantUI(r1, "tot-general");
+        /* Frappe seule (sans quitter le champ) : le total suit déjà. */
+        r1.remplir("mat-prise-prix", "2000");
+        ch.materiel = ch.materiel || {};
+        ch.materiel.prise = { quantite: null, prix: 2000 };
+        comparer("prix d'une prise à 2 000, pendant la frappe");
+        if (montantUI(r1, "tot-general") === totalAvant) etape6.total.push("le total n'a pas bougé après un changement de prix");
+        ligneMat("cable-1.5", "qte", "120");
+        comparer("120 m de câble 1,5 mm²");
+        ligneMat("prise", "prix", "-5");
+        ch.materiel.prise.prix = 0;
+        comparer("prix négatif");
+        const alerte = r1.$("liste-materiel").querySelector(".ligne-modifiable .prix-a-completer:not([hidden])");
+        if (!alerte || !nb(alerte.closest("li").textContent).includes("Prise 2P+T 16 A")) etape6.total.push("« Prix à compléter » absent pour un prix à 0");
+        ligneMat("prise", "prix", "");
+        comparer("prix vidé → catalogue");
+        if (r1.$("liste-materiel").querySelector(".prix-a-completer:not([hidden])")) etape6.total.push("« Prix à compléter » resté affiché");
+        ligneMat("prise", "prix", "2000");
+        saisir("res-mo-prise-prix", "3000");
+        ch.mainOeuvre.points.prise = { quantite: null, prix: 3000 };
+        comparer("main-d'œuvre : prise à 3 000");
+        saisir("res-mo-forfait", "25000");
+        ch.mainOeuvre.forfait = 25000;
+        comparer("forfait 25 000");
+        saisir("res-remise", "10");
+        ch.totaux.remise = 10;
+        comparer("remise 10 %");
+        if (montantUI(r1, "tot-remise") !== "− " + fcfa(attendu.total.remise) || attendu.total.remise !== Math.round(attendu.total.sousTotal * 0.1)) etape6.total.push("remise 10 % : « " + montantUI(r1, "tot-remise") + " »");
+        r1.$("res-tva").click();
+        ch.totaux.tva = true;
+        comparer("TVA activée (18 %)");
+        if (r1.$("bloc-taux-tva").hidden || r1.$("res-taux-tva").value !== "18") etape6.total.push("taux de TVA par défaut ≠ 18 % ou champ caché");
+        saisir("res-taux-tva", "20");
+        ch.totaux.tauxTva = 20;
+        comparer("TVA 20 %");
+        if (r1.$("res-acompte").value !== "40") etape6.total.push("acompte par défaut ≠ 40 %");
+        saisir("res-acompte", "50");
+        ch.totaux.acompte = 50;
+        comparer("acompte 50 %");
+        r1.doc.querySelector("input[name='res-remise-type'][value='montant']").click();
+        ch.totaux.remiseType = "montant";
+        ch.totaux.remise = 0;
+        comparer("remise en montant (remise remise à zéro)");
+        if (r1.$("res-remise").value !== "" || !r1.texte("res-remise-libelle").includes("FCFA")) etape6.total.push("passage en montant : champ ou libellé non mis à jour");
+        for (const [valeur, retenu] of [["-5", 0], ["abc", 0], ["1e400", 0], ["Infinity", 0], ["999999999", 1e8]]) {
+          saisir("res-remise", valeur);
+          ch.totaux.remise = retenu;
+          comparer("remise « " + valeur + " »");
+        }
+        if (montantUI(r1, "tot-general") !== fcfa(0)) etape6.total.push("remise supérieure au sous-total : total « " + montantUI(r1, "tot-general") + " » au lieu de 0");
+        saisir("res-remise", "15000");
+        ch.totaux.remise = 15000;
+        comparer("remise 15 000");
+        for (const [valeur, retenu] of [["abc", 18], ["-3", 0], ["99", 30], ["20", 20]]) {
+          saisir("res-taux-tva", valeur);
+          ch.totaux.tauxTva = retenu;
+          comparer("taux de TVA « " + valeur + " »");
+        }
+        for (const [valeur, retenu] of [["120", 100], ["abc", 40], ["50", 50]]) {
+          saisir("res-acompte", valeur);
+          ch.totaux.acompte = retenu;
+          comparer("acompte « " + valeur + " »");
+        }
+        r1.$("res-acompte").dispatchEvent(new r1.w.Event("change", { bubbles: true }));
+        if (r1.$("res-acompte").value !== "50") etape6.total.push("champ acompte non réécrit à la sortie");
+
+        /* Enregistrement automatique, puis réouverture : tout est retrouvé à l'identique. */
+        await pause(900);
+        const apres = lireEnregistres(r1);
+        const stocke = apres[0] || {};
+        if (apres.length !== 1 || stocke.id !== enr.id) etape6.total.push("chantier dupliqué ou perdu à l'enregistrement");
+        if (!/^Modifications enregistrées à \d{2}:\d{2}$/.test(r1.texte("etat-resultat"))) etape6.total.push("indication « Modifications enregistrées à HH:MM » absente");
+        if (moteur.chiffrerChantier(stocke, cat, "XOF").total.totalGeneral !== attendu.total.totalGeneral) etape6.total.push("total enregistré ≠ total affiché");
+        const totalFinal = montantUI(r1, "tot-general");
+        const r2 = ouvrirPage(r1.stockage());
+        r1.w.close();
+        await pause(1800);
+        const ligne2 = r2.doc.querySelector("#accueil-etudes [data-chantier]");
+        if (ligne2) ligne2.click();
+        await pause(400);
+        if (montantUI(r2, "tot-general") !== totalFinal || r2.$("res-acompte").value !== "50" || !r2.$("res-tva").checked || r2.$("mat-prise-prix").value !== "2000") etape6.total.push("réglages non retrouvés après réouverture");
+
+        /* « Modifier le chantier » : retour dans l'assistant, réenregistrement sur le même chantier. */
+        r2.$("bouton-modifier-chantier").click();
+        await pause(500);
+        if (r2.actif() !== "ecran-nouveau-chantier" || r2.texte("titre-nouveau-chantier") !== "Modifier le chantier" || r2.$("chantier-nom").value !== "Studio Gounghin" || etapeVisible(r2) !== 1) etape6.contenu.push("« Modifier le chantier » n'ouvre pas l'assistant rempli (" + r2.actif() + ")");
+        for (let i = 0; i < 4; i++) await suivant(r2, 250);
+        await suivant(r2, 600);
+        const apresModif = lireEnregistres(r2);
+        if (r2.actif() !== "ecran-resultat" || apresModif.length !== 1 || apresModif[0].id !== enr.id || !apresModif[0].materiel.prise || apresModif[0].materiel.prise.prix !== 2000) etape6.contenu.push("modification non réenregistrée sur le même chantier");
+
+        /* Chantier falsifié dans le stockage : réglages bornés, aucun NaN, aucun code interprété. */
+        const falsifie = { ...apresModif[0], nom: "<img src=x onerror=alert(6)>", materiel: { prise: { quantite: 1e9, prix: -3 }, "__proto__": { prix: 1 }, "<b>": { prix: 5 } }, totaux: { remiseType: "<b>", remise: -50, tva: "oui", tauxTva: 1e9, acompte: "abc" } };
+        const r3 = ouvrirPage({ ...r2.stockage(), [KC.chantiers]: JSON.stringify([falsifie]) });
+        r2.w.close();
+        await pause(1800);
+        const ligne3 = r3.doc.querySelector("#accueil-etudes [data-chantier]");
+        if (ligne3) ligne3.click();
+        await pause(400);
+        if (r3.actif() !== "ecran-resultat" || r3.doc.querySelector("img[src='x']") || r3.$("res-taux-tva").value !== "30" || r3.$("res-acompte").value !== "40" || r3.$("res-tva").checked || r3.$("mat-prise-qte").value !== "9999") etape6.total.push("chantier falsifié mal nettoyé");
+        nombresResultat(r3, "chantier falsifié");
+        r3.w.close();
+        etape6.fait = true;
+      }
       etape5.fait = true;
     }
 
@@ -986,7 +1191,7 @@ function controlesMoteur() {
   /* ㉗ */
   const persistance = [...absent, ...etape5.persistance];
   controle("㉗", "le brouillon survit à la fermeture de l'application", persistance.length === 0,
-    persistance.join(" ; ") || "brouillon écrit 600 ms après la saisie (« Brouillon enregistré à HH:MM »), page fermée puis rouverte → étape 2, 3 pièces et champs repris ; enregistrement final → statut étudié, brouillon effacé, retour à l'accueil avec confirmation");
+    persistance.join(" ; ") || "brouillon écrit 600 ms après la saisie (« Brouillon enregistré à HH:MM »), page fermée puis rouverte → étape 2, 3 pièces et champs repris ; enregistrement final → statut étudié, brouillon effacé, ouverture de l'étude avec confirmation");
 
   /* ㉘ */
   const nombres = [...absent, ...etape5.nombres];
@@ -1019,15 +1224,30 @@ function controlesMoteur() {
     bornes.join(" ; ") || "saisie : 0,2 · 5 000 · 0,49 · 2 000,5 · -3 · abc · 1e3 refusés, 0,5 et 2 000 acceptés, modification à 5 000 bloquée ; moteur : 0,2 → 0,5 et 5 000 → 2 000 ; brouillon falsifié nettoyé (pièces invalides écartées, étape 9 → 5, quantités bornées, aucun champ inconnu réécrit)");
 }
 
+/* ---------- Étape 6 : écran Résultat ---------- */
+function controlesResultat() {
+  const absent = etape6.fait ? [] : ["parcours de l'écran Résultat non exécuté (jsdom)"];
+  const svg = [...absent, ...etape6.svg];
+  controle("㉚", "le schéma SVG du tableau s'affiche correctement", svg.length === 0,
+    svg.join(" ; ") || "rangées, modules (différentiels, disjoncteurs, libres) et numéros identiques à la disposition du moteur ; accolades ID → circuits ; viewBox, rôle img et titre ; aucun code dans le SVG (mesures à l'écran : SV dans verifier-navigateur)");
+  const contenu = [...absent, ...etape6.contenu];
+  controle("㉛", "chaque onglet a un vrai contenu", contenu.length === 0,
+    contenu.join(" ; ") || "6 onglets ARIA (clic, flèches, Fin) : circuits et différentiels, schéma et détail des rangées, matériel ligne par ligne, main-d'œuvre, conformité expliquée, total ; mention obligatoire ; accès depuis l'accueil ; « Modifier le chantier » réenregistre le même chantier ; « Créer le devis » masqué tant que l'écran Devis n'existe pas");
+  const total = [...absent, ...etape6.total];
+  controle("㉜", "le total se recalcule à chaque modification", total.length === 0,
+    total.join(" ; ") || "25 saisies (prix, quantités, main-d'œuvre, forfait, remise % et montant, TVA, acompte, valeurs piégées) : chaque total affiché = moteur seul ; « Prix à compléter » à 0 ; enregistré 600 ms après, retrouvé après réouverture ; chantier falsifié borné");
+}
+
 /* ---------- Rapport ---------- */
 await controlesExecution();
 controlesMoteur();
+controlesResultat();
 controleCapacitor();
 controleGitignore();
 controlesSecurite();
 controlesIdentite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
