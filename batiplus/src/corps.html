@@ -15,6 +15,13 @@
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
   <symbol id="i-installer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
   <symbol id="i-telephone" viewBox="0 0 24 24"><path d="M21 16.5v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 1.1 3.7 2 2 0 0 1 3.1 1.5h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L7 9.3a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></symbol>
+  <symbol id="i-oeil" viewBox="0 0 24 24"><path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-oeil-barre" viewBox="0 0 24 24"><path d="M10.6 5.1A10 10 0 0 1 12 4.5c6.5 0 10.5 7.5 10.5 7.5a17 17 0 0 1-2.6 3.4M6.3 6.3A17.3 17.3 0 0 0 1.5 12s4 7.5 10.5 7.5a10 10 0 0 0 5.7-1.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M2 2l20 20"/></symbol>
+  <symbol id="i-effacer" viewBox="0 0 24 24"><path d="M21 5H8.5L2 12l6.5 7H21a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M17 9.5l-5 5M12 9.5l5 5"/></symbol>
+  <symbol id="i-cadenas" viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10.5" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.4A8.5 8.5 0 1 1 21 11.5z"/></symbol>
+  <symbol id="i-fleche" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-sortie" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
 </svg>
 
 <canvas id="toile" aria-hidden="true"></canvas>
@@ -25,7 +32,7 @@
 <aside id="tiroir" aria-label="Menu principal" aria-hidden="true">
   <div class="tiroir-tete">
     <span class="logo" data-logo>
-      <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="612" decoding="async">
+      <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="609" decoding="async">
       <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
       <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
     </span>
@@ -36,6 +43,9 @@
   <nav aria-label="Navigation">
     <ul class="tiroir-menu" id="tiroir-menu"></ul>
   </nav>
+  <button type="button" class="tiroir-lien tiroir-sortie" id="bouton-deconnexion">
+    <svg class="icone" aria-hidden="true"><use href="#i-sortie"/></svg><span>Se déconnecter</span>
+  </button>
   <div class="tiroir-pied">
     <strong>BRG Électro+</strong>
     <span>Concepteur de BâtiPlus</span>
@@ -50,7 +60,7 @@
       <svg class="icone" aria-hidden="true"><use href="#i-menu"/></svg>
     </button>
     <span class="logo" data-logo>
-      <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="612" decoding="async">
+      <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="609" decoding="async">
       <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
       <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
     </span>
@@ -62,12 +72,217 @@
   </header>
 
   <main class="contenu" id="contenu">
+
+    <!-- Écran 1 : démarrage (1,5 s, aucun bouton) -->
+    <section class="ecran ecran-demarrage" id="ecran-demarrage" aria-label="Démarrage de BâtiPlus">
+      <div class="splash">
+        <div class="splash-logo" data-logo>
+          <img class="splash-calque" src="images/logo/batiplus-blanc-sans-eclair.webp" alt="BâtiPlus" width="720" height="609" decoding="async">
+          <img class="splash-calque splash-eclair" src="images/logo/batiplus-eclair.webp" alt="" width="720" height="609" decoding="async">
+          <span class="splash-lueur" aria-hidden="true"></span>
+          <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+        </div>
+        <p class="splash-par">par BRG Électro+</p>
+      </div>
+    </section>
+
+    <!-- Écran 2 : présentation (première ouverture uniquement) -->
+    <section class="ecran ecran-presentation" id="ecran-presentation" aria-roledescription="carrousel" aria-label="Présentation de BâtiPlus">
+      <div class="presentation">
+        <div class="presentation-haut">
+          <button type="button" class="lien-passer" id="bouton-passer">Passer</button>
+        </div>
+        <div class="presentation-fenetre" id="presentation-fenetre">
+          <div class="diapos" id="diapos">
+            <article class="diapo" aria-roledescription="diapositive" aria-label="1 sur 4">
+              <figure class="diapo-photo">
+                <img src="images/equipe/elec-tableau.webp" alt="Électricien raccordant un disjoncteur dans un tableau électrique" width="768" height="1024" decoding="async">
+              </figure>
+              <div class="diapo-texte">
+                <h2 class="diapo-titre">Étudiez vos chantiers en minutes</h2>
+                <p class="diapo-phrase">Décrivez les pièces : BâtiPlus calcule les circuits, les sections et le tableau selon la norme NF C 15-100.</p>
+              </div>
+            </article>
+            <article class="diapo" aria-roledescription="diapositive" aria-label="2 sur 4">
+              <figure class="diapo-photo">
+                <img src="images/equipe/elec-cables.webp" alt="Électricien tirant des gaines et des câbles sur un chantier" width="768" height="1024" loading="lazy" decoding="async">
+              </figure>
+              <div class="diapo-texte">
+                <h2 class="diapo-titre">Vos prix, votre quincaillerie</h2>
+                <p class="diapo-phrase">Enregistrez une fois, vous ne ressaisirez plus jamais.</p>
+              </div>
+            </article>
+            <article class="diapo" aria-roledescription="diapositive" aria-label="3 sur 4">
+              <figure class="diapo-photo">
+                <img src="images/equipe/elec-devis.webp" alt="Électricien remettant un devis imprimé à une cliente" width="1024" height="768" loading="lazy" decoding="async">
+              </figure>
+              <div class="diapo-texte">
+                <h2 class="diapo-titre">Des devis qui font bonne impression</h2>
+                <p class="diapo-phrase">Imprimez ou envoyez par WhatsApp en un toucher.</p>
+              </div>
+            </article>
+            <article class="diapo diapo-brg" aria-roledescription="diapositive" aria-label="4 sur 4">
+              <figure class="diapo-photo diapo-photo-fondateur">
+                <img src="images/equipe/fondateur.webp" alt="Le fondateur de BRG Électro+ en tenue d'électricien" width="558" height="1198" loading="lazy" decoding="async">
+              </figure>
+              <div class="diapo-texte">
+                <h2 class="diapo-titre">Conçu par des électriciens du terrain</h2>
+                <p class="diapo-phrase">BâtiPlus a été conçu par BRG Électro+, une entreprise d'électricité, par des électriciens pour des électriciens.</p>
+                <span class="logo logo-brg" data-logo>
+                  <img class="logo-clair" src="images/brg/brg-couleur.webp" alt="BRG Électro+" width="640" height="315" loading="lazy" decoding="async">
+                  <img class="logo-sombre" src="images/brg/brg-blanc.webp" alt="BRG Électro+" width="640" height="315" loading="lazy" decoding="async">
+                  <span class="logo-repli logo-repli-brg" aria-hidden="true">BRG Électro+</span>
+                </span>
+              </div>
+            </article>
+          </div>
+        </div>
+        <div class="presentation-bas">
+          <div class="points" id="points" role="group" aria-label="Choisir une diapositive"></div>
+          <button type="button" class="bouton bouton-principal" id="bouton-diapo-suivante">
+            <span class="bouton-libelle" id="libelle-diapo-suivante">Suivant</span>
+            <svg class="icone icone-fleche" aria-hidden="true"><use href="#i-fleche"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Écran 3 : connexion / inscription -->
+    <section class="ecran ecran-connexion" id="ecran-connexion" aria-labelledby="titre-connexion">
+      <div class="connexion">
+        <div class="connexion-tete">
+          <span class="logo" data-logo>
+            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="609" decoding="async">
+            <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
+            <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+          </span>
+          <h1 class="connexion-titre" id="titre-connexion">Votre espace électricien</h1>
+          <p class="connexion-sous-titre">Études et devis d'installation électrique, à vos prix.</p>
+        </div>
+
+        <div class="carte connexion-carte">
+          <div class="onglets-auth" role="tablist" aria-label="Choisir">
+            <button type="button" class="onglet-auth" role="tab" id="onglet-inscription" aria-controls="panneau-inscription" aria-selected="true">Créer un compte</button>
+            <button type="button" class="onglet-auth" role="tab" id="onglet-connexion" aria-controls="panneau-connexion" aria-selected="false" tabindex="-1">Se connecter</button>
+          </div>
+
+          <form class="formulaire" id="panneau-inscription" role="tabpanel" aria-labelledby="onglet-inscription" novalidate autocomplete="on">
+            <div class="champ">
+              <label for="ins-nom">Nom complet</label>
+              <input id="ins-nom" name="nom" type="text" autocomplete="name" maxlength="120" required aria-describedby="err-ins-nom">
+              <p class="champ-erreur" id="err-ins-nom"></p>
+            </div>
+            <div class="champ">
+              <label for="ins-entreprise">Nom de l'entreprise <span class="facultatif">(facultatif)</span></label>
+              <input id="ins-entreprise" name="entreprise" type="text" autocomplete="organization" maxlength="120" aria-describedby="err-ins-entreprise">
+              <p class="champ-erreur" id="err-ins-entreprise"></p>
+            </div>
+            <div class="champ">
+              <label for="ins-telephone">Téléphone</label>
+              <input id="ins-telephone" name="telephone" type="tel" inputmode="tel" autocomplete="tel" maxlength="22" placeholder="+226 05 60 86 08" required aria-describedby="apercu-ins-telephone err-ins-telephone">
+              <p class="apercu-pays" id="apercu-ins-telephone" aria-live="polite"></p>
+              <p class="champ-erreur" id="err-ins-telephone"></p>
+            </div>
+            <div class="champ-duo">
+              <div class="champ">
+                <label for="ins-pays">Pays</label>
+                <select id="ins-pays" name="pays" autocomplete="country"></select>
+              </div>
+              <div class="champ">
+                <label for="ins-devise">Devise</label>
+                <select id="ins-devise" name="devise"></select>
+              </div>
+            </div>
+            <div class="champ">
+              <label for="ins-ville">Ville</label>
+              <input id="ins-ville" name="ville" type="text" autocomplete="address-level2" maxlength="120" required aria-describedby="err-ins-ville">
+              <p class="champ-erreur" id="err-ins-ville"></p>
+            </div>
+            <div class="champ">
+              <span class="etiquette-champ" id="lbl-ins-code">Code secret <span class="facultatif">(4 à 6 chiffres)</span></span>
+              <div class="code" data-code="ins-code">
+                <div class="code-cases" id="ins-code" role="textbox" tabindex="0" aria-labelledby="lbl-ins-code" aria-describedby="err-ins-code" aria-readonly="true" data-clavier="clavier-inscription"></div>
+                <button type="button" class="bouton-icone code-oeil" data-oeil="ins-code" aria-label="Afficher le code" aria-pressed="false">
+                  <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                  <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+                </button>
+              </div>
+              <p class="champ-erreur" id="err-ins-code"></p>
+            </div>
+            <div class="champ">
+              <span class="etiquette-champ" id="lbl-ins-confirmation">Confirmez le code</span>
+              <div class="code" data-code="ins-confirmation">
+                <div class="code-cases" id="ins-confirmation" role="textbox" tabindex="0" aria-labelledby="lbl-ins-confirmation" aria-describedby="err-ins-confirmation" aria-readonly="true" data-clavier="clavier-inscription"></div>
+                <button type="button" class="bouton-icone code-oeil" data-oeil="ins-confirmation" aria-label="Afficher le code" aria-pressed="false">
+                  <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                  <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+                </button>
+              </div>
+              <p class="champ-erreur" id="err-ins-confirmation"></p>
+            </div>
+            <div class="clavier" id="clavier-inscription" aria-label="Clavier du code secret"></div>
+            <div class="champ champ-case">
+              <label class="case">
+                <input id="ins-conditions" type="checkbox" aria-describedby="err-ins-conditions">
+                <span>J'accepte les conditions d'utilisation et la politique de confidentialité de BâtiPlus.</span>
+              </label>
+              <button type="button" class="lien-texte" id="bouton-conditions">Lire les conditions</button>
+              <p class="champ-erreur" id="err-ins-conditions"></p>
+            </div>
+            <p class="message-formulaire" id="msg-inscription" role="alert"></p>
+            <button type="submit" class="bouton bouton-principal" id="bouton-inscription">
+              <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
+              <span class="bouton-libelle">Créer mon compte</span>
+            </button>
+          </form>
+
+          <form class="formulaire" id="panneau-connexion" role="tabpanel" aria-labelledby="onglet-connexion" novalidate autocomplete="on" hidden>
+            <div class="champ">
+              <label for="cnx-telephone">Téléphone</label>
+              <input id="cnx-telephone" name="telephone" type="tel" inputmode="tel" autocomplete="tel" maxlength="22" placeholder="+226 05 60 86 08" required aria-describedby="apercu-cnx-telephone err-cnx-telephone">
+              <p class="apercu-pays" id="apercu-cnx-telephone" aria-live="polite"></p>
+              <p class="champ-erreur" id="err-cnx-telephone"></p>
+            </div>
+            <div class="champ">
+              <span class="etiquette-champ" id="lbl-cnx-code">Code secret</span>
+              <div class="code" data-code="cnx-code">
+                <div class="code-cases" id="cnx-code" role="textbox" tabindex="0" aria-labelledby="lbl-cnx-code" aria-describedby="err-cnx-code" aria-readonly="true" data-clavier="clavier-connexion"></div>
+                <button type="button" class="bouton-icone code-oeil" data-oeil="cnx-code" aria-label="Afficher le code" aria-pressed="false">
+                  <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                  <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+                </button>
+              </div>
+              <p class="champ-erreur" id="err-cnx-code"></p>
+            </div>
+            <div class="clavier" id="clavier-connexion" aria-label="Clavier du code secret"></div>
+            <a class="lien-texte lien-oubli" id="lien-code-oublie" href="https://wa.me/22605608608" target="_blank" rel="noopener noreferrer">
+              <svg class="icone" aria-hidden="true"><use href="#i-message"/></svg>Code oublié ? Écrire à BRG Électro+ sur WhatsApp
+            </a>
+            <p class="message-formulaire" id="msg-connexion" role="alert"></p>
+            <p class="message-blocage" id="msg-blocage" role="status" aria-live="polite" hidden>
+              <svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg><span id="texte-blocage"></span>
+            </p>
+            <button type="submit" class="bouton bouton-principal" id="bouton-connexion">
+              <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
+              <span class="bouton-libelle">Se connecter</span>
+            </button>
+          </form>
+        </div>
+
+        <p class="mention">
+          <strong>BâtiPlus est une application conçue et développée par BRG Électro+</strong>
+          <small>© 2026 BRG Électro+ — Tous droits réservés</small>
+        </p>
+      </div>
+    </section>
+
+    <!-- Écran de test des fondations (remplacé par le tableau de bord à l'étape 3) -->
     <section class="ecran" id="ecran-accueil" aria-labelledby="titre-accueil">
       <div class="demarrage">
         <div class="carte demarrage-hero cascade" data-rang="0">
           <span class="etiquette"><svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>Votre espace électricien</span>
           <span class="logo" data-logo>
-            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="Logo BâtiPlus" width="720" height="612" decoding="async">
+            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="Logo BâtiPlus" width="720" height="609" decoding="async">
             <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="Logo BâtiPlus" width="720" height="608" decoding="async">
             <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
           </span>
@@ -76,6 +291,18 @@
         </div>
 
         <div class="carte soulevable cascade" data-rang="1">
+          <h2 class="etat-titre">Votre compte</h2>
+          <ul class="etat-liste">
+            <li class="etat-ligne"><span>Nom</span><strong id="compte-nom"></strong></li>
+            <li class="etat-ligne"><span>Entreprise</span><strong id="compte-entreprise"></strong></li>
+            <li class="etat-ligne"><span>Téléphone</span><strong class="insecable" id="compte-telephone"></strong></li>
+            <li class="etat-ligne"><span>Ville</span><strong id="compte-ville"></strong></li>
+            <li class="etat-ligne"><span>Pays</span><strong id="compte-pays"></strong></li>
+            <li class="etat-ligne"><span>Devise</span><strong class="insecable" id="compte-devise"></strong></li>
+          </ul>
+        </div>
+
+        <div class="carte soulevable cascade" data-rang="2">
           <h2 class="etat-titre">État de l'application</h2>
           <ul class="etat-liste">
             <li class="etat-ligne"><span>Version</span><strong id="etat-version">1.0.0</strong></li>
@@ -86,7 +313,7 @@
           </ul>
         </div>
 
-        <div class="carte soulevable cascade" data-rang="2">
+        <div class="carte soulevable cascade" data-rang="3">
           <button type="button" class="bouton bouton-principal" id="bouton-verifier">
             <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
             <span class="bouton-libelle">Vérifier le démarrage</span>
@@ -97,7 +324,7 @@
           </div>
         </div>
 
-        <p class="mention cascade" data-rang="3">
+        <p class="mention cascade" data-rang="4">
           <strong>BâtiPlus est une application conçue et développée par BRG Électro+</strong>
           <small>© 2026 BRG Électro+ — Tous droits réservés</small>
         </p>
@@ -108,7 +335,26 @@
 
 <nav class="onglets" id="onglets" aria-label="Navigation rapide"></nav>
 
-<div id="modale" role="dialog" aria-modal="true" aria-labelledby="modale-titre" hidden>
-  <div class="carte"><h2 id="modale-titre" class="visuellement-cache">Fenêtre</h2></div>
+<div id="modale" hidden>
+  <div class="modale-boite carte" role="dialog" aria-modal="true" aria-labelledby="modale-titre">
+    <div class="modale-tete">
+      <h2 id="modale-titre"></h2>
+      <button type="button" class="bouton-icone" id="bouton-fermer-modale" aria-label="Fermer">
+        <svg class="icone" aria-hidden="true"><use href="#i-fermer"/></svg>
+      </button>
+    </div>
+    <div class="modale-contenu" id="modale-contenu"></div>
+    <button type="button" class="bouton bouton-principal" id="bouton-modale-ok"><span class="bouton-libelle">J'ai compris</span></button>
+  </div>
 </div>
+
+<template id="modele-conditions">
+  <p><strong>Éditeur.</strong> BâtiPlus est éditée par BRG Électro+, Burkina Faso — +226 05 60 86 08 · +226 68 52 42 90.</p>
+  <p><strong>Données collectées.</strong> Votre nom, le nom de votre entreprise, votre téléphone, votre ville, votre pays, votre devise, ainsi que les chantiers, clients et devis que vous créez.</p>
+  <p><strong>Pourquoi.</strong> Uniquement pour faire fonctionner votre compte, vos études, vos devis et votre abonnement. Vos données ne sont jamais vendues et ne servent à aucune publicité.</p>
+  <p><strong>Où.</strong> Sur votre téléphone. Lorsque vous êtes connecté à Internet, une copie est conservée sur le serveur sécurisé de BRG Électro+ pour la sauvegarde et la synchronisation entre vos appareils.</p>
+  <p><strong>Votre code secret.</strong> Il n'est jamais conservé en clair : seule une empreinte chiffrée (PBKDF2, 150 000 itérations) est enregistrée.</p>
+  <p><strong>Suppression.</strong> Vous pouvez demander à tout moment la suppression de votre compte et de vos données par WhatsApp au +226 05 60 86 08.</p>
+  <p><strong>Responsabilité.</strong> Les études et devis de BâtiPlus sont une aide au calcul. La conformité de l'installation à la norme NF C 15-100 reste sous la responsabilité de l'électricien qui la réalise.</p>
+</template>
 <div id="feuille-devis" aria-hidden="true"></div>

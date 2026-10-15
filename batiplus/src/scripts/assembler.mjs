@@ -54,13 +54,13 @@ function politique(hashStyle, hashScript, api) {
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self' " + api,
-    "media-src 'self'",
+    "media-src 'none'",
     "worker-src 'self'",
     "manifest-src 'self'",
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'none'",
-    "form-action 'self'"
+    "form-action 'none'"
   ].join("; ");
 }
 

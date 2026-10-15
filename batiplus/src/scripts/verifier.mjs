@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* ==========================================================================
    BâtiPlus — vérificateur
-   Rapporte les contrôles bloquants de l'étape 1 (①…⑫) et les contrôles de
+   Rapporte les contrôles bloquants des étapes 1-2 (①…⑫, ⑭, ⑮, ⑰ ; ⑬ et ⑯ dans verifier-navigateur.mjs) et les contrôles de
    sécurité du front (S①…S⑪) sur le fichier livré www/index.html.
    Code de sortie 1 si un seul contrôle échoue.
    Le contrôle ⑩ (console au chargement) exécute la page dans jsdom :
@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -103,62 +103,244 @@ const metiers = /plombi|ma[çc]on|menuisi|peintre|carreleu|soudeu|couvreu|m[ée]
 const metierTrouve = html.match(metiers);
 controle("⑨", "aucune mention d'un autre métier", !metierTrouve, metierTrouve ? "trouvé : " + metierTrouve[0] : "électricien uniquement");
 
-/* ⑩ aucune erreur dans la console au chargement (exécution réelle dans jsdom) */
-async function controleConsole() {
+/* ⑩ ⑭ ⑮ ⑰ exécution réelle de la page dans jsdom (contexte https).
+   Le script est enfermé dans une IIFE : rien n'est exposé, tout passe par l'interface. */
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function controlesExecution() {
   let JSDOM, VirtualConsole;
   try {
     ({ JSDOM, VirtualConsole } = await import("jsdom"));
   } catch {
-    controle("⑩", "aucune erreur dans la console au chargement", false, "jsdom absent : npm i --no-save jsdom");
+    for (const n of ["⑩", "⑭", "⑮", "⑰"]) controle(n, "exécution dans jsdom", false, "jsdom absent : npm i --no-save jsdom");
     return;
   }
+  const { webcrypto } = await import("node:crypto");
+  const { TextEncoder } = await import("node:util");
   const erreurs = [];
   const ignorees = [];
   const surRejet = (e) => erreurs.push("Uncaught " + String((e && e.message) || e));
   process.on("unhandledRejection", surRejet);
   process.on("uncaughtException", surRejet);
-  const consoleVirtuelle = new VirtualConsole();
-  consoleVirtuelle.on("error", (m) => erreurs.push(String(m)));
-  consoleVirtuelle.on("warn", (m) => erreurs.push("warn: " + String(m)));
-  consoleVirtuelle.on("log", (m) => erreurs.push("log inattendu (DEBUG ?) : " + String(m)));
-  consoleVirtuelle.on("jsdomError", (e) => {
-    const msg = String(e.message || e);
-    /* jsdom n'implémente ni le dessin <canvas> ni le défilement : limites de l'outil, pas de l'application. */
-    if (/Not implemented: (HTMLCanvasElement(\.prototype\.|'s )getContext|(window\.|Window's )scrollTo)/.test(msg)) ignorees.push(msg.split("\n")[0]);
-    else erreurs.push(msg.split("\n")[0]);
-  });
-  const dom = new JSDOM(html, {
-    url: pathToFileURL(join(WWW, "index.html")).href,
-    runScripts: "dangerously",
-    pretendToBeVisual: true,
-    virtualConsole: consoleVirtuelle,
-    beforeParse(window) {
-      window.matchMedia = (requete) => ({
-        matches: false, media: requete, onchange: null,
-        addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return false; }
-      });
+  const fenetres = [];
+
+  function ouvrirPage(stockage) {
+    const consoleVirtuelle = new VirtualConsole();
+    consoleVirtuelle.on("error", (m) => erreurs.push(String(m)));
+    consoleVirtuelle.on("warn", (m) => erreurs.push("warn: " + String(m)));
+    consoleVirtuelle.on("log", (m) => erreurs.push("log inattendu (DEBUG ?) : " + String(m)));
+    consoleVirtuelle.on("jsdomError", (e) => {
+      const msg = String(e.message || e);
+      /* jsdom n'implémente ni le dessin <canvas> ni le défilement : limites de l'outil, pas de l'application. */
+      if (/Not implemented: (HTMLCanvasElement(\.prototype\.|'s )getContext|(window\.|Window's )scrollTo)/.test(msg)) ignorees.push(msg.split("\n")[0]);
+      else erreurs.push(msg.split("\n")[0]);
+    });
+    const dom = new JSDOM(html, {
+      url: "https://batiplus.local/",
+      runScripts: "dangerously",
+      pretendToBeVisual: true,
+      virtualConsole: consoleVirtuelle,
+      beforeParse(window) {
+        window.matchMedia = (requete) => ({
+          matches: false, media: requete, onchange: null,
+          addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return false; }
+        });
+        /* Ce que jsdom ne fournit pas et qu'un vrai WebView fournit. */
+        if (!window.crypto || !window.crypto.subtle) Object.defineProperty(window, "crypto", { value: webcrypto, configurable: true });
+        if (!window.TextEncoder) window.TextEncoder = TextEncoder;
+        if (window.isSecureContext !== true) Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+        if (!window.Element.prototype.scrollIntoView) window.Element.prototype.scrollIntoView = function () {};
+        window.localStorage.clear();
+        for (const [cle, valeur] of Object.entries(stockage || {})) window.localStorage.setItem(cle, valeur);
+      }
+    });
+    fenetres.push(dom.window);
+    const w = dom.window;
+    const doc = w.document;
+    const $ = (id) => doc.getElementById(id);
+    return {
+      w, doc, $,
+      actif: () => (doc.querySelector(".ecran.actif") || {}).id || "",
+      texte: (id) => ($(id) || {}).textContent || "",
+      taper(id, touches) {
+        for (const key of touches) $(id).dispatchEvent(new w.KeyboardEvent("keydown", { key, bubbles: true }));
+      },
+      remplir(id, valeur) {
+        $(id).value = valeur;
+        $(id).dispatchEvent(new w.Event("input", { bubbles: true }));
+      },
+      choisir(id, valeur) {
+        $(id).value = valeur;
+        $(id).dispatchEvent(new w.Event("change", { bubbles: true }));
+      },
+      async soumettre(id, ms) {
+        $(id).dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
+        await pause(ms || 900);
+      },
+      stockage: () => ({ ...w.localStorage })
+    };
+  }
+
+  try {
+    /* ---------- Page 1 : première ouverture, stockage vierge ---------- */
+    const p = ouvrirPage();
+    await pause(300);
+    const splash = p.actif() === "ecran-demarrage" && p.doc.body.dataset.mode === "entree"
+      && p.doc.querySelector("#ecran-demarrage [data-logo] img") !== null;
+    await pause(1500);
+    const apresSplash = p.actif();
+    controle("⑭", "écran de démarrage puis présentation à la 1re ouverture", splash && apresSplash === "ecran-presentation",
+      "démarrage plein écran (mode entrée, logo image) → " + apresSplash.replace("ecran-", "") + " après 1,5 s");
+
+    const theme = p.texte("etat-theme");
+    const plateforme = p.texte("etat-plateforme");
+    p.$("bouton-theme").click();
+    await pause(50);
+    const themeApres = p.doc.documentElement.getAttribute("data-theme");
+    p.$("bouton-diapo-suivante").click();
+    const diapo2 = p.$("diapos").style.transform === "translateX(-100%)" && p.texte("libelle-diapo-suivante") === "Suivant";
+    p.$("bouton-diapo-suivante").click();
+    p.$("bouton-diapo-suivante").click();
+    const derniere = p.texte("libelle-diapo-suivante") === "Commencer";
+    p.$("bouton-diapo-suivante").click();
+    await pause(100);
+    const versAuth = p.actif() === "ecran-connexion" && p.stockage()["bp.presentation-vue"] === "1"
+      && p.$("panneau-connexion").hidden && !p.$("panneau-inscription").hidden;
+    const fonctionne = theme !== "Détection…" && plateforme === "Navigateur web" && themeApres === "sombre" && diapo2 && derniere && versAuth;
+
+    /* ⑮ détection du pays (saisie réelle dans le champ téléphone de l'inscription) */
+    const cas = [
+      ["+226 05 60 86 08", "BF", "BF", "+22605608608"],
+      ["0022670123456", "SN", "BF", "+22670123456"],
+      ["70 12 34 56", "BF", "BF", "+22670123456"],
+      ["+225 07 08 09 10 11", "BF", "CI", "+2250708091011"],
+      ["+221 77 123 45 67", "BF", "SN", "+221771234567"],
+      ["+237 6 71 23 45 67", "BF", "CM", "+237671234567"],
+      ["+33 6 12 34 56 78", "BF", "FR", "+33612345678"],
+      ["+234 0803 123 4567", "BF", "NG", "+2348031234567"],
+      ["+1 514 555 0199", "BF", "CA", "+15145550199"],
+      ["+1 212 555 0199", "US", "US", "+12125550199"],
+      ["+27 82 123 4567", "BF", "ZA", "+27821234567"]
+    ];
+    const devisesAttendues = { BF: "XOF", CI: "XOF", SN: "XOF", CM: "XAF", FR: "EUR", NG: "NGN", CA: "CAD", US: "USD", ZA: "ZAR" };
+    const ratesPays = cas.filter(([saisie, pref, iso, e164]) => {
+      p.remplir("ins-telephone", "");
+      p.choisir("ins-pays", pref);
+      p.remplir("ins-telephone", saisie);
+      const apercu = p.texte("apercu-ins-telephone");
+      const numero = (apercu.split(" — ")[1] || "").replace(/\s/g, "");
+      return p.$("ins-pays").value !== iso || p.$("ins-devise").value !== devisesAttendues[iso] || numero !== e164;
+    }).map((c) => c[0]);
+    const refus = ["+226 5 60", "+999 123456789", "12", "+226 05 60 86 08 99"].filter((saisie) => {
+      p.choisir("ins-pays", "BF");
+      p.remplir("ins-telephone", saisie);
+      return p.texte("apercu-ins-telephone").includes(" — ");
+    });
+    p.remplir("ins-telephone", "");
+    p.choisir("ins-pays", "BF");
+    controle("⑮", "pays et devise détectés depuis l'indicatif", ratesPays.length === 0 && refus.length === 0,
+      ratesPays.length ? "ratés : " + ratesPays.join(" ; ")
+        : refus.length ? "acceptés à tort : " + refus.join(" ; ")
+          : cas.length + " numéros (226 avant 22, préfixe 00, 0 national, +1 CA/US) + 4 refus ; pays, devise et format +226 05 60 86 08");
+
+    /* ⑰ inscription, session, déconnexion, connexion, blocage, injection */
+    const problemes = [];
+    const nomPiege = "<img src=x onerror=alert(1)>Awa";
+    p.$("ins-nom").value = "";
+    await p.soumettre("panneau-inscription", 100);
+    if (p.w.document.activeElement !== p.$("ins-nom") || !p.texte("err-ins-nom")) problemes.push("formulaire vide : pas d'erreur sur le 1er champ");
+    p.remplir("ins-nom", nomPiege);
+    p.remplir("ins-ville", "Ouagadougou");
+    p.remplir("ins-telephone", "+226 70 11 22 33");
+    p.taper("ins-code", ["1", "2", "3", "4"]);
+    p.taper("ins-confirmation", ["1", "2", "3", "4"]);
+    p.$("ins-conditions").checked = true;
+    await p.soumettre("panneau-inscription", 200);
+    if (!p.texte("err-ins-code").includes("trop simple")) problemes.push("code 1234 accepté");
+    p.taper("ins-code", ["Backspace", "Backspace", "Backspace", "Backspace", "2", "5", "8", "0", "7", "1"]);
+    p.taper("ins-confirmation", ["Backspace", "Backspace", "Backspace", "Backspace", "2", "5", "8", "0", "7", "9"]);
+    await p.soumettre("panneau-inscription", 200);
+    if (!p.texte("err-ins-confirmation")) problemes.push("confirmation différente acceptée");
+    p.taper("ins-confirmation", ["Backspace", "1"]);
+    const html1 = p.doc.documentElement.outerHTML;
+    if (html1.includes("258071") || [...p.doc.querySelectorAll("input")].some((i) => i.value.includes("258071"))) problemes.push("code visible dans le DOM");
+    if (p.doc.querySelectorAll("#ins-code .code-case.pleine").length !== 6) problemes.push("cases du code non remplies");
+    await p.soumettre("panneau-inscription", 1200);
+    if (p.actif() !== "ecran-accueil") problemes.push("inscription n'ouvre pas l'accueil (" + p.actif() + " : " + p.texte("msg-inscription") + ")");
+    if (p.texte("compte-nom") !== nomPiege) problemes.push("nom mal affiché");
+    if (p.doc.querySelector("img[src='x']")) problemes.push("XSS : balise injectée");
+    if (p.texte("compte-telephone") !== "+226 70 11 22 33") problemes.push("téléphone mal formaté : " + p.texte("compte-telephone"));
+    if (p.texte("compte-devise").replace(/\s/g, " ") !== "Franc CFA (UEMOA) · 25 000 FCFA") problemes.push("montant mal formaté : " + p.texte("compte-devise"));
+    if (JSON.stringify(p.stockage()).includes("258071")) problemes.push("code en clair dans le stockage");
+    const comptes = JSON.parse(p.stockage()["bp.comptes"] || "[]");
+    const compte = comptes[0];
+    if (!compte || compte.iterations < 150000 || !compte.sel || !compte.empreinte || compte.code) problemes.push("empreinte PBKDF2 absente");
+    const stockageInscrit = p.stockage();
+
+    p.$("bouton-deconnexion").click();
+    await pause(100);
+    if (p.actif() !== "ecran-connexion" || p.stockage()["bp.session"]) problemes.push("déconnexion incomplète");
+
+    p.remplir("cnx-telephone", "+226 70 11 22 33");
+    for (let i = 1; i <= 4; i++) {
+      p.taper("cnx-code", ["9", "9", "9", "1"]);
+      await p.soumettre("panneau-connexion", 700);
     }
-  });
-  await new Promise((r) => setTimeout(r, 400));
-  const doc = dom.window.document;
-  const ecranActif = doc.querySelector(".ecran.actif");
-  const texte = (id) => (doc.getElementById(id) || {}).textContent || "";
-  const theme = texte("etat-theme");
-  const plateforme = texte("etat-plateforme");
-  const reseau = texte("etat-reseau");
-  /* Interactions de base : thème et tiroir. */
-  doc.getElementById("bouton-theme").click();
-  await new Promise((r) => setTimeout(r, 50));
-  const themeApres = doc.documentElement.getAttribute("data-theme");
-  dom.window.close();
-  process.off("unhandledRejection", surRejet);
-  process.off("uncaughtException", surRejet);
-  const fonctionne = ecranActif && ecranActif.id === "ecran-accueil" && theme !== "Détection…"
-    && plateforme === "Navigateur web" && reseau !== "Détection…" && themeApres === "sombre";
-  controle("⑩", "aucune erreur dans la console au chargement", erreurs.length === 0 && fonctionne,
-    erreurs.length ? erreurs.join(" | ")
-      : (fonctionne ? "0 erreur ; écran actif, état rempli, bascule de thème OK" : "script exécuté mais état incomplet")
-        + (ignorees.length ? " (limites jsdom ignorées : canvas, scrollTo)" : ""));
+    if (!p.texte("msg-connexion").includes("Encore 1 essai")) problemes.push("compteur d'essais absent : « " + p.texte("msg-connexion") + " »");
+    p.taper("cnx-code", ["9", "9", "9", "1"]);
+    await p.soumettre("panneau-connexion", 700);
+    if (p.$("msg-blocage").hidden || !p.$("bouton-connexion").disabled) problemes.push("pas de blocage après 5 échecs");
+    p.taper("cnx-code", ["2", "5", "8", "0", "7", "1"]);
+    await p.soumettre("panneau-connexion", 700);
+    if (p.actif() === "ecran-accueil") problemes.push("connexion acceptée pendant le blocage");
+    const blocage = p.texte("texte-blocage");
+    const verrou = JSON.parse(p.stockage()["bp.verrou"] || "{}");
+
+    /* Inconnu : même message générique, rien ne révèle si le numéro existe. */
+    const q = ouvrirPage({ "bp.presentation-vue": "1", "bp.comptes": stockageInscrit["bp.comptes"] });
+    await pause(1800);
+    if (q.actif() !== "ecran-connexion" || q.$("panneau-connexion").hidden) problemes.push("sans session : connexion attendue");
+    q.remplir("cnx-telephone", "+226 70 99 88 77");
+    q.taper("cnx-code", ["2", "5", "8", "0", "7", "1"]);
+    await q.soumettre("panneau-connexion", 700);
+    if (!q.texte("msg-connexion").startsWith("Téléphone ou code incorrect.")) problemes.push("message différent pour un numéro inconnu");
+    q.remplir("cnx-telephone", "+22670112233");
+    q.taper("cnx-code", ["2", "5", "8", "0", "7", "1"]);
+    await q.soumettre("panneau-connexion", 900);
+    if (q.actif() !== "ecran-accueil") problemes.push("bon code refusé (" + q.texte("msg-connexion") + ")");
+    if (q.stockage()["bp.verrou"]) problemes.push("compteur non remis à zéro après succès");
+
+    /* Session reprise au redémarrage ; compte affaibli (itérations) rejeté. */
+    const r = ouvrirPage(q.stockage());
+    await pause(1800);
+    if (r.actif() !== "ecran-accueil" || r.texte("compte-nom") !== nomPiege) problemes.push("session non reprise au redémarrage");
+    const affaibli = JSON.stringify([{ ...compte, iterations: 1 }]);
+    const t = ouvrirPage({ ...q.stockage(), "bp.comptes": affaibli });
+    await pause(1800);
+    if (t.actif() !== "ecran-accueil" && t.actif() !== "ecran-connexion") problemes.push("état inattendu");
+    if (t.actif() === "ecran-accueil") problemes.push("compte affaibli accepté");
+    const u = ouvrirPage({ "bp.presentation-vue": "1", "bp.verrou": JSON.stringify({ echecs: 9, jusqua: Date.now() + 9e12 }) });
+    await pause(1800);
+    const texteU = u.texte("texte-blocage");
+    const minutes = Number((texteU.match(/(\d+):\d\d/) || [])[1]);
+    if (!(minutes <= 15)) problemes.push("verrou falsifié non plafonné : " + texteU);
+
+    controle("⑰", "compte : inscription, connexion, blocage, aucune injection", problemes.length === 0,
+      problemes.join(" ; ") || "1er champ invalide ciblé, 1234 refusé, codes différents refusés, code absent du DOM et du stockage (PBKDF2 "
+        + compte.iterations.toLocaleString("fr-FR") + "), nom piégé affiché en texte, déconnexion, 5 échecs → verrou " + verrou.echecs
+        + " et « " + blocage + " », message identique pour un inconnu, bon code accepté, session reprise, compte affaibli rejeté, verrou plafonné à 15 min");
+
+    controle("⑩", "aucune erreur dans la console au chargement", erreurs.length === 0 && fonctionne,
+      erreurs.length ? erreurs.join(" | ")
+        : (fonctionne ? "0 erreur sur 6 ouvertures ; thème, 4 diapositives, Commencer → inscription" : "script exécuté mais état incomplet")
+          + (ignorees.length ? " (limites jsdom ignorées : canvas, scrollTo)" : ""));
+  } catch (e) {
+    controle("⑩", "aucune erreur dans la console au chargement", false, "exception du vérificateur : " + e.message);
+  } finally {
+    for (const w of fenetres) w.close();
+    process.off("unhandledRejection", surRejet);
+    process.off("uncaughtException", surRejet);
+  }
 }
 
 /* ⑪ les fichiers Capacitor sont présents et valides */
@@ -237,17 +419,23 @@ function controlesSecurite() {
   controle("S⑪", "DEBUG = false, aucun log de donnée personnelle", debug && logsDirects === 0,
     debug ? (logsDirects ? logsDirects + " console.* hors journal()" : "DEBUG = false ; un seul point de log, journal(), muet en production") : "DEBUG n'est pas false");
 
-  const externes = [...html.matchAll(/(?:src|href)="(https?:)?\/\/[^"]+"/g)].map((m) => m[0]);
-  controle("S+", "aucune ressource externe (polices, CDN)", externes.length === 0, externes.join(", ") || "polices et images locales uniquement");
+  /* Ressource chargée = src=… ou <link href=…>. Les liens <a> sortants ne chargent rien :
+     ils doivent viser wa.me ou tel: et porter rel="noopener noreferrer". */
+  const externes = [...html.matchAll(/\ssrc="(https?:)?\/\/[^"]+"|<link[^>]+href="(https?:)?\/\/[^"]+"/g)].map((m) => m[0].trim());
+  const liensSortants = [...html.matchAll(/<a\s[^>]*href="(https?:\/\/[^"]+)"[^>]*>/g)];
+  const liensFautifs = liensSortants.filter((m) => !/^https:\/\/wa\.me\//.test(m[1]) || !/rel="noopener noreferrer"/.test(m[0])).map((m) => m[1]);
+  controle("S+", "aucune ressource externe (polices, CDN)", externes.length === 0 && liensFautifs.length === 0,
+    externes.join(", ") || (liensFautifs.length ? "liens non conformes : " + liensFautifs.join(", ")
+      : "polices et images locales ; " + liensSortants.length + " lien sortant wa.me avec rel=noopener noreferrer"));
 }
 
 /* ---------- Rapport ---------- */
-await controleConsole();
+await controlesExecution();
 controleCapacitor();
 controleGitignore();
 controlesSecurite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫", "⑭", "⑮", "⑰"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);

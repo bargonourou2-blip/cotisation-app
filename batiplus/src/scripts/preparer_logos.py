@@ -5,11 +5,18 @@ Préparation des logos BâtiPlus à partir des fichiers originaux du client.
 Entrées (dossier sources-logos/) :
   - batiplus-sur-fond-blanc.jpg  (logo couleur posé sur fond blanc)
   - batiplus-sur-fond-noir.png   (logo couleur posé sur fond noir)
+  - brg-electro.png              (logo BRG Électro+, déjà transparent)
 
 Sorties (dossier www/images/logo/) :
   - batiplus-couleur.webp    logo détouré (transparent), pour fonds clairs
   - batiplus-fond-noir.webp  logo détouré (transparent), pour fonds sombres
+  - batiplus-blanc.webp      version blanche (éclair jaune conservé), fonds violets
+  - batiplus-blanc-sans-eclair.webp + batiplus-eclair.webp
+                             mêmes dimensions, superposables : l'éclair s'anime seul
   - icon-192.png, icon-512.png, icon-maskable-512.png  (provisoires, affinées à l'étape 4)
+Sorties (dossier www/images/brg/) :
+  - brg-couleur.webp         fonds clairs
+  - brg-blanc.webp           fonds sombres (bleu passé en blanc, rouge et jaune conservés)
 
 Détourage : l'opacité de chaque pixel est calculée à partir de son écart avec la
 couleur du fond, puis la couleur est « dé-mélangée » du fond. On obtient des bords
@@ -80,6 +87,43 @@ def icone(picto: Image.Image, taille: int, part: float, fond: tuple) -> Image.Im
     return toile.convert("RGB")
 
 
+def masque_jaune(rgb: np.ndarray) -> np.ndarray:
+    """Pixels de l'éclair jaune (rouge ET vert élevés, bleu faible)."""
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    return (r > 0.75) & (g > 0.55) & (b < 0.45) & (g > b + 0.3)
+
+
+def version_blanche(img: Image.Image):
+    """Renvoie (logo blanc complet, logo blanc sans éclair, éclair seul)."""
+    a = np.asarray(img).astype(np.float32) / 255.0
+    rgb, alpha = a[..., :3], a[..., 3]
+    jaune = masque_jaune(rgb)
+    # Blanc ombré : les zones sombres d'origine (faces du cube) deviennent
+    # lavande clair, pour garder le relief au lieu d'un aplat blanc.
+    v = rgb.max(axis=2)
+    t = np.clip((0.95 - v) / 0.45, 0.0, 1.0)[..., None]
+    lavande = np.array([0.80, 0.70, 0.98], dtype=np.float32)
+    blanc = (1.0 - t) * 1.0 + t * lavande
+    complet = np.where(jaune[..., None], rgb, blanc)
+    sans = np.dstack([blanc, np.where(jaune, 0.0, alpha)])
+    eclair = np.dstack([rgb, np.where(jaune, alpha, 0.0)])
+    vers = lambda t: Image.fromarray((t * 255).round().astype(np.uint8), "RGBA")
+    return vers(np.dstack([complet, alpha])), vers(sans), vers(eclair)
+
+
+def brg_blanc(img: Image.Image) -> Image.Image:
+    """Logo BRG pour fond sombre : le bleu devient blanc, rouge et jaune restent."""
+    a = np.asarray(img).astype(np.float32) / 255.0
+    rgb = a[..., :3]
+    bleu = (rgb[..., 2] > rgb[..., 0] + 0.15) & (rgb[..., 2] > rgb[..., 1] + 0.15)
+    rgb = np.where(bleu[..., None], 1.0, rgb)
+    return Image.fromarray((np.dstack([rgb, a[..., 3]]) * 255).round().astype(np.uint8), "RGBA")
+
+
+def enregistrer(img: Image.Image, chemin: Path, largeur: int) -> None:
+    redimensionner(img, largeur).save(chemin, "WEBP", quality=88, method=6)
+
+
 def main() -> None:
     SORTIE.mkdir(parents=True, exist_ok=True)
 
@@ -97,8 +141,25 @@ def main() -> None:
     # Maskable : le pictogramme reste dans les 60 % centraux (zone sûre Android).
     icone(picto, 512, 0.60, BLANC).save(SORTIE / "icon-maskable-512.png", optimize=True)
 
-    for f in sorted(SORTIE.iterdir()):
-        print(f"{f.name:28s} {f.stat().st_size / 1024:7.1f} Ko")
+    complet, sans, eclair = version_blanche(couleur)
+    enregistrer(complet, SORTIE / "batiplus-blanc.webp", LARGEUR_LOGO)
+    enregistrer(sans, SORTIE / "batiplus-blanc-sans-eclair.webp", LARGEUR_LOGO)
+    enregistrer(eclair, SORTIE / "batiplus-eclair.webp", LARGEUR_LOGO)
+    boite = eclair.getchannel("A").point(lambda v: 255 if v > 40 else 0).getbbox()
+    if boite:
+        cx = (boite[0] + boite[2]) / 2 / eclair.width * 100
+        cy = (boite[1] + boite[3]) / 2 / eclair.height * 100
+        print(f"centre de l'éclair : {cx:.1f} % / {cy:.1f} %  (à reporter dans charte.css)")
+
+    dossier_brg = RACINE / "www" / "images" / "brg"
+    dossier_brg.mkdir(parents=True, exist_ok=True)
+    brg = rogner(Image.open(SOURCES / "brg-electro.png").convert("RGBA"))
+    enregistrer(brg, dossier_brg / "brg-couleur.webp", 640)
+    enregistrer(brg_blanc(brg), dossier_brg / "brg-blanc.webp", 640)
+
+    for dossier in (SORTIE, dossier_brg):
+        for f in sorted(dossier.iterdir()):
+            print(f"{f.name:34s} {f.stat().st_size / 1024:7.1f} Ko")
 
 
 if __name__ == "__main__":
