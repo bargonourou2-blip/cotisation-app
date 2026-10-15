@@ -17,7 +17,7 @@ const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SORTIE = join(RACINE, "docs", "validation-moteur-nfc15100.md");
 const moteur = chargerMoteur();
 /* Le catalogue de départ au format de lireCatalogue() : { ref: { prix } }. */
-const catalogueDepart = Object.fromEntries(Object.entries(moteur.CATALOGUE_DEFAUT).map(([ref, prix]) => [ref, { prix }]));
+const catalogueDepart = Object.fromEntries(Object.entries(moteur.CATALOGUE_DEFAUT).map(([ref, article]) => [ref, { prix: article.prix }]));
 const nf = (n) => new Intl.NumberFormat("fr-FR").format(n).replace(/\u202F|\u00A0/g, " ");
 const sec = (s) => String(s).replace(".", ",");
 const lignes = [];
@@ -95,6 +95,22 @@ function cataloguePiege(alea) {
   return Object.fromEntries(Object.keys(moteur.CATALOGUE_DEFAUT).map((ref) => [ref, alea() < 0.5 ? { prix: pieges[Math.floor(alea() * pieges.length)] } : null]));
 }
 
+function habituelsPieges(alea) {
+  const pieges = [NaN, -5, 1e308, "abc", "12,5", null, {}, 3000, undefined];
+  const tirer = () => pieges[Math.floor(alea() * pieges.length)];
+  return { points: Object.fromEntries(Object.keys(moteur.MAIN_OEUVRE_POINTS).map((id) => [id, tirer()])), journee: tirer() };
+}
+
+function devisPiege(alea) {
+  const pieges = [NaN, -5, 1e308, "abc", "12,5", null, {}, [], 7, "__proto__"];
+  const tirer = () => pieges[Math.floor(alea() * pieges.length)];
+  return {
+    lignes: Array.from({ length: Math.floor(alea() * 8) }, () => (alea() < 0.2 ? tirer() : { quantite: tirer(), prix: tirer(), supprimee: tirer() })),
+    mainOeuvre: alea() < 0.2 ? tirer() : { points: { prise: { quantite: tirer(), prix: tirer() }, __proto__: tirer() }, auto: { prise: tirer() }, forfait: tirer(), journees: { ouvriers: tirer(), jours: tirer(), tarif: tirer() }, libres: [{ libelle: tirer(), montant: tirer() }, tirer()] },
+    totaux: { remiseType: alea() < 0.5 ? "montant" : tirer(), remise: tirer(), tva: alea() < 0.5, tauxTva: tirer(), acompte: tirer() }
+  };
+}
+
 /* 1 000 chantiers aléatoires, graine fixe : aucune exception, aucun NaN/Infinity/négatif, règles tenues. */
 const alea = aleatoire(20261015);
 let exceptions = 0;
@@ -106,10 +122,19 @@ for (let i = 0; i < 1000; i += 1) {
   try {
     const devise = i % 2 ? "XOF" : "EUR";
     const catalogue = i % 3 === 0 ? catalogueDepart : (i % 3 === 1 ? {} : cataloguePiege(alea));
-    const chiffrage = moteur.chiffrerChantier(chantier, catalogue, devise);
+    const habituels = i % 4 === 0 ? null : habituelsPieges(alea);
+    const chiffrage = moteur.chiffrerChantier(chantier, catalogue, devise, habituels);
     const etude = chiffrage.etude;
-    const inv = nombresInvalides(chiffrage);
+    /* Devis tiré du chiffrage : même total au centime ; « + 10 % » n'abaisse jamais la main-d'œuvre. */
+    const devis = moteur.devisDepuisChiffrage(chiffrage);
+    const calcul = moteur.calculerDevis(JSON.parse(JSON.stringify(devis)), devise);
+    const majore = moteur.calculerDevis({ ...devis, mainOeuvre: moteur.ajusterMainOeuvre(devis.mainOeuvre, calcul.mainOeuvre, 1.1, devise) }, devise);
+    const minore = moteur.calculerDevis({ ...devis, mainOeuvre: moteur.ajusterMainOeuvre(devis.mainOeuvre, calcul.mainOeuvre, 0.9, devise) }, devise);
+    const inv = [...nombresInvalides(chiffrage), ...nombresInvalides(calcul), ...nombresInvalides(majore), ...nombresInvalides(minore),
+      ...nombresInvalides(moteur.calculerDevis(devisPiege(alea), devise))];
     const ec = [...invariants(moteur, etude), ...invariantsChiffrage(chiffrage)];
+    if (calcul.total.totalGeneral !== chiffrage.total.totalGeneral) ec.push("total du devis ≠ total du chiffrage");
+    if (majore.mainOeuvre.total < calcul.mainOeuvre.total || minore.mainOeuvre.total > calcul.mainOeuvre.total) ec.push("± 10 % dans le mauvais sens");
     if (inv.length) { invalidesFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " " + inv[0]); }
     if (ec.length) { ecartsFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " " + ec[0]); }
     if (etude.surfaceTotale > 60 * 2000 || etude.pieces.some((p) => p.surface < 0.5 || p.surface > 2000)) { ecartsFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " surface hors bornes"); }
@@ -121,7 +146,7 @@ for (let i = 0; i < 1000; i += 1) {
 const fuzzOk = !exceptions && !invalidesFuzz && !ecartsFuzz;
 if (!fuzzOk) echecs += 1;
 lignes.push("## Robustesse : 1 000 chantiers aléatoires", "");
-lignes.push("Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé ; le schéma du tableau et la liste de conformité sont contrôlés aussi.", "");
+lignes.push("Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé, et des prix habituels de main-d'œuvre piégés ; le schéma du tableau et la liste de conformité sont contrôlés aussi. Chaque chiffrage est ensuite transformé en devis (étape 7) : le total du devis doit être identique au centime, « + 10 % » et « − 10 % » doivent aller dans le bon sens, et un devis piégé (lignes, main-d'œuvre, remise, TVA, acompte) ne doit produire ni exception, ni NaN, ni négatif.", "");
 lignes.push("| Mesure | Résultat |", "|---|---:|");
 lignes.push("| Exceptions | " + exceptions + " |", "| Résultats avec NaN, Infinity ou négatif | " + invalidesFuzz + " |", "| Règles non tenues | " + ecartsFuzz + " |", "");
 if (premiers.length) lignes.push("Premiers écarts : " + premiers.join(" ; "), "");

@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import {
-  ATTENDUS, CHANTIERS_TYPES, aleatoire, chantierAleatoire, chargerMoteur, invariants, moteurLivre, nombresInvalides, resumer, sectionMoteur
+  ATTENDUS, CHANTIERS_TYPES, aleatoire, chantierAleatoire, chargerMoteur, egalAuCentime, invariants, moteurLivre, nombresInvalides, resumer, sectionMoteur
 } from "./chantiers-types.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -26,6 +26,7 @@ const resultats = [];
 const etape5 = { fait: false, cas: [], persistance: [], nombres: [], bornes: [] };
 /* Constats de l'étape 6 (écran Résultat) relevés dans jsdom. */
 const etape6 = { fait: false, svg: [], contenu: [], total: [] };
+const etape7 = { fait: false, catalogue: [], deux: [], recalcul: [] };
 
 function controle(numero, libelle, ok, detail) {
   resultats.push({ numero, libelle, ok: Boolean(ok), detail: detail || "" });
@@ -723,7 +724,7 @@ async function controlesExecution() {
       /* ---------- Étape 6 : écran Résultat (㉚ structure du schéma, ㉛ onglets, ㉜ total recalculé) ---------- */
       {
         const moteur = chargerMoteur();
-        const cat = Object.fromEntries(Object.entries(moteur.CATALOGUE_DEFAUT).map(([ref, prix]) => [ref, { prix }]));
+        const cat = Object.fromEntries(Object.entries(moteur.CATALOGUE_DEFAUT).map(([ref, article]) => [ref, { prix: article.prix }]));
         const lireEnregistres = (page) => { try { return JSON.parse(page.stockage()[KC.chantiers] || "[]"); } catch { return []; } };
         const montantUI = (page, id) => nb(page.texte(id));
         const nombresResultat = (page, ou) => {
@@ -776,7 +777,7 @@ async function controlesExecution() {
         if (r1.$("onglet-circuits").getAttribute("aria-selected") !== "true" || r1.doc.activeElement !== r1.$("onglet-circuits")) etape6.contenu.push("clavier : flèche droite depuis Total ne revient pas à Circuits");
         r1.$("resultat-onglets").dispatchEvent(new r1.w.KeyboardEvent("keydown", { key: "End", bubbles: true }));
         if (r1.$("onglet-total").getAttribute("aria-selected") !== "true") etape6.contenu.push("clavier : Fin ne mène pas à Total");
-        if (!r1.$("bouton-creer-devis").hidden) etape6.contenu.push("« Créer le devis » visible alors que l'écran Devis n'existe pas encore");
+        if (r1.$("bouton-creer-devis").hidden || !r1.$("ecran-fiche-devis")) etape6.contenu.push("« Créer le devis » absent alors que la fiche devis existe");
 
         /* ㉚ Le schéma reprend exactement la disposition calculée par le moteur. */
         const svg = r1.doc.querySelector("#schema-tableau svg");
@@ -909,6 +910,7 @@ async function controlesExecution() {
         const apresModif = lireEnregistres(r2);
         if (r2.actif() !== "ecran-resultat" || apresModif.length !== 1 || apresModif[0].id !== enr.id || !apresModif[0].materiel.prise || apresModif[0].materiel.prise.prix !== 2000) etape6.contenu.push("modification non réenregistrée sur le même chantier");
 
+        const base7 = r2.stockage();
         /* Chantier falsifié dans le stockage : réglages bornés, aucun NaN, aucun code interprété. */
         const falsifie = { ...apresModif[0], nom: "<img src=x onerror=alert(6)>", materiel: { prise: { quantite: 1e9, prix: -3 }, "__proto__": { prix: 1 }, "<b>": { prix: 5 } }, totaux: { remiseType: "<b>", remise: -50, tva: "oui", tauxTva: 1e9, acompte: "abc" } };
         const r3 = ouvrirPage({ ...r2.stockage(), [KC.chantiers]: JSON.stringify([falsifie]) });
@@ -921,6 +923,422 @@ async function controlesExecution() {
         nombresResultat(r3, "chantier falsifié");
         r3.w.close();
         etape6.fait = true;
+
+        /* ---------- Étape 7 : Mes prix → devis (㉝), deux devis indépendants (㉞), recalcul instantané (㉟) ---------- */
+        {
+          const KD = { devis: "bp_v1_devis", catalogue: "bp_v1_catalogue", numeros: "bp_v1_numeros_devis" };
+          const annee = new Date().getFullYear();
+          const lireJsonPage = (page, cle, defaut) => { try { return JSON.parse(page.stockage()[cle] || "null") ?? defaut; } catch { return defaut; } };
+          const catalogueDe = (page) => (lireJsonPage(page, KD.catalogue, {}) || {})[compte.id] || null;
+          const devisDe = (page) => lireJsonPage(page, KD.devis, []).filter((d) => d && d.compteId === compte.id && Array.isArray(d.lignes));
+          const resoudre = (catalogue) => Object.fromEntries(catalogue.articles.map((a) => {
+            let i = a.choisi;
+            if (i === null || i === undefined) {
+              i = -1;
+              a.fournisseurs.forEach((f, k) => { if (f.prix > 0 && (i < 0 || f.prix < a.fournisseurs[i].prix)) i = k; });
+              i = Math.max(0, i);
+            }
+            return [a.ref, { prix: a.fournisseurs[i].prix, designation: a.designation, fournisseur: a.fournisseurs[i].nom }];
+          }));
+          /* Mes prix de l'électricien : 2 fournisseurs pour le câble 1,5 (le moins cher est retenu),
+             interrupteur absent (prix à compléter), désignation personnelle, main-d'œuvre habituelle. */
+          const monCatalogue = {
+            articles: Object.entries(moteur.CATALOGUE_DEFAUT).filter(([ref]) => ref !== "interrupteur").map(([ref, a]) => ({
+              ref, designation: ref === "point" ? "Point lumineux DCL complet" : a.designation, unite: a.unite, categorie: a.categorie,
+              fournisseurs: ref === "cable-1.5" ? [{ nom: "Quincaillerie A", prix: 450 }, { nom: "Dépôt B", prix: 380 }] : [{ nom: "", prix: a.prix }], choisi: null
+            })),
+            mainOeuvre: { points: { interrupteur: 2600 }, journee: 12000 }
+          };
+          const habituels = monCatalogue.mainOeuvre;
+          const stockage7 = { ...base7, [KD.catalogue]: JSON.stringify({ [compte.id]: monCatalogue }) };
+          const montant = (page, id) => nb(page.texte(id));
+          const nombresFiche = (page, ou) => {
+            const ecran = page.$("ecran-fiche-devis");
+            const tout = ecran.textContent + " " + [...ecran.querySelectorAll("input")].map((i) => i.value).join(" ");
+            const motif = /(?:^|[^0-9A-Za-zÀ-ÿ])(NaN|Infinity|undefined|null|-\s?\d)/;
+            if (motif.test(tout)) etape7.recalcul.push(ou + " : « " + tout.slice(Math.max(0, tout.search(motif) - 20), tout.search(motif) + 20) + " »");
+          };
+          const confirmer = async (page) => { await pause(60); page.$("bouton-modale-ok").click(); await pause(400); };
+
+          const p7 = ouvrirPage(stockage7);
+          await pause(1800);
+          const chantier7 = lireEnregistres(p7)[0];
+          p7.doc.querySelector("#accueil-etudes [data-chantier]").click();
+          await pause(400);
+          const catRes = resoudre(monCatalogue);
+          const chiffrage7 = moteur.chiffrerChantier(chantier7, catRes, "XOF", habituels);
+          if (montant(p7, "tot-general") !== fcfa(chiffrage7.total.totalGeneral)) etape7.catalogue.push("résultat : total ≠ moteur avec Mes prix (" + montant(p7, "tot-general") + " / " + fcfa(chiffrage7.total.totalGeneral) + ")");
+          if (p7.$("mat-cable-1_5-prix").value !== "380") etape7.catalogue.push("résultat : câble 1,5 au prix « " + p7.$("mat-cable-1_5-prix").value + " » au lieu du moins cher (380)");
+          if (p7.$("bouton-creer-devis").hidden || p7.texte("libelle-creer-devis") !== "Créer le devis" || !p7.$("bouton-ouvrir-devis").hidden) etape7.catalogue.push("résultat : bouton « Créer le devis » mal présenté");
+
+          /* Création : le devis reprend exactement le chiffrage, sans aucune ressaisie. */
+          p7.$("bouton-creer-devis").click();
+          await pause(600);
+          const tous1 = devisDe(p7);
+          const d1 = tous1[0] || {};
+          if (p7.actif() !== "ecran-fiche-devis" || tous1.length !== 1) etape7.catalogue.push("fiche devis non ouverte après création (" + p7.actif() + ", " + tous1.length + " devis)");
+          if (d1.numero !== "BP-" + annee + "-0001" || p7.texte("devis-numero") !== "Devis BP-" + annee + "-0001") etape7.catalogue.push("numéro : « " + d1.numero + " »");
+          if (d1.statut !== "brouillon" || p7.texte("devis-badge") !== "Brouillon") etape7.catalogue.push("statut initial ≠ Brouillon");
+          const lignesUI = p7.doc.querySelectorAll("#devis-lignes .ligne-devis");
+          if (lignesUI.length !== chiffrage7.materiel.length) etape7.catalogue.push(lignesUI.length + " lignes au lieu de " + chiffrage7.materiel.length);
+          const idDe = (devis, ref) => (devis.lignes.find((l) => l.ref === ref && !l.supprimee) || {}).id;
+          const cable = idDe(d1, "cable-1.5");
+          if (!cable || p7.$("devis-" + cable + "-prix").value !== "380" || !p7.$("devis-lignes").querySelector("[data-ligne='" + cable + "']").textContent.includes("Dépôt B")) etape7.catalogue.push("câble 1,5 : prix ou fournisseur choisi non repris");
+          const point = idDe(d1, "point");
+          if (!point || p7.$("devis-" + point + "-designation").value !== "Point lumineux DCL complet") etape7.catalogue.push("désignation de Mes prix non reprise");
+          if (!egalAuCentime(moteur.calculerDevis(d1, "XOF").total.totalGeneral, chiffrage7.total.totalGeneral) || montant(p7, "devis-tot-general") !== fcfa(chiffrage7.total.totalGeneral)) etape7.catalogue.push("total du devis ≠ total de l'étude (" + montant(p7, "devis-tot-general") + ")");
+          if (p7.$("devis-mo-interrupteur-prix").value !== "2600" || p7.$("devis-mo-tarif").value !== "12000") etape7.catalogue.push("main-d'œuvre habituelle non reprise");
+          if (!p7.$("devis-conditions").value.trim()) etape7.catalogue.push("conditions du profil absentes du devis");
+          if (p7.$("devis-acompte").value !== String(chantier7.totaux.acompte) || p7.$("devis-tva").checked !== chantier7.totaux.tva) etape7.catalogue.push("réglages du total (acompte, TVA) non repris de l'étude");
+          /* Prix manquant : ligne à 0, encadré jaune, « Enregistrer dans Mes prix ». */
+          const inter = idDe(d1, "interrupteur");
+          const liInter = inter ? p7.doc.querySelector("#devis-lignes [data-ligne='" + inter + "']") : null;
+          const encadre = liInter && liInter.querySelector(".encadre-prix");
+          if (!encadre || encadre.hidden || !encadre.textContent.includes("Prix à compléter") || !encadre.querySelector("[data-enregistrer-prix]").disabled || p7.$("devis-" + inter + "-prix").value !== "") etape7.catalogue.push("interrupteur sans prix : encadré « Prix à compléter » absent");
+          if (p7.doc.querySelectorAll("form, [data-formulaire-prix]").length !== p7.doc.querySelectorAll("form").length) etape7.catalogue.push("formulaire de ressaisie inattendu");
+          if (inter) {
+            p7.remplir("devis-" + inter + "-prix", "1300");
+            if (encadre.hidden || encadre.querySelector("[data-enregistrer-prix]").disabled || !encadre.textContent.includes("Prix absent de Mes prix")) etape7.catalogue.push("prix saisi : bouton « Enregistrer dans Mes prix » non proposé");
+            await pause(700);
+            if ((catalogueDe(p7).articles || []).some((a) => a.ref === "interrupteur")) etape7.catalogue.push("Mes prix modifié sans décision de l'électricien");
+            encadre.querySelector("[data-enregistrer-prix]").click();
+            await pause(400);
+            const art = (catalogueDe(p7).articles || []).find((a) => a.ref === "interrupteur");
+            const encadreApres = p7.doc.querySelector("#devis-lignes [data-ligne='" + inter + "'] .encadre-prix");
+            if (!art || art.fournisseurs[0].prix !== 1300 || !encadreApres || !encadreApres.hidden) etape7.catalogue.push("« Enregistrer dans Mes prix » n'a pas enregistré 1 300");
+          }
+          /* Prix modifié : ↻ « Mettre à jour dans Mes prix ? », jamais sans confirmation. */
+          if (cable) {
+            p7.remplir("devis-" + cable + "-prix", "400");
+            const maj = p7.doc.querySelector("#devis-lignes [data-ligne='" + cable + "'] [data-maj-prix]");
+            if (!maj || maj.hidden || maj.getAttribute("aria-label") !== "Mettre à jour dans Mes prix ?") etape7.catalogue.push("icône ↻ absente après changement de prix");
+            await pause(700);
+            const avant = (catalogueDe(p7).articles || []).find((a) => a.ref === "cable-1.5");
+            if (!avant || avant.fournisseurs[1].prix !== 380) etape7.catalogue.push("Mes prix modifié par la simple saisie d'un prix");
+            maj.click();
+            await pause(60);
+            p7.$("bouton-modale-annuler").click();
+            await pause(300);
+            if ((catalogueDe(p7).articles || []).find((a) => a.ref === "cable-1.5").fournisseurs[1].prix !== 380) etape7.catalogue.push("Mes prix modifié malgré « Annuler »");
+            maj.click();
+            await confirmer(p7);
+            const apres = (catalogueDe(p7).articles || []).find((a) => a.ref === "cable-1.5");
+            if (!apres || apres.fournisseurs[1].prix !== 400 || apres.fournisseurs[0].prix !== 450) etape7.catalogue.push("↻ confirmé : prix du fournisseur retenu non mis à jour");
+            if (!p7.doc.querySelector("#devis-lignes [data-ligne='" + cable + "'] [data-maj-prix]").hidden) etape7.catalogue.push("↻ encore affiché après mise à jour");
+          }
+          /* Ligne libre enregistrée dans Mes prix ; article de Mes prix ajouté sans ressaisie. */
+          p7.choisir("devis-ajout-article", "libre");
+          p7.$("devis-bouton-ajouter").click();
+          await pause(100);
+          let d1m = null;
+          {
+            const ids = [...p7.doc.querySelectorAll("#devis-lignes .ligne-devis")].map((li) => li.dataset.ligne);
+            const libre = ids[ids.length - 1];
+            if (p7.doc.activeElement !== p7.$("devis-" + libre + "-designation")) etape7.catalogue.push("ligne libre : la désignation n'a pas le focus");
+            p7.remplir("devis-" + libre + "-designation", "Projecteur LED 50 W");
+            p7.remplir("devis-" + libre + "-prix", "15000");
+            p7.doc.querySelector("#devis-lignes [data-ligne='" + libre + "'] [data-enregistrer-prix]").click();
+            await pause(400);
+            const perso = (catalogueDe(p7).articles || []).find((a) => a.designation === "Projecteur LED 50 W");
+            if (!perso || !/^perso-[a-f0-9]{8}$/.test(perso.ref) || perso.fournisseurs[0].prix !== 15000) etape7.catalogue.push("ligne libre non enregistrée comme article de Mes prix");
+            p7.choisir("devis-ajout-article", perso ? perso.ref : "");
+            p7.$("devis-bouton-ajouter").click();
+            await pause(100);
+            const ids2 = [...p7.doc.querySelectorAll("#devis-lignes .ligne-devis")].map((li) => li.dataset.ligne);
+            const ajout = ids2[ids2.length - 1];
+            if (ids2.length !== ids.length + 1 || p7.$("devis-" + ajout + "-prix").value !== "15000" || p7.$("devis-" + ajout + "-designation").value !== "Projecteur LED 50 W") etape7.catalogue.push("article de Mes prix ajouté sans son prix");
+          }
+          p7.$("devis-bouton-enregistrer").click();
+          await pause(300);
+          d1m = devisDe(p7)[0];
+
+          /* ㉟ Chaque saisie recalcule tout immédiatement ; l'attendu est calculé par le moteur seul. */
+          const miroir = JSON.parse(JSON.stringify(d1m));
+          let saisies = 0;
+          const comparer = (ou) => {
+            saisies += 1;
+            const c = moteur.calculerDevis(miroir, "XOF");
+            const t = c.total;
+            const paires = [["devis-total-materiel", c.totalMateriel], ["devis-total-mo", c.mainOeuvre.total], ["devis-tot-sous-total", t.sousTotal], ["devis-tot-general", t.totalGeneral], ["devis-resume-total", t.totalGeneral], ["devis-tot-acompte", t.acompte], ["devis-tot-reste", t.reste]];
+            if (t.tvaActive) paires.push(["devis-tot-tva", t.tva]);
+            const ecarts = paires.filter(([id, v]) => montant(p7, id) !== fcfa(v)).map(([id, v]) => id + " " + montant(p7, id) + " ≠ " + fcfa(v));
+            if (ecarts.length) etape7.recalcul.push(ou + " : " + ecarts.join(", "));
+            nombresFiche(p7, ou);
+          };
+          const ligneM = (id) => miroir.lignes.find((l) => l.id === id);
+          comparer("ouverture");
+          p7.remplir("devis-" + cable + "-qte", "120");
+          ligneM(cable).quantite = 120;
+          comparer("120 m de câble, pendant la frappe");
+          for (const [valeur, retenu] of [["-5", 0], ["abc", 0], ["1e400", 0], ["99999999", 999999], ["37", 37]]) {
+            p7.remplir("devis-" + cable + "-qte", valeur);
+            p7.$("devis-" + cable + "-qte").dispatchEvent(new p7.w.Event("change", { bubbles: true }));
+            ligneM(cable).quantite = retenu;
+            comparer("quantité « " + valeur + " »");
+          }
+          p7.$("devis-" + cable + "-qte").dispatchEvent(new p7.w.Event("change", { bubbles: true }));
+          if (p7.$("devis-" + cable + "-qte").value !== "37") etape7.recalcul.push("quantité non réécrite à la sortie du champ");
+          const prise = idDe(miroir, "prise");
+          p7.doc.querySelector("#devis-lignes [data-supprimer-ligne='" + prise + "']").click();
+          await pause(50);
+          ligneM(prise).supprimee = true;
+          comparer("ligne « prise » supprimée");
+          if (p7.$("devis-bloc-supprimees").hidden || p7.texte("devis-titre-supprimees") !== "Lignes supprimées (1)" || p7.doc.querySelector("#devis-lignes [data-ligne='" + prise + "']")) etape7.recalcul.push("ligne supprimée non déplacée dans « Lignes supprimées »");
+          p7.doc.querySelector("#devis-supprimees [data-restaurer-ligne='" + prise + "']").click();
+          await pause(50);
+          ligneM(prise).supprimee = false;
+          comparer("ligne « prise » restaurée");
+          if (!p7.$("devis-bloc-supprimees").hidden || !p7.doc.querySelector("#devis-lignes [data-ligne='" + prise + "']")) etape7.recalcul.push("ligne restaurée absente");
+          p7.remplir("devis-" + prise + "-designation", "Prise 2P+T 16 A Legrand");
+          ligneM(prise).designation = "Prise 2P+T 16 A Legrand";
+          p7.remplir("devis-mo-prise-prix", "3500");
+          miroir.mainOeuvre.points.prise.prix = 3500;
+          comparer("main-d'œuvre : prise à 3 500");
+          for (const [mode, facteur] of [["moins", 0.9], ["plus", 1.1]]) {
+            p7.doc.querySelector("[data-ajuster-devis='" + mode + "']").click();
+            await pause(30);
+            miroir.mainOeuvre = moteur.ajusterMainOeuvre(miroir.mainOeuvre, moteur.calculerDevis(miroir, "XOF").mainOeuvre, facteur, "XOF");
+            comparer("bouton « " + (mode === "plus" ? "+ 10 %" : "− 10 %") + " »");
+          }
+          if (p7.$("devis-mo-prise-prix").value !== String(Math.round(Math.round(3500 * 0.9) * 1.1))) etape7.recalcul.push("± 10 % : prix de la prise « " + p7.$("devis-mo-prise-prix").value + " »");
+          p7.remplir("devis-mo-forfait", "30000");
+          miroir.mainOeuvre.forfait = 30000;
+          comparer("forfait 30 000");
+          p7.doc.querySelector("[data-ajuster-devis='habituels']").click();
+          await pause(30);
+          Object.keys(moteur.MAIN_OEUVRE_POINTS).forEach((id) => { miroir.mainOeuvre.points[id].prix = id === "interrupteur" ? 2600 : moteur.MAIN_OEUVRE_POINTS[id].prix; });
+          miroir.mainOeuvre.journees.tarif = 12000;
+          comparer("bouton « Prix habituels »");
+          if (p7.$("devis-mo-forfait").value !== "30000") etape7.recalcul.push("« Prix habituels » a changé le forfait");
+          p7.remplir("devis-mo-ouvriers", "2");
+          p7.remplir("devis-mo-jours", "1,5");
+          miroir.mainOeuvre.journees.ouvriers = 2;
+          miroir.mainOeuvre.journees.jours = 1.5;
+          comparer("2 ouvriers × 1,5 jour");
+          p7.$("devis-ajouter-libre").click();
+          await pause(30);
+          p7.remplir("devis-libre-libelle-" + miroir.mainOeuvre.libres.length, "Saignées dans le béton");
+          p7.remplir("devis-libre-montant-" + miroir.mainOeuvre.libres.length, "8000");
+          miroir.mainOeuvre.libres.push({ libelle: "Saignées dans le béton", montant: 8000 });
+          comparer("ligne libre de main-d'œuvre 8 000");
+          if (montant(p7, "devis-total-mo") !== fcfa(moteur.calculerDevis(miroir, "XOF").mainOeuvre.total) || !p7.$("devis-total-mo").closest(".total-mo")) etape7.recalcul.push("total main-d'œuvre absent du bloc jaune");
+          if (p7.$("devis-mo-habituels").checked) etape7.recalcul.push("« Enregistrer ces prix comme mes prix habituels » coché par défaut");
+          p7.doc.querySelector("input[name='devis-remise-type'][value='pourcent']").click();
+          miroir.totaux.remiseType = "pourcent";
+          miroir.totaux.remise = 0;
+          comparer("remise en %");
+          p7.remplir("devis-remise", "10");
+          miroir.totaux.remise = 10;
+          comparer("remise 10 %");
+          p7.doc.querySelector("input[name='devis-remise-type'][value='montant']").click();
+          miroir.totaux.remiseType = "montant";
+          miroir.totaux.remise = 0;
+          comparer("remise en montant");
+          p7.remplir("devis-remise", "25000");
+          miroir.totaux.remise = 25000;
+          comparer("remise 25 000");
+          p7.$("devis-tva").click();
+          miroir.totaux.tva = p7.$("devis-tva").checked;
+          comparer("TVA basculée");
+          if (!p7.$("devis-tva").checked) {
+            p7.$("devis-tva").click();
+            miroir.totaux.tva = true;
+            comparer("TVA activée");
+          }
+          for (const [valeur, retenu] of [["20", 20], ["abc", 18], ["99", 30]]) {
+            p7.remplir("devis-taux-tva", valeur);
+            miroir.totaux.tauxTva = retenu;
+            comparer("TVA « " + valeur + " »");
+          }
+          p7.remplir("devis-acompte", "30");
+          miroir.totaux.acompte = 30;
+          comparer("acompte 30 %");
+          p7.choisir("devis-statut", "accepte");
+          if (p7.texte("devis-badge") !== "Accepté" || p7.$("devis-badge").dataset.ton !== "ok") etape7.recalcul.push("badge du statut Accepté");
+          p7.choisir("devis-statut", "paye");
+          if (p7.texte("devis-badge") !== "Payé" || p7.$("devis-badge").dataset.ton !== "paye") etape7.recalcul.push("badge du statut Payé");
+          p7.remplir("devis-note", "Matériel garanti un an.");
+          await pause(900);
+          const d1s = devisDe(p7)[0];
+          if (!/^Devis enregistré à \d{2}:\d{2}$/.test(p7.texte("etat-devis"))) etape7.recalcul.push("« Devis enregistré à HH:MM » absent (enregistrement automatique)");
+          if (!d1s || d1s.statut !== "paye" || d1s.note !== "Matériel garanti un an." || d1s.total !== moteur.calculerDevis(miroir, "XOF").total.totalGeneral) etape7.recalcul.push("devis enregistré ≠ devis affiché");
+          const totalD1 = montant(p7, "devis-tot-general");
+          const moD1 = JSON.stringify(d1s ? d1s.mainOeuvre : null);
+
+          /* Réouverture : tout est retrouvé ; la ligne de l'accueil ouvre le devis. */
+          const p8 = ouvrirPage(p7.stockage());
+          p7.w.close();
+          await pause(1800);
+          const ligneAccueil = p8.doc.querySelector("#accueil-devis [data-devis]");
+          if (!ligneAccueil || !nb(ligneAccueil.textContent).includes("BP-" + annee + "-0001") || !ligneAccueil.querySelector(".statut[data-ton='paye']")) etape7.deux.push("accueil : devis absent ou sans badge Payé");
+          if (ligneAccueil) ligneAccueil.click();
+          await pause(400);
+          if (p8.actif() !== "ecran-fiche-devis" || montant(p8, "devis-tot-general") !== totalD1 || p8.$("devis-statut").value !== "paye" || p8.$("devis-" + prise + "-designation").value !== "Prise 2P+T 16 A Legrand") etape7.recalcul.push("devis non retrouvé à l'identique après réouverture");
+
+          /* ㉞ Un second devis du même chantier : sa main-d'œuvre et ses prix sont indépendants. */
+          p8.doc.querySelector("[data-ecran='accueil']").click();
+          await pause(300);
+          p8.doc.querySelector("#accueil-etudes [data-chantier]").click();
+          await pause(500);
+          if (p8.$("bouton-ouvrir-devis").hidden || p8.texte("libelle-ouvrir-devis") !== "Ouvrir le devis BP-" + annee + "-0001" || p8.texte("libelle-creer-devis") !== "Créer un autre devis") etape7.deux.push("résultat : « Ouvrir le devis BP-…-0001 » / « Créer un autre devis » absents");
+          p8.$("bouton-creer-devis").click();
+          await pause(600);
+          const tous2 = devisDe(p8);
+          const d2 = tous2.find((d) => d.numero === "BP-" + annee + "-0002");
+          if (tous2.length !== 2 || !d2 || p8.texte("devis-numero") !== "Devis BP-" + annee + "-0002") etape7.deux.push("second devis : " + tous2.map((d) => d.numero).join(", "));
+          if (d2) {
+            const cable2 = idDe(d2, "cable-1.5");
+            if (p8.$("devis-" + cable2 + "-prix").value !== "400") etape7.catalogue.push("second devis : le prix mis à jour dans Mes prix (400) n'est pas repris");
+            if (p8.$("devis-mo-prise-prix").value !== "3000") etape7.deux.push("second devis : main-d'œuvre héritée du premier devis (« " + p8.$("devis-mo-prise-prix").value + " »)");
+            p8.remplir("devis-mo-prise-prix", "5000");
+            p8.remplir("devis-mo-forfait", "1000");
+            p8.$("devis-mo-habituels").click();
+            p8.$("devis-bouton-enregistrer").click();
+            await pause(400);
+            const hab = (catalogueDe(p8) || {}).mainOeuvre || {};
+            if (!hab.points || hab.points.prise !== 5000 || p8.$("devis-mo-habituels").checked) etape7.deux.push("case « mes prix habituels » : prise à 5 000 non enregistrée");
+          }
+          const d1b = devisDe(p8).find((d) => d.numero === "BP-" + annee + "-0001");
+          if (!d1b || JSON.stringify(d1b.mainOeuvre) !== moD1 || d1b.total !== d1s.total) etape7.deux.push("le premier devis a changé quand le second a été modifié");
+          p8.doc.querySelector("[data-ecran='accueil']").click();
+          await pause(300);
+          const versD1 = [...p8.doc.querySelectorAll("#accueil-devis [data-devis]")].find((b) => nb(b.textContent).includes("-0001"));
+          if (versD1) versD1.click();
+          await pause(400);
+          if (p8.$("devis-mo-prise-prix").value === "5000" || montant(p8, "devis-tot-general") !== totalD1) etape7.deux.push("premier devis rouvert : main-d'œuvre du second devis ou total modifié");
+          /* Numéro jamais réutilisé : le devis 0002 disparaît, le suivant est 0003. */
+          const sans2 = lireJsonPage(p8, KD.devis, []).filter((d) => d.numero !== "BP-" + annee + "-0002");
+          const ancien = { id: "ancien1", compteId: compte.id, titre: "Devis d'avant", client: "M. Ouédraogo", total: 50000, statut: "envoye", creeLe: new Date(Date.now() - 5000).toISOString() };
+          const p9 = ouvrirPage({ ...p8.stockage(), [KD.devis]: JSON.stringify([...sans2, ancien]) });
+          p8.w.close();
+          await pause(1800);
+          const lignesAccueil = [...p9.doc.querySelectorAll("#accueil-devis li")];
+          const liAncien = lignesAccueil.find((li) => li.textContent.includes("Devis d'avant"));
+          if (!liAncien || liAncien.querySelector("button")) etape7.deux.push("devis ancien (sans lignes) : absent ou présenté comme ouvrable");
+          p9.doc.querySelector("#accueil-etudes [data-chantier]").click();
+          await pause(500);
+          p9.$("bouton-creer-devis").click();
+          await pause(600);
+          if (p9.texte("devis-numero") !== "Devis BP-" + annee + "-0003") etape7.deux.push("numéro réutilisé : « " + p9.texte("devis-numero") + " » au lieu de BP-" + annee + "-0003");
+
+          /* Assistant, étape 5 : boutons rapides, total en jaune, case « mes prix habituels ». */
+          p9.doc.querySelector("[data-ecran='accueil']").click();
+          await pause(300);
+          p9.doc.querySelector("#accueil-etudes [data-chantier]").click();
+          await pause(500);
+          p9.$("bouton-modifier-chantier").click();
+          await pause(500);
+          for (let i = 0; i < 4; i++) await suivant(p9, 250);
+          const hab9 = catalogueDe(p9).mainOeuvre;
+          const ch9 = JSON.parse(JSON.stringify(lireEnregistres(p9)[0]));
+          const totalAssistant = () => nb(p9.texte("total-mo"));
+          if (etapeVisible(p9) !== 5 || !p9.$("total-mo").closest(".total-mo") || p9.$("mo-enregistrer-habituels").checked) etape7.deux.push("assistant : total MO en jaune ou case décochée absents");
+          if (totalAssistant() !== fcfa(moteur.etudierChantier(ch9, "XOF", hab9).mainOeuvre.total)) etape7.deux.push("assistant : total MO ≠ moteur avec les prix habituels (" + totalAssistant() + ")");
+          p9.doc.querySelector("[data-ajuster-assistant='habituels']").click();
+          await pause(30);
+          Object.values(ch9.mainOeuvre.points).forEach((p) => { p.prix = null; });
+          ch9.mainOeuvre.journees.tarif = null;
+          if (totalAssistant() !== fcfa(moteur.etudierChantier(ch9, "XOF", hab9).mainOeuvre.total)) etape7.deux.push("assistant : « Prix habituels » (" + totalAssistant() + ")");
+          p9.doc.querySelector("[data-ajuster-assistant='plus']").click();
+          await pause(30);
+          const plus = moteur.ajusterMainOeuvre(ch9.mainOeuvre, moteur.etudierChantier(ch9, "XOF", hab9).mainOeuvre, 1.1, "XOF");
+          const ch9b = { ...ch9, mainOeuvre: { ...ch9.mainOeuvre, points: plus.points, forfait: plus.forfait, journees: { ...ch9.mainOeuvre.journees, tarif: plus.journees.tarif }, libres: plus.libres } };
+          const moPlus = moteur.etudierChantier(ch9b, "XOF", hab9).mainOeuvre;
+          if (totalAssistant() !== fcfa(moPlus.total)) etape7.deux.push("assistant : « + 10 % » (" + totalAssistant() + " ≠ " + fcfa(moPlus.total) + ")");
+          p9.$("mo-enregistrer-habituels").click();
+          await suivant(p9, 700);
+          const hab9b = catalogueDe(p9).mainOeuvre;
+          if (p9.actif() !== "ecran-resultat" || hab9b.points.prise !== moPlus.lignes.find((l) => l.id === "prise").prix || hab9b.journee !== moPlus.journees.tarif) etape7.deux.push("assistant : prix habituels non enregistrés avec le chantier");
+          const devis9 = devisDe(p9);
+          if (JSON.stringify(devis9.find((d) => d.numero.endsWith("-0001")).mainOeuvre) !== moD1) etape7.deux.push("premier devis modifié par le changement des prix habituels");
+          const stockageFinal = p9.stockage();
+          p9.w.close();
+
+          /* Écran Mes prix : groupes, recherche, fournisseurs, comparaison, ajout, suppression, réinitialisation. */
+          const m = ouvrirPage(stockageFinal);
+          await pause(1800);
+          const lienPrix = m.doc.querySelector("#tiroir-menu [data-ecran='prix']");
+          if (!lienPrix || lienPrix.hidden || m.doc.querySelector("#onglets [data-ecran='prix']").hidden) etape7.catalogue.push("Mes prix absent du menu ou des onglets");
+          if (lienPrix) lienPrix.click();
+          await pause(400);
+          const catM = catalogueDe(m);
+          if (m.actif() !== "ecran-prix" || m.doc.querySelectorAll("#prix-groupes .groupe-prix").length !== new Set(catM.articles.map((a) => a.categorie)).size || m.doc.querySelectorAll("#prix-groupes .article-prix").length !== catM.articles.length) etape7.catalogue.push("Mes prix : articles non groupés par catégorie");
+          m.remplir("prix-recherche", "CABLE");
+          const visibles = [...m.doc.querySelectorAll("#prix-groupes .liste-articles > li")].filter((li) => !li.hidden).map((li) => li.dataset.ref);
+          if (!visibles.includes("cable-1.5") || !visibles.includes("cable-terre") || visibles.some((ref) => /^(prise|interrupteur|coffret|disjoncteur)/.test(ref))) etape7.catalogue.push("recherche « CABLE » : " + visibles.join(", "));
+          m.remplir("prix-recherche", "depot b");
+          const visibles2 = [...m.doc.querySelectorAll("#prix-groupes .liste-articles > li")].filter((li) => !li.hidden).map((li) => li.dataset.ref);
+          if (visibles2.join() !== "cable-1.5") etape7.catalogue.push("recherche par fournisseur : " + visibles2.join(", "));
+          m.remplir("prix-recherche", "zzz");
+          if (m.$("prix-vide").hidden) etape7.catalogue.push("recherche sans résultat : message absent");
+          m.remplir("prix-recherche", "");
+          const detailsPrise = m.$("article-prise");
+          m.remplir("art-prise-f0-prix", "1800");
+          if (!nb(detailsPrise.querySelector("summary").textContent).includes("1 800 FCFA l'unité")) etape7.catalogue.push("modification directe : résumé non mis à jour");
+          detailsPrise.querySelector("[data-ajouter-fournisseur]").click();
+          await pause(30);
+          m.remplir("art-prise-f1-nom", "Grossiste C");
+          m.remplir("art-prise-f1-prix", "1700");
+          const badges = [...detailsPrise.querySelectorAll("[data-badge-fournisseur]")].filter((b) => !b.hidden).map((b) => b.dataset.badgeFournisseur);
+          if (badges.join() !== "1" || !nb(detailsPrise.querySelector("summary").textContent).includes("1 700 FCFA") || !detailsPrise.querySelector("summary").textContent.includes("Grossiste C")) etape7.catalogue.push("comparaison des fournisseurs : le moins cher n'est pas retenu");
+          const radio0 = detailsPrise.querySelector("[data-choisir-fournisseur='0']");
+          radio0.checked = true;
+          radio0.dispatchEvent(new m.w.Event("change", { bubbles: true }));
+          if (!nb(detailsPrise.querySelector("summary").textContent).includes("1 800 FCFA")) etape7.catalogue.push("fournisseur choisi à la main non retenu");
+          m.remplir("prix-mo-prise", "2800");
+          await pause(800);
+          const catM2 = catalogueDe(m);
+          const prise2 = catM2.articles.find((a) => a.ref === "prise");
+          if (!prise2 || prise2.fournisseurs.length !== 2 || prise2.choisi !== 0 || prise2.fournisseurs[1].prix !== 1700 || catM2.mainOeuvre.points.prise !== 2800) etape7.catalogue.push("Mes prix : modifications non enregistrées automatiquement");
+          if (!/^Prix enregistrés à \d{2}:\d{2}$/.test(m.texte("etat-prix"))) etape7.catalogue.push("« Prix enregistrés à HH:MM » absent");
+          /* Ajout d'un article : désignation obligatoire, prix valide. */
+          await m.soumettre("form-nouvel-article", 200);
+          if (!m.$("article-designation").closest(".champ").classList.contains("invalide")) etape7.catalogue.push("ajout sans désignation accepté");
+          m.$("article-designation").value = "Projecteur LED 100 W";
+          m.$("article-prix").value = "abc";
+          await m.soumettre("form-nouvel-article", 200);
+          if (!m.$("article-prix").closest(".champ").classList.contains("invalide")) etape7.catalogue.push("prix « abc » accepté");
+          m.$("article-prix").value = "25000";
+          m.choisir("article-categorie", "appareillage");
+          await m.soumettre("form-nouvel-article", 400);
+          const ajoute = catalogueDe(m).articles.find((a) => a.designation === "Projecteur LED 100 W");
+          if (!ajoute || ajoute.categorie !== "appareillage" || ajoute.fournisseurs[0].prix !== 25000 || !m.doc.querySelector("#prix-groupes [data-categorie='appareillage'] [data-ref='" + ajoute.ref + "']")) etape7.catalogue.push("article ajouté absent ou mal rangé");
+          if (ajoute) {
+            m.doc.querySelector("#article-" + ajoute.ref + " [data-supprimer-article]").click();
+            await confirmer(m);
+            if (catalogueDe(m).articles.some((a) => a.ref === ajoute.ref) || m.$("article-" + ajoute.ref)) etape7.catalogue.push("suppression d'un article");
+          }
+          m.$("bouton-reinitialiser-prix").click();
+          await confirmer(m);
+          if (catalogueDe(m) !== null || m.$("art-prise-f0-prix").value !== "1500" || m.$("prix-mo-prise").value !== "2500" || m.doc.querySelectorAll("#prix-groupes .article-prix").length !== Object.keys(moteur.CATALOGUE_DEFAUT).length) etape7.catalogue.push("« Réinitialiser » ne revient pas aux prix de départ");
+          if (devisDe(m).length !== 2 || JSON.stringify(devisDe(m).find((d) => d.numero.endsWith("-0001")).mainOeuvre) !== moD1) etape7.catalogue.push("« Réinitialiser » a modifié des devis");
+          m.w.close();
+
+          /* Données falsifiées : catalogue et devis piégés, affichés en texte, montants bornés. */
+          const piege = { articles: [
+            { ref: "prise", designation: "<img src=x onerror=alert(7)>", unite: "<b>", categorie: "__proto__", fournisseurs: [{ nom: "<b>pirate</b>", prix: -5 }, { nom: "x", prix: "abc" }, { nom: "y", prix: 1e308 }, 4, null, { nom: "z", prix: 1 }, { nom: "trop", prix: 2 }], choisi: 99 },
+            { ref: "../../x", designation: "Hors catalogue", fournisseurs: [] }, { ref: "__proto__", designation: "proto" }, "texte", null
+          ], mainOeuvre: { points: { prise: -50, inconnu: 5 }, journee: "abc" } };
+          const devisPiege = { ...d1s, id: "piege1", numero: "BP-" + annee + "-0099", titre: "<img src=x onerror=alert(8)>", total: 999999999999,
+            lignes: [{ id: "l1", ref: "<b>", designation: "<b>gras</b>", unite: "km", categorie: "x", quantite: -3, prix: "1e400", supprimee: "oui" }, null, 7],
+            mainOeuvre: { points: { prise: { quantite: 1e9, prix: -1 } }, forfait: NaN, journees: "x", libres: [{ libelle: "<i>", montant: -9 }] }, totaux: { remiseType: "<b>", remise: -5, tva: "oui", tauxTva: 1e9, acompte: "abc" } };
+          const f = ouvrirPage({ ...stockageFinal, [KD.catalogue]: JSON.stringify({ [compte.id]: piege }), [KD.devis]: JSON.stringify([devisPiege]) });
+          await pause(1800);
+          if (nb(f.texte("cpt-montant")).includes("999 999 999 999")) etape7.recalcul.push("total falsifié pris dans les statistiques");
+          f.doc.querySelector("#accueil-devis [data-devis]").click();
+          await pause(400);
+          if (f.actif() !== "ecran-fiche-devis" || f.doc.querySelector("img[src='x']") || f.doc.querySelector("#ecran-fiche-devis b, #ecran-fiche-devis i") || f.$("devis-tva").checked || f.$("devis-taux-tva").value !== "30" || f.$("devis-acompte").value !== "40") etape7.recalcul.push("devis falsifié mal nettoyé");
+          nombresFiche(f, "devis falsifié");
+          f.doc.querySelector("#tiroir-menu [data-ecran='prix']").click();
+          await pause(400);
+          const articlesF = f.doc.querySelectorAll("#prix-groupes .article-prix");
+          const priseF = f.$("article-prise");
+          if (articlesF.length !== 1 || !priseF || f.doc.querySelector("img[src='x']") || f.doc.querySelector("#prix-groupes b") || priseF.querySelectorAll(".ligne-fournisseur").length !== 5
+            || !nb(priseF.querySelector("summary").textContent).includes("1 FCFA") || f.$("prix-mo-prise").value !== "2500" || f.$("prix-mo-journee").value !== "10000") etape7.catalogue.push("catalogue falsifié mal nettoyé (" + articlesF.length + " article(s), "
+            + (priseF ? priseF.querySelectorAll(".ligne-fournisseur").length + " fournisseur(s), « " + nb(priseF.querySelector("summary").textContent) + " »" : "prise absente") + ", MO " + f.$("prix-mo-prise").value + "/" + f.$("prix-mo-journee").value + ")");
+          f.w.close();
+          etape7.fait = true;
+        }
       }
       etape5.fait = true;
     }
@@ -1232,22 +1650,37 @@ function controlesResultat() {
     svg.join(" ; ") || "rangées, modules (différentiels, disjoncteurs, libres) et numéros identiques à la disposition du moteur ; accolades ID → circuits ; viewBox, rôle img et titre ; aucun code dans le SVG (mesures à l'écran : SV dans verifier-navigateur)");
   const contenu = [...absent, ...etape6.contenu];
   controle("㉛", "chaque onglet a un vrai contenu", contenu.length === 0,
-    contenu.join(" ; ") || "6 onglets ARIA (clic, flèches, Fin) : circuits et différentiels, schéma et détail des rangées, matériel ligne par ligne, main-d'œuvre, conformité expliquée, total ; mention obligatoire ; accès depuis l'accueil ; « Modifier le chantier » réenregistre le même chantier ; « Créer le devis » masqué tant que l'écran Devis n'existe pas");
+    contenu.join(" ; ") || "6 onglets ARIA (clic, flèches, Fin) : circuits et différentiels, schéma et détail des rangées, matériel ligne par ligne, main-d'œuvre, conformité expliquée, total ; mention obligatoire ; accès depuis l'accueil ; « Modifier le chantier » réenregistre le même chantier ; « Créer le devis » présent (fiche devis de l'étape 7)");
   const total = [...absent, ...etape6.total];
   controle("㉜", "le total se recalcule à chaque modification", total.length === 0,
     total.join(" ; ") || "25 saisies (prix, quantités, main-d'œuvre, forfait, remise % et montant, TVA, acompte, valeurs piégées) : chaque total affiché = moteur seul ; « Prix à compléter » à 0 ; enregistré 600 ms après, retrouvé après réouverture ; chantier falsifié borné");
+}
+
+/* ---------- Étape 7 : devis et Mes prix ---------- */
+function controlesDevis() {
+  const absent = etape7.fait ? [] : ["parcours devis et Mes prix non exécuté (jsdom)"];
+  const catalogue = [...absent, ...etape7.catalogue];
+  controle("㉝", "un prix du catalogue arrive dans le devis sans ressaisie", catalogue.length === 0,
+    catalogue.join(" ; ") || "Mes prix (2 fournisseurs, le moins cher retenu, désignation personnelle, main-d'œuvre habituelle) → résultat et devis identiques au moteur ; prix manquant : ligne à 0, encadré « Prix à compléter », « Enregistrer dans Mes prix » ; prix changé : ↻ avec confirmation (Annuler ne change rien) ; ligne libre enregistrée comme article ; écran Mes prix : groupes, recherche sans accents (article et fournisseur), modification directe, comparaison, choix manuel, ajout validé, suppression, main-d'œuvre par défaut, Réinitialiser ; catalogue piégé nettoyé");
+  const deux = [...absent, ...etape7.deux];
+  controle("㉞", "deux devis ont chacun leur main-d'œuvre, sans interférence", deux.length === 0,
+    deux.join(" ; ") || "devis BP-AAAA-0001 et 0002 du même chantier : main-d'œuvre et prix modifiés dans le second sans effet sur le premier (prix figés), ni par les prix habituels ni par « Réinitialiser » ; numéro jamais réutilisé (0003) ; devis ancien listé non ouvrable ; assistant étape 5 : Prix habituels, + 10 %, total en jaune, case décochée par défaut appliquée à l'enregistrement");
+  const recalcul = [...absent, ...etape7.recalcul];
+  controle("㉟", "le devis se recalcule à chaque modification", recalcul.length === 0,
+    recalcul.join(" ; ") || "saisies successives (quantités piégées, ligne supprimée puis restaurée, désignation, main-d'œuvre, − 10 % / + 10 %, Prix habituels, forfait, journées, ligne libre, remise % et montant, TVA, acompte) : chaque total affiché = moteur seul ; statuts Accepté/Payé en badge ; enregistré 600 ms après, retrouvé après réouverture ; devis falsifié nettoyé, total recalculé");
 }
 
 /* ---------- Rapport ---------- */
 await controlesExecution();
 controlesMoteur();
 controlesResultat();
+controlesDevis();
 controleCapacitor();
 controleGitignore();
 controlesSecurite();
 controlesIdentite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);

@@ -1075,6 +1075,117 @@ a.bouton { text-decoration: none; }
   .panneau { padding: 16px 14px; }
 }
 
+/* ---------- 7f. Devis et Mes prix (étape 7) ---------- */
+.duo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.statut[data-ton="paye"] { background: var(--vert); color: #fff; }
+.statut-grand { padding: 6px 14px; font-size: 14px; }
+.devis-statut { display: grid; gap: 8px; justify-items: start; flex: 0 1 240px; min-width: 0; }
+.devis-statut .champ { width: 100%; }
+.boutons-rapides { display: flex; flex-wrap: wrap; gap: 8px; }
+.boutons-rapides .bouton { flex: 1 1 auto; padding: 0 12px; white-space: nowrap; }
+.etape-finale .total-mo { margin-top: 4px; }
+.actions-devis { display: grid; gap: 10px; }
+.actions-devis .bouton[hidden] { display: none; }
+.liste-devis li.ligne-cliquable { padding: 0; }
+
+/* Lignes de matériel du devis */
+.lignes-devis { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ligne-devis {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 10px; padding: 12px;
+  border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2);
+}
+.ligne-devis-tete { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 10px; align-items: end; }
+.ligne-devis-infos { grid-column: 1 / -1; margin: -2px 0 0; }
+.ligne-devis-infos[hidden] { display: none; }
+.ligne-devis .ligne-mo-montant { grid-column: 1 / -1; flex-wrap: wrap; align-items: center; }
+.montant-et-action { display: inline-flex; align-items: center; gap: 8px; min-width: 0; margin-left: auto; }
+.bouton-maj-prix {
+  width: 40px; height: 40px; flex: none; display: inline-grid; place-items: center; padding: 0; border-radius: 50%;
+  border: 1.5px solid var(--violet-2); background: var(--violet-doux); color: var(--accent-texte); cursor: pointer;
+}
+.bouton-maj-prix .icone { width: 20px; height: 20px; }
+.bouton-maj-prix[hidden] { display: none; }
+.bouton-maj-prix:focus-visible { outline: 3px solid var(--violet-2); outline-offset: 2px; }
+.encadre-prix {
+  grid-column: 1 / -1; display: grid; gap: 6px; justify-items: start; padding: 12px;
+  border-radius: var(--rayon-petit); border: 2px solid var(--jaune); background: rgba(255, 212, 0, 0.16);
+}
+.encadre-prix[hidden] { display: none; }
+.encadre-prix strong { font-size: 14px; font-weight: 800; color: var(--texte); }
+.encadre-prix p { margin: 0; font-size: 13px; color: var(--texte-2); }
+.bouton-jaune { background: var(--jaune); color: #17131F; gap: 8px; }
+.bouton-jaune .icone { width: 18px; height: 18px; }
+.bouton-jaune:disabled { opacity: 0.55; cursor: not-allowed; }
+.ajout-ligne-devis { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.ajout-ligne-devis .bouton:disabled { opacity: 0.5; cursor: not-allowed; }
+.lignes-supprimees { border: 1px dashed var(--ligne); border-radius: var(--rayon-petit); padding: 6px 12px; }
+.lignes-supprimees[hidden] { display: none; }
+.lignes-supprimees summary { cursor: pointer; font-weight: 700; color: var(--texte-2); min-height: 40px; display: flex; align-items: center; }
+.liste-supprimees { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; }
+.liste-supprimees li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--ligne); }
+.liste-supprimees .devis-texte { display: grid; gap: 2px; min-width: 0; color: var(--texte-2); }
+.liste-supprimees .devis-texte strong { text-decoration: line-through; }
+.liste-supprimees .bouton .icone { width: 18px; height: 18px; }
+.barre-devis { display: grid; gap: 8px; }
+
+/* Mes prix */
+.groupes-prix { display: grid; gap: 14px; }
+.groupe-prix { display: grid; gap: 10px; }
+.groupe-prix[hidden] { display: none; }
+.groupe-prix > .bloc-titre { margin: 0; }
+.liste-articles { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.liste-articles > li[hidden] { display: none; }
+.article-prix { border: 1px solid var(--ligne); border-radius: var(--rayon-petit); background: var(--carte-2); }
+.article-prix[open] { border-color: var(--violet-2); }
+.article-prix > summary {
+  list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px;
+  align-items: center; min-height: 56px; padding: 10px 14px; border-radius: var(--rayon-petit);
+}
+.article-prix > summary::-webkit-details-marker { display: none; }
+.article-prix > summary:focus-visible { outline: 3px solid var(--violet-2); outline-offset: 1px; }
+.article-nom { min-width: 0; font-size: 15px; }
+.article-droite { display: inline-flex; justify-self: end; }
+.article-resume-prix { font-weight: 800; color: var(--accent-texte); }
+.article-resume-prix[hidden] { display: none; }
+.article-fournisseur { grid-column: 1 / -1; font-size: 13px; color: var(--texte-2); }
+.article-fournisseur:empty { display: none; }
+@media (max-width: 560px) {
+  /* Téléphone : le prix passe sous le nom pour que la désignation garde toute la largeur. */
+  .article-prix > summary { grid-template-columns: minmax(0, 1fr); }
+  .article-droite { justify-self: start; }
+}
+.article-corps { display: grid; gap: 12px; padding: 4px 14px 14px; }
+.liste-fournisseurs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ligne-fournisseur {
+  display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px 10px; align-items: end; padding: 10px;
+  border-radius: 12px; border: 1px solid var(--ligne); background: var(--carte);
+}
+.ligne-fournisseur > .champ:first-child { grid-column: 1 / -1; }
+.ligne-fournisseur .bouton-outil[hidden] { visibility: hidden; display: inline-grid; }
+.fournisseur-pied { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.badge-moins-cher { display: inline-flex; padding: 3px 10px; border-radius: 999px; background: rgba(18, 161, 80, 0.14); color: var(--vert); font-size: 12px; font-weight: 800; white-space: nowrap; }
+.badge-moins-cher[hidden] { display: none; }
+.case[hidden], .lien-texte[hidden] { display: none; }
+.article-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
+.lien-danger { color: var(--erreur); }
+.prix-outils { display: grid; gap: 6px; }
+.prix-outils .aide { margin: 0; }
+.mes-prix > .resultat-titres .aide { margin: 6px 0 0; }
+.lignes-prix-mo { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+
+@media (min-width: 640px) {
+  .duo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .actions-devis { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .ligne-devis { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+  .ligne-devis .ligne-mo-montant { grid-column: auto; flex-direction: column; align-items: flex-end; justify-content: flex-end; gap: 2px; min-height: 48px; }
+  .ligne-fournisseur { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 44px; }
+  .ligne-fournisseur > .champ:first-child { grid-column: auto; }
+  .lignes-prix-mo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1280px) {
+  .lignes-prix-mo { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 /* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */
 @media (min-width: 1025px) {
   #tiroir { transform: none; box-shadow: none; width: var(--largeur-tiroir); }

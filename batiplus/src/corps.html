@@ -449,6 +449,11 @@
           <div class="carte formulaire">
             <h2 class="bloc-titre" id="titre-etape-5" tabindex="-1">Main-d'œuvre</h2>
             <p class="aide">Les quatre façons de compter peuvent se cumuler. Les quantités au point sont calculées à partir de l'étude ; vous pouvez les corriger.</p>
+            <div class="boutons-rapides" role="group" aria-label="Ajuster toute la main-d'œuvre">
+              <button type="button" class="bouton bouton-discret bouton-compact" data-ajuster-assistant="moins">− 10 %</button>
+              <button type="button" class="bouton bouton-discret bouton-compact" data-ajuster-assistant="habituels">Prix habituels</button>
+              <button type="button" class="bouton bouton-discret bouton-compact" data-ajuster-assistant="plus">+ 10 %</button>
+            </div>
             <h3 class="sous-titre">Au point</h3>
             <ul class="lignes-mo" id="liste-mo-points" aria-label="Main-d'œuvre au point"></ul>
             <div class="total-ligne total-partiel"><span>Sous-total au point</span><strong class="montant" id="total-mo-points"></strong></div>
@@ -475,7 +480,8 @@
             <h3 class="sous-titre">Lignes libres</h3>
             <ul class="lignes-libres" id="liste-lignes-libres" aria-label="Lignes libres"></ul>
             <button type="button" class="lien-texte" id="bouton-ajouter-ligne"><svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg>Ajouter une ligne</button>
-            <div class="total-ligne"><span>Total main-d'œuvre</span><strong class="montant" id="total-mo"></strong></div>
+            <div class="total-mo"><span>Total main-d'œuvre</span><strong class="montant" id="total-mo"></strong></div>
+            <label class="case"><input type="checkbox" id="mo-enregistrer-habituels"><span>Enregistrer ces prix comme mes prix habituels</span></label>
           </div>
           <section class="carte synthese" aria-labelledby="titre-synthese">
             <h2 class="bloc-titre" id="titre-synthese">Synthèse de l'étude</h2>
@@ -632,13 +638,258 @@
             <p class="ligne-calcul"><span>Acompte</span><strong class="montant" id="tot-acompte">0</strong></p>
             <p class="ligne-calcul"><span>Reste à payer à la fin</span><strong class="montant" id="tot-reste">0</strong></p>
           </fieldset>
-          <button type="button" class="bouton bouton-principal" id="bouton-creer-devis" data-ecran="devis">
-            <svg class="icone" aria-hidden="true"><use href="#i-devis"/></svg>
-            <span class="bouton-libelle">Créer le devis</span>
-          </button>
+          <div class="actions-devis">
+            <button type="button" class="bouton bouton-principal" id="bouton-creer-devis">
+              <svg class="icone" aria-hidden="true"><use href="#i-devis"/></svg>
+              <span class="bouton-libelle" id="libelle-creer-devis">Créer le devis</span>
+            </button>
+            <button type="button" class="bouton bouton-secondaire" id="bouton-ouvrir-devis" hidden>
+              <svg class="icone" aria-hidden="true"><use href="#i-document"/></svg>
+              <span class="bouton-libelle" id="libelle-ouvrir-devis">Ouvrir le devis</span>
+            </button>
+          </div>
         </section>
 
         <p class="brouillon-etat" id="etat-resultat" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="ecran" id="ecran-fiche-devis" aria-labelledby="titre-fiche-devis">
+      <div class="resultat fiche-devis">
+        <div class="resultat-tete">
+          <div class="resultat-titres">
+            <p class="surtitre" id="devis-numero">Devis</p>
+            <h1 class="titre-ecran" id="titre-fiche-devis">Devis</h1>
+            <p class="resultat-infos" id="devis-infos"></p>
+          </div>
+          <div class="devis-statut">
+            <span class="statut statut-grand" id="devis-badge" data-ton="neutre">Brouillon</span>
+            <div class="champ">
+              <label for="devis-statut">Statut du devis</label>
+              <select id="devis-statut" data-devis-champ="statut"></select>
+            </div>
+          </div>
+        </div>
+
+        <p class="resultat-resume" aria-live="polite">
+          <span>Total général</span>
+          <strong class="montant" id="devis-resume-total">0</strong>
+        </p>
+
+        <section class="carte panneau" aria-labelledby="titre-devis-client">
+          <h2 class="bloc-titre" id="titre-devis-client">Client et chantier</h2>
+          <div class="champ">
+            <label for="devis-titre">Objet du devis</label>
+            <input id="devis-titre" type="text" autocomplete="off" maxlength="120" data-devis-champ="titre">
+          </div>
+          <div class="duo">
+            <div class="champ">
+              <label for="devis-client">Client</label>
+              <input id="devis-client" type="text" autocomplete="off" maxlength="120" data-devis-champ="client">
+            </div>
+            <div class="champ">
+              <label for="devis-lieu">Lieu du chantier</label>
+              <input id="devis-lieu" type="text" autocomplete="off" maxlength="120" data-devis-champ="lieu">
+            </div>
+          </div>
+        </section>
+
+        <section class="carte panneau" id="devis-bloc-materiel" aria-labelledby="titre-devis-materiel">
+          <h2 class="bloc-titre" id="titre-devis-materiel">Matériel</h2>
+          <p class="aide">Désignation, quantité et prix sont modifiables. Les prix viennent de « Mes prix » et sont figés dans ce devis : changer Mes prix ne modifie pas un devis déjà fait.</p>
+          <ul class="lignes-devis" id="devis-lignes" aria-label="Lignes de matériel"></ul>
+          <p class="vide" id="devis-lignes-vide" hidden>Aucune ligne de matériel.</p>
+          <div class="ajout-ligne-devis">
+            <div class="champ">
+              <label for="devis-ajout-article">Ajouter une ligne</label>
+              <select id="devis-ajout-article"></select>
+            </div>
+            <button type="button" class="bouton bouton-discret bouton-compact" id="devis-bouton-ajouter">
+              <svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg>
+              <span class="bouton-libelle">Ajouter</span>
+            </button>
+          </div>
+          <details class="lignes-supprimees" id="devis-bloc-supprimees" hidden>
+            <summary id="devis-titre-supprimees">Lignes supprimées</summary>
+            <ul class="liste-supprimees" id="devis-supprimees"></ul>
+          </details>
+          <p class="total-ligne"><span>Total matériel</span><strong class="montant" id="devis-total-materiel">0</strong></p>
+        </section>
+
+        <section class="carte panneau" id="devis-bloc-mo" aria-labelledby="titre-devis-mo">
+          <h2 class="bloc-titre" id="titre-devis-mo">Main-d'œuvre</h2>
+          <p class="aide">Au point, au forfait, à la journée et en lignes libres : les quatre façons de compter se cumulent.</p>
+          <div class="boutons-rapides" role="group" aria-label="Ajuster toute la main-d'œuvre">
+            <button type="button" class="bouton bouton-discret bouton-compact" data-ajuster-devis="moins">− 10 %</button>
+            <button type="button" class="bouton bouton-discret bouton-compact" data-ajuster-devis="habituels">Prix habituels</button>
+            <button type="button" class="bouton bouton-discret bouton-compact" data-ajuster-devis="plus">+ 10 %</button>
+          </div>
+          <h3 class="sous-titre">Au point</h3>
+          <ul class="lignes-mo" id="devis-mo-points"></ul>
+          <h3 class="sous-titre">Forfait</h3>
+          <div class="champ">
+            <label for="devis-mo-forfait">Montant du forfait <span class="facultatif" id="devis-devise-forfait"></span></label>
+            <input id="devis-mo-forfait" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-devis-mo="forfait">
+          </div>
+          <h3 class="sous-titre">À la journée</h3>
+          <div class="trio">
+            <div class="champ"><label for="devis-mo-ouvriers">Ouvriers</label><input id="devis-mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" data-devis-mo="ouvriers"></div>
+            <div class="champ"><label for="devis-mo-jours">Jours</label><input id="devis-mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-devis-mo="jours"></div>
+            <div class="champ"><label for="devis-mo-tarif">Tarif par jour</label><input id="devis-mo-tarif" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-devis-mo="tarif"></div>
+          </div>
+          <p class="total-ligne total-partiel"><span>Journées</span><strong class="montant" id="devis-mo-journees">0</strong></p>
+          <h3 class="sous-titre">Lignes libres</h3>
+          <ul class="lignes-libres" id="devis-mo-libres"></ul>
+          <button type="button" class="bouton bouton-discret" id="devis-ajouter-libre">
+            <svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg>
+            <span class="bouton-libelle">Ajouter une ligne</span>
+          </button>
+          <div class="total-mo">
+            <span>Total main-d'œuvre</span>
+            <strong class="montant" id="devis-total-mo">0</strong>
+          </div>
+          <label class="case"><input type="checkbox" id="devis-mo-habituels"><span>Enregistrer ces prix comme mes prix habituels</span></label>
+        </section>
+
+        <section class="carte panneau" id="devis-bloc-total" aria-labelledby="titre-devis-total">
+          <h2 class="bloc-titre" id="titre-devis-total">Total</h2>
+          <dl class="totaux">
+            <div><dt>Matériel</dt><dd class="montant" id="devis-tot-materiel">0</dd></div>
+            <div><dt>Main-d'œuvre</dt><dd class="montant" id="devis-tot-mo">0</dd></div>
+            <div class="totaux-fort"><dt>Sous-total</dt><dd class="montant" id="devis-tot-sous-total">0</dd></div>
+          </dl>
+          <fieldset class="reglage-total">
+            <legend class="etiquette-champ">Remise</legend>
+            <div class="puces">
+              <label class="puce"><input type="radio" name="devis-remise-type" value="pourcent" data-devis-total="remiseType"><span>En %</span></label>
+              <label class="puce"><input type="radio" name="devis-remise-type" value="montant" data-devis-total="remiseType"><span>En montant</span></label>
+            </div>
+            <div class="champ">
+              <label for="devis-remise" id="devis-remise-libelle">Remise (%)</label>
+              <input id="devis-remise" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-devis-total="remise">
+            </div>
+            <p class="ligne-calcul"><span>Remise</span><strong class="montant" id="devis-tot-remise">0</strong></p>
+          </fieldset>
+          <fieldset class="reglage-total">
+            <legend class="etiquette-champ">TVA</legend>
+            <label class="case"><input type="checkbox" id="devis-tva" data-devis-total="tva"><span>Appliquer la TVA</span></label>
+            <div class="champ" id="devis-bloc-taux-tva">
+              <label for="devis-taux-tva">Taux de TVA (%)</label>
+              <input id="devis-taux-tva" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-devis-total="tauxTva">
+            </div>
+            <p class="ligne-calcul"><span>TVA</span><strong class="montant" id="devis-tot-tva">0</strong></p>
+          </fieldset>
+          <div class="total-general">
+            <span>TOTAL GÉNÉRAL</span>
+            <strong class="montant" id="devis-tot-general">0</strong>
+          </div>
+          <fieldset class="reglage-total">
+            <legend class="etiquette-champ">Acompte à la commande</legend>
+            <div class="champ">
+              <label for="devis-acompte">Acompte (%)</label>
+              <input id="devis-acompte" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-devis-total="acompte">
+            </div>
+            <p class="ligne-calcul"><span>Acompte</span><strong class="montant" id="devis-tot-acompte">0</strong></p>
+            <p class="ligne-calcul"><span>Reste à payer à la fin</span><strong class="montant" id="devis-tot-reste">0</strong></p>
+          </fieldset>
+        </section>
+
+        <section class="carte panneau" aria-labelledby="titre-devis-textes">
+          <h2 class="bloc-titre" id="titre-devis-textes">Conditions et note</h2>
+          <div class="champ">
+            <label for="devis-conditions">Conditions</label>
+            <textarea id="devis-conditions" rows="5" maxlength="1000" data-devis-champ="conditions"></textarea>
+          </div>
+          <div class="champ">
+            <label for="devis-note">Note pour le client <span class="facultatif">(facultatif)</span></label>
+            <textarea id="devis-note" rows="3" maxlength="1000" data-devis-champ="note" placeholder="Ex. : Le matériel est garanti un an. Travaux possibles dès réception de l'acompte."></textarea>
+          </div>
+        </section>
+
+        <div class="barre-devis">
+          <button type="button" class="bouton bouton-principal" id="devis-bouton-enregistrer">
+            <svg class="icone" aria-hidden="true"><use href="#i-coche"/></svg>
+            <span class="bouton-libelle">Enregistrer</span>
+          </button>
+          <p class="brouillon-etat" id="etat-devis" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="ecran" id="ecran-prix" aria-labelledby="titre-prix">
+      <div class="resultat mes-prix">
+        <div class="resultat-titres">
+          <p class="surtitre">Catalogue</p>
+          <h1 class="titre-ecran" id="titre-prix">Mes prix</h1>
+          <p class="aide">Vos prix remplissent automatiquement chaque chantier et chaque devis. Plusieurs fournisseurs par article : le moins cher est retenu, sauf si vous en choisissez un.</p>
+        </div>
+
+        <div class="carte prix-outils">
+          <div class="champ">
+            <label for="prix-recherche">Rechercher un article ou un fournisseur</label>
+            <input id="prix-recherche" type="text" inputmode="search" autocomplete="off" maxlength="60" placeholder="Ex. : câble, disjoncteur, Quincaillerie…">
+          </div>
+          <p class="aide" id="prix-compte" aria-live="polite"></p>
+        </div>
+
+        <div class="groupes-prix" id="prix-groupes"></div>
+        <p class="vide carte" id="prix-vide" hidden>Aucun article ne correspond à la recherche.</p>
+
+        <form class="carte formulaire" id="form-nouvel-article" novalidate aria-labelledby="titre-nouvel-article">
+          <h2 class="bloc-titre" id="titre-nouvel-article">Ajouter un article</h2>
+          <div class="champ">
+            <label for="article-designation">Désignation</label>
+            <input id="article-designation" type="text" autocomplete="off" maxlength="120" placeholder="Ex. : Projecteur LED 50 W" aria-describedby="err-article-designation">
+            <p class="champ-erreur" id="err-article-designation"></p>
+          </div>
+          <div class="duo">
+            <div class="champ">
+              <label for="article-categorie">Catégorie</label>
+              <select id="article-categorie"></select>
+            </div>
+            <div class="champ">
+              <label for="article-unite">Unité</label>
+              <select id="article-unite"></select>
+            </div>
+          </div>
+          <div class="duo">
+            <div class="champ">
+              <label for="article-fournisseur">Fournisseur <span class="facultatif">(facultatif)</span></label>
+              <input id="article-fournisseur" type="text" autocomplete="off" maxlength="60">
+            </div>
+            <div class="champ">
+              <label for="article-prix">Prix <span class="facultatif" id="article-devise"></span></label>
+              <input id="article-prix" type="text" inputmode="decimal" autocomplete="off" maxlength="12" placeholder="0" aria-describedby="err-article-prix">
+              <p class="champ-erreur" id="err-article-prix"></p>
+            </div>
+          </div>
+          <p class="message-formulaire" id="msg-nouvel-article" role="status" aria-live="polite"></p>
+          <button type="submit" class="bouton bouton-principal">
+            <svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg>
+            <span class="bouton-libelle">Ajouter l'article</span>
+          </button>
+        </form>
+
+        <section class="carte formulaire" id="carte-prix-mo" aria-labelledby="titre-prix-mo">
+          <h2 class="bloc-titre" id="titre-prix-mo">Main-d'œuvre par défaut</h2>
+          <p class="aide">Ces prix sont proposés dans chaque nouveau chantier et chaque nouveau devis. Videz un champ pour revenir au prix de départ.</p>
+          <ul class="lignes-prix-mo" id="prix-mo-liste"></ul>
+          <div class="champ">
+            <label for="prix-mo-journee">Tarif d'une journée (par ouvrier)</label>
+            <input id="prix-mo-journee" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-prix-mo="journee">
+          </div>
+        </section>
+
+        <section class="carte formulaire" id="carte-reinitialiser-prix" aria-labelledby="titre-reinitialiser-prix">
+          <h2 class="bloc-titre" id="titre-reinitialiser-prix">Revenir aux prix de départ</h2>
+          <p class="aide">Remplace tous vos articles, fournisseurs et prix de main-d'œuvre par les prix de départ. Les devis déjà faits ne changent pas.</p>
+          <button type="button" class="bouton bouton-danger" id="bouton-reinitialiser-prix">
+            <svg class="icone" aria-hidden="true"><use href="#i-effacer"/></svg>
+            <span class="bouton-libelle">Réinitialiser</span>
+          </button>
+        </section>
+
+        <p class="brouillon-etat" id="etat-prix" role="status" aria-live="polite"></p>
       </div>
     </section>
 

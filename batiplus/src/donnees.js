@@ -27,7 +27,8 @@ const CLES_STOCKAGE = Object.freeze({
   devis: "bp_v1_devis",
   chantiers: "bp_v1_chantiers",
   brouillonChantier: "bp_v1_brouillon_chantier",
-  catalogue: "bp_v1_catalogue"
+  catalogue: "bp_v1_catalogue",
+  numerosDevis: "bp_v1_numeros_devis"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -185,7 +186,8 @@ const STATUTS_DEVIS = Object.freeze({
   brouillon: { libelle: "Brouillon", ton: "neutre" },
   envoye: { libelle: "Envoyé", ton: "info" },
   accepte: { libelle: "Accepté", ton: "ok" },
-  refuse: { libelle: "Refusé", ton: "alerte" }
+  refuse: { libelle: "Refusé", ton: "alerte" },
+  paye: { libelle: "Payé", ton: "paye" }
 });
 
 /* Animations des compteurs du tableau de bord (ms). */
@@ -236,6 +238,8 @@ const ASTUCES = Object.freeze([
 const RECHERCHE = Object.freeze([
   { libelle: "Accueil", detail: "Tableau de bord", ecran: "accueil", mots: "tableau bord compteurs astuce" },
   { libelle: "Nouveau chantier", detail: "Étude NF C 15-100 en 5 étapes", ecran: "nouveau-chantier", mots: "chantier etude nouveau pieces prises circuits tableau norme calcul" },
+  { libelle: "Mes prix", detail: "Catalogue du matériel et fournisseurs", ecran: "prix", mots: "prix catalogue materiel fournisseur tarif article cable disjoncteur" },
+  { libelle: "Main-d'œuvre par défaut", detail: "Mes prix habituels", ecran: "prix", cible: "carte-prix-mo", mots: "main oeuvre habituels point journee tarif" },
   { libelle: "Mon profil", detail: "Nom, entreprise, téléphone, ville", ecran: "profil", cible: "carte-infos", mots: "profil nom entreprise telephone ville pays devise" },
   { libelle: "Photo de profil", detail: "Mon profil", ecran: "profil", cible: "carte-identite", mots: "photo image avatar" },
   { libelle: "Logo de l'entreprise", detail: "Mon profil", ecran: "profil", cible: "carte-logo", mots: "logo entreprise image devis" },
@@ -250,7 +254,7 @@ const RECHERCHE = Object.freeze([
   { libelle: "Confidentialité", detail: "Vos données", ecran: "a-propos", cible: "carte-confidentialite", mots: "confidentialite donnees conditions" }
 ]);
 
-const CONDITIONS_DEFAUT = "Devis valable 30 jours. Acompte de 50 % à la commande, solde à la fin des travaux. Matériel garanti selon les conditions du fabricant.";
+const CONDITIONS_DEFAUT = "Devis valable 30 jours. Acompte de 40 % à la commande, solde à la fin des travaux. Matériel garanti selon les conditions du fabricant.";
 
 /* ---------- Images importées (photo, logo) ---------- */
 /* ==========================================================================
@@ -343,28 +347,57 @@ const CATEGORIES_MATERIEL = Object.freeze({
   tableau: "Tableau et protections",
   cables: "Câbles et gaines",
   appareillage: "Appareillage",
-  terre: "Prise de terre"
+  terre: "Prise de terre",
+  autres: "Autres articles"
 });
 const TVA_DEFAUT = 18;
 const TVA_MAX = 30;
 const ACOMPTE_DEFAUT = 40;
 
-/* Catalogue de départ : prix INDICATIFS en FCFA (XOF/XAF), un par référence de matériel.
-   lireCatalogue() est la SEULE source des prix ; les prix de l'électricien (« Mes prix »,
-   étape 7) remplaceront ceux-ci. Dans une autre devise, tous les prix partent de 0
-   et la ligne est signalée « Prix à compléter ». */
-const CATALOGUE_DEFAUT = Object.freeze({
-  "coffret-1r": 15000, "coffret-2r": 30000, "coffret-3r": 45000, "coffret-4r": 60000, "coffret-5r": 75000, "coffret-6r": 90000,
-  peigne: 2500, bornier: 2000,
-  "disjoncteur-10": 3000, "disjoncteur-16": 3000, "disjoncteur-20": 3500, "disjoncteur-32": 4500,
-  "differentiel-2p-40-AC": 20000, "differentiel-2p-63-AC": 25000, "differentiel-2p-40-A": 30000, "differentiel-2p-63-A": 35000,
-  "differentiel-4p-40-AC": 45000, "differentiel-4p-63-AC": 55000, "differentiel-4p-40-A": 60000, "differentiel-4p-63-A": 70000,
-  "parafoudre-2p": 30000, "parafoudre-4p": 55000,
-  "cable-1.5": 400, "cable-2.5": 600, "cable-6": 1500, "gaine-20": 150, "gaine-25": 250,
-  "alimentation-3g10": 2500, "alimentation-5g10": 4000,
-  prise: 1500, "prise-etanche": 3500, interrupteur: 1200, "va-et-vient": 1500, point: 1000, boite: 200, derivation: 500,
-  piquet: 7500, "cable-terre": 1500, barrette: 3500, regard: 5000
-});
+/* Catalogue de départ : prix INDICATIFS en FCFA (XOF/XAF), un article par référence de
+   matériel produite par le moteur (mêmes désignations). lireCatalogue() est la SEULE source
+   des prix : chantier, devis, statistiques et export. Dès que l'électricien modifie « Mes prix »,
+   son catalogue remplace celui-ci ; « Réinitialiser » y revient. Dans une autre devise, les prix
+   partent de 0 et chaque ligne est signalée « Prix à compléter ». */
+const CATALOGUE_DEFAUT = Object.freeze(Object.fromEntries([
+  ...[1, 2, 3, 4, 5, 6].map((n) => ["coffret-" + n + "r", "Coffret " + n + (n > 1 ? " rangées" : " rangée") + " de 13 modules", "u", "tableau", 15000 * n]),
+  ["peigne", "Peigne d'alimentation 13 modules", "u", "tableau", 2500],
+  ["bornier", "Bornier de terre et de neutre", "u", "tableau", 2000],
+  ...[[10, 3000], [16, 3000], [20, 3500], [32, 4500]].map(([a, prix]) => ["disjoncteur-" + a, "Disjoncteur divisionnaire 1P+N " + a + " A", "u", "tableau", prix]),
+  ...[["2p", 40, "AC", 20000], ["2p", 63, "AC", 25000], ["2p", 40, "A", 30000], ["2p", 63, "A", 35000],
+    ["4p", 40, "AC", 45000], ["4p", 63, "AC", 55000], ["4p", 40, "A", 60000], ["4p", 63, "A", 70000]]
+    .map(([p, a, t, prix]) => ["differentiel-" + p + "-" + a + "-" + t, "Interrupteur différentiel " + p.toUpperCase() + " " + a + " A 30 mA type " + t, "u", "tableau", prix]),
+  ["parafoudre-2p", "Parafoudre 2P avec protection intégrée", "u", "tableau", 30000],
+  ["parafoudre-4p", "Parafoudre 4P avec protection intégrée", "u", "tableau", 55000],
+  ["cable-1.5", "Câble 3G1,5 mm²", "m", "cables", 400],
+  ["cable-2.5", "Câble 3G2,5 mm²", "m", "cables", 600],
+  ["cable-6", "Câble 3G6 mm²", "m", "cables", 1500],
+  ["gaine-20", "Gaine ICTA 20", "m", "cables", 150],
+  ["gaine-25", "Gaine ICTA 25", "m", "cables", 250],
+  ["alimentation-3g10", "Câble d'alimentation 3G10 mm²", "m", "cables", 2500],
+  ["alimentation-5g10", "Câble d'alimentation 5G10 mm²", "m", "cables", 4000],
+  ["prise", "Prise 2P+T 16 A", "u", "appareillage", 1500],
+  ["prise-etanche", "Prise 2P+T 16 A étanche IP44", "u", "appareillage", 3500],
+  ["interrupteur", "Interrupteur simple allumage", "u", "appareillage", 1200],
+  ["va-et-vient", "Interrupteur va-et-vient", "u", "appareillage", 1500],
+  ["point", "Point lumineux (DCL et douille)", "u", "appareillage", 1000],
+  ["boite", "Boîte d'encastrement", "u", "appareillage", 200],
+  ["derivation", "Boîte de dérivation", "u", "appareillage", 500],
+  ["piquet", "Piquet de terre 1,5 m", "u", "terre", 7500],
+  ["cable-terre", "Câble de terre vert-jaune 16 mm²", "m", "terre", 1500],
+  ["barrette", "Barrette de mesure de terre", "u", "terre", 3500],
+  ["regard", "Regard de visite", "u", "terre", 5000]
+].map(([ref, designation, unite, categorie, prix]) => [ref, Object.freeze({ designation, unite, categorie, prix })])));
+
+/* ==========================================================================
+   Mes prix et devis (étape 7)
+   ========================================================================== */
+const UNITES = Object.freeze({ u: "unité", m: "mètre", lot: "lot", forfait: "forfait" });
+const BORNES_CATALOGUE = Object.freeze({ articlesMax: 300, fournisseursMax: 5, fournisseurMax: 60, designationMax: 120 });
+const BORNES_DEVIS = Object.freeze({ lignesMax: 150, noteMax: 1000, titreMax: 120, quantiteMax: 999999 });
+/* −10 % / +10 % sur toute la main-d'œuvre (prix au point, tarif journée, forfait, lignes libres). */
+const AJUSTEMENT_MAIN_OEUVRE = 0.1;
+const PREFIXE_NUMERO_DEVIS = "BP";
 
 /* ---------- Identité visuelle (étape 4) ---------- */
 /* Remplace toute photo d'électricien manquante : jamais de cadre vide. */

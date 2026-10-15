@@ -23,7 +23,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 4 | Identités visuelles : logos réels, icônes, photos | ✔ livrée |
 | 5 | Assistant Nouveau chantier (5 étapes) et moteur de calcul NF C 15-100 | ✔ livrée |
 | 6 | Résultat de l'étude : circuits, schéma du tableau, conformité | ✔ livrée |
-| 7 | Le devis : catalogue lié, lignes modifiables, main-d'œuvre 4 modes | à venir |
+| 7 | Le devis : catalogue lié, lignes modifiables, main-d'œuvre 4 modes | ✔ livrée |
 | 8 | Feuille A4 imprimable, PDF natif, partage WhatsApp | à venir |
 | 9 | Clients, chantiers, historique des devis, statistiques | à venir |
 | 10 | Sécurité du front (XSS, CSP, chiffrement, verrouillage) | à venir |
@@ -196,8 +196,8 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   4. **Main-d'œuvre** : au point, forfait, journées, lignes libres ; total en gros caractères jaunes.
   5. **Conformité** : chaque point « Conforme » ou « À vérifier », expliqué en français simple.
   6. **Total** : matériel, main-d'œuvre, remise (% ou montant), TVA activable (désactivée par défaut,
-     18 % modifiable), TOTAL GÉNÉRAL, acompte (40 % par défaut) et reste à payer ; bouton « Créer le
-     devis » (visible dès que l'écran Devis existera, étape 7).
+     18 % modifiable), TOTAL GÉNÉRAL, acompte (40 % par défaut) et reste à payer ; boutons « Créer le
+     devis » et « Ouvrir le dernier devis » (étape 7).
 - **Recalcul** : chaque frappe met à jour le chantier en mémoire, relance `chiffrerChantier()` et
   réécrit seulement les valeurs calculées (le champ en cours de saisie ne bouge pas). Enregistrement
   automatique 600 ms après la dernière saisie, en quittant l'écran, en arrière-plan et à la
@@ -210,6 +210,34 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   l'électricien (`bp_v1_catalogue`, écran « Mes prix » à l'étape 7). Autre devise : prix à 0, à compléter.
 - **Accès** : bloc « Dernières études » sur l'accueil (3 dernières) ; « Modifier le chantier » renvoie
   l'étude dans l'assistant, qui la réenregistre sur le même chantier.
+
+### Devis et Mes prix (étape 7)
+
+- **Écran `prix` (« Mes prix »)** : catalogue propre à chaque compte (`bp_v1_catalogue`, clé = compte),
+  articles regroupés par catégorie, recherche par article ou fournisseur. Chaque article garde
+  jusqu'à 5 fournisseurs ; le moins cher est retenu, sauf si l'électricien coche « Toujours celui-ci ».
+  Ajout d'articles personnels (`perso-xxxxxxxx`), suppression avec confirmation, prix de main-d'œuvre
+  habituels (8 types de points + tarif d'une journée). « Réinitialiser » revient au catalogue de
+  départ sans toucher aux devis déjà faits. Enregistrement automatique 600 ms après la saisie.
+- **Écran `fiche-devis`** : créé depuis le Résultat (« Créer le devis »), numéroté `BP-AAAA-NNNN` par
+  compte et par année (`bp_v1_numeros_devis`, jamais réutilisé). Les prix sont **figés** dans le devis :
+  modifier Mes prix ne change jamais un devis existant.
+  - **Matériel** : désignation, quantité (≤ 999 999) et prix modifiables, suppression avec bloc
+    « Lignes supprimées » restaurables, ajout d'un article du catalogue.
+  - **Prix à compléter** : encadré jaune quand le prix vaut 0 ou n'existe pas dans Mes prix, avec
+    « Enregistrer dans Mes prix ». Un prix modifié qui diffère de Mes prix affiche ↻ : la mise à jour du
+    catalogue demande toujours une confirmation (le catalogue ne change jamais sans décision).
+  - **Main-d'œuvre, 4 modes** : au point, forfait, journées (ouvriers × jours × tarif), lignes libres ;
+    boutons rapides « Prix habituels », − 10 %, + 10 %, + 20 % ; case « Enregistrer comme prix
+    habituels » (décochée par défaut). Les mêmes boutons existent à l'étape 5 de l'assistant.
+  - **Total** : remise (% ou montant), TVA activable (taux ≤ 30 %), acompte (40 % par défaut), reste
+    à payer ; statut Brouillon / Envoyé / Accepté / Refusé / Payé ; client, lieu, conditions et note.
+- **Moteur** (fonctions pures) : `devisDepuisChiffrage()`, `calculerDevis()`, `ajusterMainOeuvre()`,
+  `prixMainOeuvreHabituel()`, `tarifJourneeHabituel()` ; le jsdom compare la fiche à `calculerDevis()`
+  après chaque modification (㉟).
+- **Stockage** : `bp_v1_devis`, chaque devis validé champ par champ à la lecture ; les devis des étapes
+  précédentes (sans lignes) restent listés mais ne s'ouvrent pas. Imprimer et WhatsApp : étape 8 ;
+  limite de devis par formule : étape 11.
 
 ## Structure
 

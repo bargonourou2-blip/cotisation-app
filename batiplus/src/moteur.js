@@ -240,6 +240,8 @@ function montrer(id, options) {
   const precedent = montrer.ecranCourant;
   const retour = Boolean(options && options.retour);
   if (precedent === "resultat" && destination !== "resultat" && resultat.minuterie) enregistrerResultat();
+  if (precedent === "fiche-devis" && destination !== "fiche-devis" && fiche.minuterie) enregistrerDevis();
+  if (precedent === "prix" && destination !== "prix" && mesPrix.minuterie) enregistrerMesPrix();
   if (estEcranEntree(destination) || destination === ECRAN_DEPART) {
     etat.historique = [];
   } else if (!retour && precedent && precedent !== destination && !estEcranEntree(precedent)) {
@@ -267,6 +269,8 @@ function preparerEcran(id) {
   else if (id === "admin") reinitialiserAdmin();
   else if (id === "nouveau-chantier") ouvrirAssistant();
   else if (id === "resultat") ouvrirResultat();
+  else if (id === "fiche-devis") ouvrirFicheDevis();
+  else if (id === "prix") ouvrirMesPrix();
 }
 
 /* Un seul écouteur pour tous les éléments [data-ecran] (menu, onglets, raccourcis…). */
@@ -1468,19 +1472,119 @@ function afficherCompte(compte) {
   $("profil-telephone").textContent = compte ? formaterTelephone(compte.telephone, compte.pays) : "";
 }
 
-/* ---------- Devis enregistrés (lecture seule à cette étape) ---------- */
+/* ---------- Devis enregistrés (étape 7) ----------
+   Chaque devis relu est nettoyé champ par champ. Le total d'un devis complet est TOUJOURS
+   recalculé depuis son contenu : un total falsifié dans le stockage n'entre jamais dans les
+   statistiques. Les devis anciens (sans lignes) restent listés mais ne s'ouvrent pas. */
 
-function devisValide(devis) {
-  return Boolean(devis) && typeof devis.id === "string" && typeof devis.compteId === "string"
-    && typeof devis.titre === "string" && typeof devis.client === "string"
-    && Number.isFinite(devis.total) && devis.total >= 0 && devis.total <= 1e13
-    && Object.prototype.hasOwnProperty.call(STATUTS_DEVIS, devis.statut)
-    && typeof devis.creeLe === "string" && !Number.isNaN(Date.parse(devis.creeLe));
+const MOTIF_ID = /^[A-Za-z0-9_-]{1,40}$/;
+const MOTIF_REF_ARTICLE = /^(?:[a-z0-9.-]{1,40}|perso-[a-f0-9]{8})$/;
+const MOTIF_NUMERO_DEVIS = /^BP-\d{4}-\d{4,6}$/;
+
+function dateIsoValide(valeur) {
+  return typeof valeur === "string" && valeur.length <= 40 && !Number.isNaN(Date.parse(valeur));
+}
+
+function ligneDevisValide(source, decimales) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+  const ref = typeof source.ref === "string" && MOTIF_REF_ARTICLE.test(source.ref) ? source.ref : null;
+  return {
+    id: typeof source.id === "string" && /^l\d{1,4}$/.test(source.id) ? source.id : "",
+    ref,
+    designation: texteBorne(source.designation, BORNES_CATALOGUE.designationMax),
+    unite: typeof source.unite === "string" && Object.prototype.hasOwnProperty.call(UNITES, source.unite) ? source.unite : "u",
+    categorie: typeof source.categorie === "string" && Object.prototype.hasOwnProperty.call(CATEGORIES_MATERIEL, source.categorie) ? source.categorie : "autres",
+    quantite: entierBorne(source.quantite, 0, BORNES_DEVIS.quantiteMax, 0),
+    prix: montantBorne(source.prix, decimales, 0),
+    fournisseur: texteBorne(source.fournisseur, BORNES_CATALOGUE.fournisseurMax),
+    supprimee: source.supprimee === true
+  };
+}
+
+function mainOeuvreDevisValide(source, decimales) {
+  const mo = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+  const points = mo.points && typeof mo.points === "object" && !Array.isArray(mo.points) ? mo.points : {};
+  const auto = mo.auto && typeof mo.auto === "object" && !Array.isArray(mo.auto) ? mo.auto : {};
+  const journees = mo.journees && typeof mo.journees === "object" && !Array.isArray(mo.journees) ? mo.journees : {};
+  const propre = { points: {}, auto: {}, forfait: montantBorne(mo.forfait, decimales, 0), journees: {
+    ouvriers: entierBorne(journees.ouvriers, 0, BORNES_CHANTIER.ouvriersMax, 0),
+    jours: arrondi(borner(journees.jours, 0, BORNES_CHANTIER.joursMax, 0), 1),
+    tarif: montantBorne(journees.tarif, decimales, 0)
+  }, libres: (Array.isArray(mo.libres) ? mo.libres : []).slice(0, BORNES_CHANTIER.lignesLibresMax)
+    .filter((l) => l && typeof l === "object" && !Array.isArray(l))
+    .map((l) => ({ libelle: texteBorne(l.libelle, 120), montant: montantBorne(l.montant, decimales, 0) })) };
+  Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => {
+    const point = Object.prototype.hasOwnProperty.call(points, id) && points[id] && typeof points[id] === "object" ? points[id] : {};
+    propre.points[id] = { quantite: entierBorne(point.quantite, 0, BORNES_CHANTIER.quantiteMax, 0), prix: montantBorne(point.prix, decimales, 0) };
+    propre.auto[id] = Object.prototype.hasOwnProperty.call(auto, id) ? entierBorne(auto[id], 0, BORNES_CHANTIER.quantiteMax, 0) : 0;
+  });
+  return propre;
+}
+
+function devisValide(source, codeDevise) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+  if (typeof source.id !== "string" || !MOTIF_ID.test(source.id) || typeof source.compteId !== "string" || !source.compteId
+    || !Object.prototype.hasOwnProperty.call(STATUTS_DEVIS, source.statut) || !dateIsoValide(source.creeLe)
+    || typeof source.titre !== "string" || typeof source.client !== "string") return null;
+  const base = {
+    id: source.id, compteId: source.compteId, statut: source.statut, creeLe: source.creeLe,
+    modifieLe: dateIsoValide(source.modifieLe) ? source.modifieLe : source.creeLe,
+    titre: texteBorne(source.titre, BORNES_DEVIS.titreMax), client: texteBorne(source.client, BORNES.texteMax)
+  };
+  if (!Array.isArray(source.lignes)) {
+    /* Devis ancien (étapes 1 à 6) : liste et statistiques seulement. */
+    if (!Number.isFinite(source.total) || source.total < 0 || source.total > 1e13) return null;
+    return { ...base, complet: false, numero: "", total: source.total };
+  }
+  if (typeof source.numero !== "string" || !MOTIF_NUMERO_DEVIS.test(source.numero)) return null;
+  const dec = decimalesDevise(codeDevise);
+  const lignes = source.lignes.slice(0, BORNES_DEVIS.lignesMax).map((l) => ligneDevisValide(l, dec)).filter(Boolean);
+  const ids = new Set(lignes.map((l) => l.id));
+  if (ids.has("") || ids.size !== lignes.length) lignes.forEach((l, index) => { l.id = "l" + (index + 1); });
+  lignes.forEach((l) => { if (!l.designation) l.designation = "Article"; });
+  const devis = {
+    ...base,
+    complet: true,
+    numero: source.numero,
+    chantierId: typeof source.chantierId === "string" && MOTIF_ID.test(source.chantierId) ? source.chantierId : null,
+    clientTelephone: typeof source.clientTelephone === "string" && /^\+?\d{0,15}$/.test(source.clientTelephone) ? source.clientTelephone : "",
+    lieu: texteBorne(source.lieu, BORNES.texteMax),
+    lignes,
+    mainOeuvre: mainOeuvreDevisValide(source.mainOeuvre, dec),
+    totaux: reglagesTotauxValides(source.totaux),
+    conditions: nettoyerParagraphes(source.conditions).slice(0, BORNES.conditionsMax),
+    note: nettoyerParagraphes(source.note).slice(0, BORNES_DEVIS.noteMax)
+  };
+  devis.total = calculerDevis(devis, codeDevise).total.totalGeneral;
+  return devis;
+}
+
+/* Liste brute : les devis de tous les comptes, jamais modifiés sauf celui qu'on enregistre. */
+async function lireDevisBruts() {
+  const liste = await lireJson(CLES_STOCKAGE.devis);
+  return Array.isArray(liste) ? liste : [];
 }
 
 async function lireDevis(compteId) {
-  const liste = await lireJson(CLES_STOCKAGE.devis);
-  return Array.isArray(liste) ? liste.filter(devisValide).filter((d) => d.compteId === compteId) : [];
+  const devise = deviseCompte();
+  return (await lireDevisBruts()).filter((d) => d && typeof d === "object" && d.compteId === compteId)
+    .map((d) => devisValide(d, devise)).filter(Boolean);
+}
+
+/* Numéro BP-AAAA-NNNN : compteur par compte et par année, jamais réutilisé (même après suppression). */
+async function prochainNumeroDevis(compteId, existants) {
+  const annee = new Date().getFullYear();
+  const brut = await lireJson(CLES_STOCKAGE.numerosDevis);
+  const compteurs = brut && typeof brut === "object" && !Array.isArray(brut) ? brut : {};
+  const cle = compteId + ":" + annee;
+  const prefixe = PREFIXE_NUMERO_DEVIS + "-" + annee + "-";
+  const stocke = Object.prototype.hasOwnProperty.call(compteurs, cle) ? entierBorne(compteurs[cle], 0, 999998, 0) : 0;
+  const plusGrand = existants.reduce((max, d) => (d.numero && d.numero.startsWith(prefixe)
+    ? Math.max(max, Number(d.numero.slice(prefixe.length)) || 0) : max), stocke);
+  const suivant = Math.min(plusGrand + 1, 999999);
+  compteurs[cle] = suivant;
+  await ecrireValeur(CLES_STOCKAGE.numerosDevis, JSON.stringify(compteurs));
+  return prefixe + String(suivant).padStart(4, "0");
 }
 
 function statistiques(devis) {
@@ -1489,7 +1593,8 @@ function statistiques(devis) {
     const date = new Date(d.creeLe);
     return date.getFullYear() === maintenant.getFullYear() && date.getMonth() === maintenant.getMonth();
   });
-  const acceptes = devis.filter((d) => d.statut === "accepte").length;
+  /* Un devis payé a forcément été accepté. */
+  const acceptes = devis.filter((d) => d.statut === "accepte" || d.statut === "paye").length;
   return {
     total: devis.length,
     mois: duMois.length,
@@ -1542,9 +1647,9 @@ function creerLigneDevis(devis, codeDevise) {
   const texte = document.createElement("div");
   texte.className = "devis-texte";
   const titre = document.createElement("strong");
-  titre.textContent = devis.titre;
+  titre.textContent = devis.titre || "Devis";
   const client = document.createElement("span");
-  client.textContent = devis.client;
+  client.textContent = [devis.numero, devis.client].filter(Boolean).join(" · ");
   texte.append(titre, client);
   const droite = document.createElement("div");
   droite.className = "devis-droite";
@@ -1556,7 +1661,19 @@ function creerLigneDevis(devis, codeDevise) {
   statut.dataset.ton = STATUTS_DEVIS[devis.statut].ton;
   statut.textContent = STATUTS_DEVIS[devis.statut].libelle;
   droite.append(montant, statut);
-  li.append(texte, droite);
+  if (devis.complet) {
+    /* Devis complet : toute la ligne ouvre la fiche du devis. */
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "ligne-etude";
+    bouton.dataset.devis = devis.id;
+    bouton.setAttribute("aria-label", "Ouvrir le devis " + devis.numero + " : " + (devis.titre || "Devis") + ", " + devis.client);
+    bouton.append(texte, droite);
+    li.className = "ligne-cliquable";
+    li.appendChild(bouton);
+  } else {
+    li.append(texte, droite);
+  }
   return li;
 }
 
@@ -2489,8 +2606,44 @@ function prixDefautMainOeuvre(id, codeDevise) {
   return DEVISES_PRIX_DEFAUT.includes(codeDevise) ? MAIN_OEUVRE_POINTS[id].prix : 0;
 }
 
+/* Prix habituels de l'électricien (« Mes prix ») ; à défaut, les prix de départ. */
+function prixMainOeuvreHabituel(id, codeDevise, habituels) {
+  const points = habituels && typeof habituels === "object" && habituels.points && typeof habituels.points === "object" ? habituels.points : {};
+  const defaut = prixDefautMainOeuvre(id, codeDevise);
+  return Object.prototype.hasOwnProperty.call(points, id) && saisieManuelle(points[id])
+    ? montantBorne(points[id], decimalesDevise(codeDevise), defaut) : defaut;
+}
+
+function tarifJourneeHabituel(codeDevise, habituels) {
+  const defaut = DEVISES_PRIX_DEFAUT.includes(codeDevise) ? TARIF_JOURNEE_DEFAUT : 0;
+  return habituels && typeof habituels === "object" && saisieManuelle(habituels.journee)
+    ? montantBorne(habituels.journee, decimalesDevise(codeDevise), defaut) : defaut;
+}
+
+/* « − 10 % » / « + 10 % » : toute la main-d'œuvre calculée est multipliée par le facteur
+   (prix au point, tarif journée, forfait, lignes libres), arrondie à la devise. Les quantités
+   corrigées à la main sont conservées. Fonction pure : renvoie une nouvelle saisie. */
+function ajusterMainOeuvre(saisie, calcul, facteur, codeDevise) {
+  const dec = decimalesDevise(codeDevise);
+  const f = (valeur) => montantBorne(arrondi(valeur * facteur, dec), dec, 0);
+  const anciens = saisie && typeof saisie === "object" && saisie.points && typeof saisie.points === "object" ? saisie.points : {};
+  const points = {};
+  calcul.lignes.forEach((ligne) => {
+    const ancien = Object.prototype.hasOwnProperty.call(anciens, ligne.id) && anciens[ligne.id] && typeof anciens[ligne.id] === "object" ? anciens[ligne.id] : {};
+    points[ligne.id] = { quantite: saisieManuelle(ancien.quantite) ? ligne.quantite : null, prix: f(ligne.prix) };
+  });
+  const resultat = {
+    points,
+    forfait: f(calcul.forfait),
+    journees: { ouvriers: calcul.journees.ouvriers, jours: calcul.journees.jours, tarif: f(calcul.journees.tarif) },
+    libres: calcul.libres.map((ligne) => ({ libelle: ligne.libelle, montant: f(ligne.montant) }))
+  };
+  if (saisie && typeof saisie === "object" && saisie.auto && typeof saisie.auto === "object") resultat.auto = { ...saisie.auto };
+  return resultat;
+}
+
 /* Main-d'œuvre : 4 modes cumulables (au point, forfait, journées, lignes libres). */
-function calculerMainOeuvre(saisie, quantitesAuto, codeDevise) {
+function calculerMainOeuvre(saisie, quantitesAuto, codeDevise, habituels) {
   const mo = saisie && typeof saisie === "object" ? saisie : {};
   const points = mo.points && typeof mo.points === "object" ? mo.points : {};
   const dec = decimalesDevise(codeDevise);
@@ -2498,14 +2651,13 @@ function calculerMainOeuvre(saisie, quantitesAuto, codeDevise) {
     const reglage = points[id] && typeof points[id] === "object" ? points[id] : {};
     const auto = quantitesAuto[id] || 0;
     const quantite = saisieManuelle(reglage.quantite) ? entierBorne(reglage.quantite, 0, BORNES_CHANTIER.quantiteMax, auto) : auto;
-    const prix = saisieManuelle(reglage.prix) ? montantBorne(reglage.prix, dec, 0) : prixDefautMainOeuvre(id, codeDevise);
+    const prix = saisieManuelle(reglage.prix) ? montantBorne(reglage.prix, dec, 0) : prixMainOeuvreHabituel(id, codeDevise, habituels);
     return { id, libelle: MAIN_OEUVRE_POINTS[id].libelle, auto, quantite, prix, montant: arrondi(quantite * prix, dec) };
   });
   const journees = mo.journees && typeof mo.journees === "object" ? mo.journees : {};
   const ouvriers = entierBorne(journees.ouvriers, 0, BORNES_CHANTIER.ouvriersMax, 0);
   const jours = arrondi(borner(journees.jours, 0, BORNES_CHANTIER.joursMax, 0), 1);
-  const tarif = saisieManuelle(journees.tarif) ? montantBorne(journees.tarif, dec, 0)
-    : (DEVISES_PRIX_DEFAUT.includes(codeDevise) ? TARIF_JOURNEE_DEFAUT : 0);
+  const tarif = saisieManuelle(journees.tarif) ? montantBorne(journees.tarif, dec, 0) : tarifJourneeHabituel(codeDevise, habituels);
   const libres = (Array.isArray(mo.libres) ? mo.libres : []).slice(0, BORNES_CHANTIER.lignesLibresMax)
     .filter((l) => l && typeof l === "object")
     .map((l) => ({ libelle: texteBorne(l.libelle, 120), montant: montantBorne(l.montant, dec, 0) }));
@@ -2640,20 +2792,24 @@ function calculerTotal(totalMateriel, totalMainOeuvre, reglages, decimales) {
   };
 }
 
-/* Chiffrage complet : étude + prix du catalogue (ou prix modifiés sur la ligne) + totaux. */
-function chiffrerChantier(chantier, catalogue, codeDevise) {
+/* Chiffrage complet : étude + prix du catalogue (ou prix modifiés sur la ligne) + totaux.
+   catalogue = { ref: { prix, designation?, unite?, fournisseur? } } (lireCatalogue().articles),
+   habituels = prix de main-d'œuvre habituels (lireCatalogue().mainOeuvre). */
+function chiffrerChantier(chantier, catalogue, codeDevise, habituels) {
   const c = chantier && typeof chantier === "object" ? chantier : {};
-  const etude = etudierChantier(c, codeDevise);
+  const etude = etudierChantier(c, codeDevise, habituels);
   const dec = decimalesDevise(codeDevise);
   const cat = catalogue && typeof catalogue === "object" ? catalogue : {};
   const reglages = c.materiel && typeof c.materiel === "object" ? c.materiel : {};
   const materiel = etude.materiel.map((ligne) => {
     const reglage = Object.prototype.hasOwnProperty.call(reglages, ligne.ref) && reglages[ligne.ref] && typeof reglages[ligne.ref] === "object" ? reglages[ligne.ref] : {};
-    const article = Object.prototype.hasOwnProperty.call(cat, ligne.ref) ? cat[ligne.ref] : null;
+    const article = Object.prototype.hasOwnProperty.call(cat, ligne.ref) && cat[ligne.ref] && typeof cat[ligne.ref] === "object" ? cat[ligne.ref] : null;
     const prixCatalogue = article ? montantBorne(article.prix, dec, 0) : 0;
+    const designation = article ? texteBorne(article.designation, BORNES_CATALOGUE.designationMax) || ligne.designation : ligne.designation;
+    const fournisseur = article ? texteBorne(article.fournisseur, BORNES_CATALOGUE.fournisseurMax) : "";
     const quantite = saisieManuelle(reglage.quantite) ? entierBorne(reglage.quantite, 0, BORNES_CHANTIER.quantiteMax, ligne.quantite) : ligne.quantite;
     const prix = saisieManuelle(reglage.prix) ? montantBorne(reglage.prix, dec, prixCatalogue) : prixCatalogue;
-    return { ...ligne, auto: ligne.quantite, quantite, prixCatalogue, prix, montant: arrondi(quantite * prix, dec), aCompleter: prix === 0 };
+    return { ...ligne, designation, fournisseur, auto: ligne.quantite, quantite, prixCatalogue, prix, montant: arrondi(quantite * prix, dec), aCompleter: prix === 0 };
   });
   const totalMateriel = arrondi(materiel.reduce((s, l) => s + l.montant, 0), dec);
   return {
@@ -2665,8 +2821,51 @@ function chiffrerChantier(chantier, catalogue, codeDevise) {
   };
 }
 
+/* Devis tiré d'un chiffrage : les prix sont FIGÉS dans le devis (deux devis ne s'influencent
+   jamais), la main-d'œuvre est entièrement explicite. Fonction pure : le total du devis obtenu
+   est exactement celui du chiffrage. */
+function devisDepuisChiffrage(chiffrage) {
+  const mo = chiffrage.etude.mainOeuvre;
+  const t = chiffrage.total;
+  return {
+    lignes: chiffrage.materiel.map((ligne, index) => ({
+      id: "l" + (index + 1), ref: ligne.ref, designation: ligne.designation, unite: ligne.unite, categorie: ligne.categorie,
+      quantite: ligne.quantite, prix: ligne.prix, fournisseur: ligne.fournisseur || "", supprimee: false
+    })),
+    mainOeuvre: {
+      points: Object.fromEntries(mo.lignes.map((ligne) => [ligne.id, { quantite: ligne.quantite, prix: ligne.prix }])),
+      auto: Object.fromEntries(mo.lignes.map((ligne) => [ligne.id, ligne.auto])),
+      forfait: mo.forfait,
+      journees: { ouvriers: mo.journees.ouvriers, jours: mo.journees.jours, tarif: mo.journees.tarif },
+      libres: mo.libres.map((ligne) => ({ libelle: ligne.libelle, montant: ligne.montant }))
+    },
+    totaux: { remiseType: t.typeRemise, remise: t.valeurRemise, tva: t.tvaActive, tauxTva: t.tauxTva, acompte: t.tauxAcompte }
+  };
+}
+
+/* Calcul d'un devis : lignes de matériel (les supprimées sont exclues du total),
+   main-d'œuvre 4 modes, remise, TVA, acompte. Tout est borné et arrondi à la devise. */
+function calculerDevis(devis, codeDevise) {
+  const d = devis && typeof devis === "object" ? devis : {};
+  const dec = decimalesDevise(codeDevise);
+  const lignes = (Array.isArray(d.lignes) ? d.lignes : []).slice(0, BORNES_DEVIS.lignesMax)
+    .filter((ligne) => ligne && typeof ligne === "object")
+    .map((ligne) => {
+      const quantite = entierBorne(ligne.quantite, 0, BORNES_DEVIS.quantiteMax, 0);
+      const prix = montantBorne(ligne.prix, dec, 0);
+      return { ...ligne, supprimee: ligne.supprimee === true, quantite, prix, montant: arrondi(quantite * prix, dec), aCompleter: prix === 0 };
+    });
+  const totalMateriel = arrondi(lignes.filter((ligne) => !ligne.supprimee).reduce((s, ligne) => s + ligne.montant, 0), dec);
+  const mo = d.mainOeuvre && typeof d.mainOeuvre === "object" ? d.mainOeuvre : {};
+  const auto = mo.auto && typeof mo.auto === "object" ? mo.auto : {};
+  const quantitesAuto = Object.fromEntries(Object.keys(MAIN_OEUVRE_POINTS)
+    .map((id) => [id, Object.prototype.hasOwnProperty.call(auto, id) ? entierBorne(auto[id], 0, BORNES_CHANTIER.quantiteMax, 0) : 0]));
+  const mainOeuvre = calculerMainOeuvre(mo, quantitesAuto, codeDevise, null);
+  return { lignes, totalMateriel, mainOeuvre, total: calculerTotal(totalMateriel, mainOeuvre.total, d.totaux, dec) };
+}
+
 /* Étude complète d'un chantier : circuits, protections, coffret, câbles, matériel, main-d'œuvre. */
-function etudierChantier(chantier, codeDevise) {
+function etudierChantier(chantier, codeDevise, habituels) {
   const c = chantier && typeof chantier === "object" ? chantier : {};
   const tri = c.alimentation === "tri";
   const pieces = normaliserPieces(c.pieces);
@@ -2797,14 +2996,14 @@ function etudierChantier(chantier, codeDevise) {
     cableTotal: circuits.reduce((s, ci) => s + ci.longueur, 0),
     cableAlimentation: alimentation,
     materiel,
-    mainOeuvre: calculerMainOeuvre(c.mainOeuvre, quantitesAuto, codeDevise)
+    mainOeuvre: calculerMainOeuvre(c.mainOeuvre, quantitesAuto, codeDevise, habituels)
   };
 }
 /* ==== FIN DU MOTEUR ==== */
 
 /* ---------- Assistant Nouveau chantier (5 étapes, brouillon automatique) ---------- */
 
-const assistant = { chantier: null, minuterie: 0, toast: 0 };
+const assistant = { chantier: null, minuterie: 0, toast: 0, habituels: null };
 
 function identifiantCourt() {
   return "p" + [...crypto.getRandomValues(new Uint8Array(5))].map((o) => o.toString(16).padStart(2, "0")).join("");
@@ -3017,6 +3216,8 @@ function planifierBrouillon() {
 function surVisibilite() {
   if (document.visibilityState === "hidden" && assistant.minuterie) enregistrerBrouillon();
   if (document.visibilityState === "hidden" && resultat.minuterie) enregistrerResultat();
+  if (document.visibilityState === "hidden" && fiche.minuterie) enregistrerDevis();
+  if (document.visibilityState === "hidden" && mesPrix.minuterie) enregistrerMesPrix();
 }
 
 /* ----- Construction des éléments fixes (une fois au démarrage) ----- */
@@ -3223,6 +3424,8 @@ async function ouvrirAssistant() {
       : "";
   }
   $("devise-forfait").textContent = "(" + (DEVISES[etat.compte.devise] || DEVISES.XOF).libelle + ")";
+  assistant.habituels = (await lireCatalogue()).mainOeuvre;
+  $("mo-enregistrer-habituels").checked = false;
   remplirAssistant();
   afficherEtape(assistant.chantier.etape, false);
   remplirClientsConnus();
@@ -3604,14 +3807,14 @@ function surSaisieAppareil(evenement) {
 
 function lireMainOeuvre() {
   const mo = assistant.chantier.mainOeuvre;
-  const etude = etudierChantier(assistant.chantier, etat.compte.devise);
+  const etude = etudierChantier(assistant.chantier, etat.compte.devise, assistant.habituels);
   Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => {
     const ligne = etude.mainOeuvre.lignes.find((l) => l.id === id);
     const quantite = quantiteFacultative($("mo-qte-" + id).value.trim(), BORNES_CHANTIER.quantiteMax);
     const prix = montantFacultatif($("mo-prix-" + id).value.trim());
     const reglage = {
       quantite: quantite === null || quantite === ligne.auto ? null : quantite,
-      prix: prix === null || prix === prixDefautMainOeuvre(id, etat.compte.devise) ? null : prix
+      prix: prix === null || prix === prixMainOeuvreHabituel(id, etat.compte.devise, assistant.habituels) ? null : prix
     };
     if (reglage.quantite === null && reglage.prix === null) delete mo.points[id];
     else mo.points[id] = reglage;
@@ -3620,7 +3823,7 @@ function lireMainOeuvre() {
   mo.journees.ouvriers = entierBorne($("mo-ouvriers").value.trim(), 0, BORNES_CHANTIER.ouvriersMax, 0);
   mo.journees.jours = arrondi(borner($("mo-jours").value.trim(), 0, BORNES_CHANTIER.joursMax, 0), 1);
   const tarif = montantFacultatif($("mo-tarif").value.trim());
-  mo.journees.tarif = tarif === null || tarif === (DEVISES_PRIX_DEFAUT.includes(etat.compte.devise) ? TARIF_JOURNEE_DEFAUT : 0) ? null : tarif;
+  mo.journees.tarif = tarif === null || tarif === tarifJourneeHabituel(etat.compte.devise, assistant.habituels) ? null : tarif;
   mo.libres = [...$("liste-lignes-libres").children].map((li) => ({
     libelle: texteBorne(li.querySelector("[data-libre=\"libelle\"]").value, 120),
     montant: montantSaisi(li.querySelector("[data-libre=\"montant\"]").value.trim())
@@ -3692,7 +3895,7 @@ function pluriel(nombre, singulier, plurielTexte) {
 function afficherEtude() {
   const c = assistant.chantier;
   const devise = etat.compte.devise;
-  const etude = etudierChantier(c, devise);
+  const etude = etudierChantier(c, devise, assistant.habituels);
   const mo = etude.mainOeuvre;
   mo.lignes.forEach((ligne) => {
     const qte = $("mo-qte-" + ligne.id);
@@ -3773,6 +3976,33 @@ function surSaisieMainOeuvre() {
   afficherEtude();
 }
 
+/* Boutons rapides de l'étape 5 : « − 10 % », « Prix habituels », « + 10 % ». */
+function surAjusterAssistant(evenement) {
+  const bouton = evenement.target.closest("[data-ajuster-assistant]");
+  const c = assistant.chantier;
+  if (!bouton || !c || !etat.compte) return;
+  lireMainOeuvre();
+  const mo = c.mainOeuvre;
+  const devise = etat.compte.devise;
+  if (bouton.dataset.ajusterAssistant === "habituels") {
+    Object.keys(mo.points).forEach((id) => {
+      mo.points[id].prix = null;
+      if (mo.points[id].quantite === null) delete mo.points[id];
+    });
+    mo.journees.tarif = null;
+  } else {
+    const facteur = bouton.dataset.ajusterAssistant === "plus" ? 1 + AJUSTEMENT_MAIN_OEUVRE : 1 - AJUSTEMENT_MAIN_OEUVRE;
+    const ajuste = ajusterMainOeuvre(mo, etudierChantier(c, devise, assistant.habituels).mainOeuvre, facteur, devise);
+    mo.points = ajuste.points;
+    mo.forfait = ajuste.forfait;
+    mo.journees.tarif = ajuste.journees.tarif;
+    mo.libres = ajuste.libres;
+  }
+  afficherLignesLibres();
+  afficherEtude();
+  planifierBrouillon();
+}
+
 /* Toute saisie dans l'assistant programme l'enregistrement du brouillon (600 ms). */
 function surSaisieAssistant(evenement) {
   const cible = evenement.target;
@@ -3808,6 +4038,10 @@ async function enregistrerChantier() {
     await enregistrerBrouillon();
     return;
   }
+  if ($("mo-enregistrer-habituels").checked) {
+    await enregistrerHabituels(etudierChantier(propre, etat.compte.devise, assistant.habituels).mainOeuvre);
+    $("mo-enregistrer-habituels").checked = false;
+  }
   await ecrireBrouillon(null);
   assistant.chantier = null;
   $("etat-brouillon").textContent = "";
@@ -3822,7 +4056,7 @@ async function enregistrerChantier() {
    matériel et main-d'œuvre modifiables, total recalculé à chaque saisie.
    ========================================================================== */
 
-const resultat = { id: null, chantier: null, chiffrage: null, catalogue: {}, onglet: "circuits", minuterie: 0, lignes: new Map() };
+const resultat = { id: null, chantier: null, chiffrage: null, catalogue: { articles: {}, liste: [], mainOeuvre: null }, onglet: "circuits", minuterie: 0, lignes: new Map() };
 
 const ICONES_ONGLETS = Object.freeze({
   circuits: "i-eclair", tableau: "i-plan", materiel: "i-chantier", "main-oeuvre": "i-profil", conformite: "i-norme", total: "i-prix"
@@ -3835,26 +4069,6 @@ const SCHEMA = Object.freeze({ module: 40, marge: 10, titre: 30, hauteur: 112, a
 
 /* Le SEUL accès aux prix du matériel : catalogue de départ (FCFA uniquement), puis
    les prix enregistrés par l'électricien pour son compte, validés un par un. */
-async function lireCatalogue() {
-  const compte = etat.compte;
-  const devise = compte ? compte.devise : "XOF";
-  const decimales = decimalesDevise(devise);
-  const catalogue = {};
-  if (DEVISES_PRIX_DEFAUT.includes(devise)) {
-    Object.entries(CATALOGUE_DEFAUT).forEach(([ref, prix]) => { catalogue[ref] = { prix }; });
-  }
-  const brut = await lireJson(CLES_STOCKAGE.catalogue);
-  const propres = compte && brut && typeof brut === "object" && !Array.isArray(brut)
-    && Object.prototype.hasOwnProperty.call(brut, compte.id) && brut[compte.id] && typeof brut[compte.id] === "object"
-    ? brut[compte.id] : {};
-  Object.keys(propres).slice(0, 500).forEach((ref) => {
-    if (!/^[a-z0-9.-]{1,40}$/.test(ref)) return;
-    const prix = montantFacultatif(propres[ref]);
-    if (prix !== null) catalogue[ref] = { prix: arrondi(prix, decimales) };
-  });
-  return catalogue;
-}
-
 function deviseCompte() {
   return etat.compte ? etat.compte.devise : "XOF";
 }
@@ -3953,7 +4167,7 @@ function ouvrirEtude(id) {
 
 function remplirResultat() {
   const c = resultat.chantier;
-  resultat.chiffrage = chiffrerChantier(c, resultat.catalogue, deviseCompte());
+  resultat.chiffrage = chiffrerChantier(c, resultat.catalogue.articles, deviseCompte(), resultat.catalogue.mainOeuvre);
   const { etude } = resultat.chiffrage;
   ecrireInsecable($("titre-resultat"), c.nom || "Chantier sans nom");
   $("resultat-infos").replaceChildren(...[
@@ -3967,6 +4181,7 @@ function remplirResultat() {
   afficherConformite(resultat.chiffrage.conformite);
   remplirReglagesTotaux();
   actualiserResultat();
+  majBoutonsDevisResultat();
 }
 
 /* ----- 1. Circuits ----- */
@@ -4288,7 +4503,7 @@ function ecrireMontantFort(id, valeur) {
 /* Recalcule tout et réécrit uniquement les valeurs calculées : les champs en cours de saisie ne bougent pas. */
 function actualiserResultat() {
   const c = resultat.chantier;
-  resultat.chiffrage = chiffrerChantier(c, resultat.catalogue, deviseCompte());
+  resultat.chiffrage = chiffrerChantier(c, resultat.catalogue.articles, deviseCompte(), resultat.catalogue.mainOeuvre);
   const { materiel, totalMateriel, total, etude } = resultat.chiffrage;
   materiel.forEach((ligne) => {
     const element = resultat.lignes.get("mat:" + ligne.ref);
@@ -4456,7 +4671,7 @@ async function surModifierChantier() {
 /* ----- Accueil : accès direct aux trois dernières études ----- */
 
 function creerLigneEtude(chantier, catalogue, codeDevise) {
-  const chiffrage = chiffrerChantier(chantier, catalogue, codeDevise);
+  const chiffrage = chiffrerChantier(chantier, catalogue.articles, codeDevise, catalogue.mainOeuvre);
   const li = document.createElement("li");
   const bouton = document.createElement("button");
   bouton.type = "button";
@@ -4485,7 +4700,7 @@ function creerLigneEtude(chantier, catalogue, codeDevise) {
 async function afficherEtudesAccueil(compte) {
   const etudes = (await lireChantiers(compte.id)).filter((c) => c.statut === "etudie")
     .sort((a, b) => Date.parse(b.modifieLe) - Date.parse(a.modifieLe)).slice(0, 3);
-  const catalogue = etudes.length ? await lireCatalogue() : {};
+  const catalogue = etudes.length ? await lireCatalogue() : null;
   $("accueil-etudes").replaceChildren(...etudes.map((c) => creerLigneEtude(c, catalogue, compte.devise)));
   $("bloc-etudes").hidden = etudes.length === 0;
 }
@@ -4493,6 +4708,1129 @@ async function afficherEtudesAccueil(compte) {
 function surClicEtude(evenement) {
   const bouton = evenement.target.closest("[data-chantier]");
   if (bouton) ouvrirEtude(bouton.dataset.chantier);
+}
+
+/* ==========================================================================
+   Mes prix (étape 7) : le catalogue de l'électricien, SEULE source des prix.
+   Stockage : bp_v1_catalogue = { [compteId]: { articles: [...], mainOeuvre: { points, journee } } }.
+   Aucun catalogue enregistré pour le compte = catalogue de départ ; « Réinitialiser » y revient.
+   ========================================================================== */
+
+function catalogueDepart(codeDevise) {
+  const fcfa = DEVISES_PRIX_DEFAUT.includes(codeDevise);
+  return {
+    articles: Object.entries(CATALOGUE_DEFAUT).map(([ref, a]) => ({
+      ref, designation: a.designation, unite: a.unite, categorie: a.categorie, fournisseurs: [{ nom: "", prix: fcfa ? a.prix : 0 }], choisi: null
+    })),
+    mainOeuvre: { points: {}, journee: null }
+  };
+}
+
+function articleValide(source, decimales) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+  const ref = typeof source.ref === "string" && (Object.prototype.hasOwnProperty.call(CATALOGUE_DEFAUT, source.ref) || /^perso-[a-f0-9]{8}$/.test(source.ref)) ? source.ref : null;
+  if (!ref) return null;
+  const defaut = Object.prototype.hasOwnProperty.call(CATALOGUE_DEFAUT, ref) ? CATALOGUE_DEFAUT[ref] : null;
+  const designation = texteBorne(source.designation, BORNES_CATALOGUE.designationMax) || (defaut ? defaut.designation : "");
+  if (!designation) return null;
+  const fournisseurs = (Array.isArray(source.fournisseurs) ? source.fournisseurs : []).slice(0, 50)
+    .filter((f) => f && typeof f === "object" && !Array.isArray(f)).slice(0, BORNES_CATALOGUE.fournisseursMax)
+    .map((f) => ({ nom: texteBorne(f.nom, BORNES_CATALOGUE.fournisseurMax), prix: montantBorne(f.prix, decimales, 0) }));
+  if (!fournisseurs.length) fournisseurs.push({ nom: "", prix: 0 });
+  return {
+    ref,
+    designation,
+    unite: typeof source.unite === "string" && Object.prototype.hasOwnProperty.call(UNITES, source.unite) ? source.unite : (defaut ? defaut.unite : "u"),
+    categorie: typeof source.categorie === "string" && Object.prototype.hasOwnProperty.call(CATEGORIES_MATERIEL, source.categorie) ? source.categorie : (defaut ? defaut.categorie : "autres"),
+    fournisseurs,
+    choisi: Number.isInteger(source.choisi) && source.choisi >= 0 && source.choisi < fournisseurs.length ? source.choisi : null
+  };
+}
+
+/* Validation champ par champ ; un ancien format (sans liste d'articles) est ignoré. */
+function catalogueValide(source, codeDevise) {
+  if (!source || typeof source !== "object" || Array.isArray(source) || !Array.isArray(source.articles)) return null;
+  const dec = decimalesDevise(codeDevise);
+  const vus = new Set();
+  const articles = [];
+  source.articles.slice(0, BORNES_CATALOGUE.articlesMax).forEach((brut) => {
+    const article = articleValide(brut, dec);
+    if (article && !vus.has(article.ref)) {
+      vus.add(article.ref);
+      articles.push(article);
+    }
+  });
+  const mo = source.mainOeuvre && typeof source.mainOeuvre === "object" && !Array.isArray(source.mainOeuvre) ? source.mainOeuvre : {};
+  const pointsSource = mo.points && typeof mo.points === "object" && !Array.isArray(mo.points) ? mo.points : {};
+  const points = {};
+  /* Prix habituel : un nombre positif ou nul, sinon ignoré (le prix de départ s'applique). */
+  const prixHabituel = (valeur) => (typeof valeur === "number" && Number.isFinite(valeur) && valeur >= 0 ? montantBorne(valeur, dec, 0) : null);
+  Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => {
+    if (!Object.prototype.hasOwnProperty.call(pointsSource, id)) return;
+    const prix = prixHabituel(pointsSource[id]);
+    if (prix !== null) points[id] = prix;
+  });
+  return { articles, mainOeuvre: { points, journee: prixHabituel(mo.journee) } };
+}
+
+/* Le moins cher des fournisseurs qui ont un prix (−1 si aucun prix). */
+function indexMoinsCher(article) {
+  let meilleur = -1;
+  article.fournisseurs.forEach((f, index) => {
+    if (f.prix > 0 && (meilleur < 0 || f.prix < article.fournisseurs[meilleur].prix)) meilleur = index;
+  });
+  return meilleur;
+}
+
+/* Fournisseur retenu : celui choisi par l'électricien, sinon le moins cher automatiquement. */
+function indexRetenu(article) {
+  if (article.choisi !== null && article.choisi < article.fournisseurs.length) return article.choisi;
+  return Math.max(0, indexMoinsCher(article));
+}
+
+async function lireCatalogueCompte() {
+  const compte = etat.compte;
+  const devise = deviseCompte();
+  const brut = await lireJson(CLES_STOCKAGE.catalogue);
+  const propre = compte && brut && typeof brut === "object" && !Array.isArray(brut) && Object.prototype.hasOwnProperty.call(brut, compte.id)
+    ? catalogueValide(brut[compte.id], devise) : null;
+  return { catalogue: propre || catalogueDepart(devise), personnalise: Boolean(propre) };
+}
+
+/* Catalogue prêt à l'emploi : { articles: { ref: { …, prix, fournisseur } }, liste, mainOeuvre }. */
+function resoudreCatalogue(catalogue) {
+  const articles = {};
+  catalogue.articles.forEach((article) => {
+    const retenu = article.fournisseurs[indexRetenu(article)];
+    articles[article.ref] = { ...article, prix: retenu.prix, fournisseur: retenu.nom };
+  });
+  return { articles, liste: catalogue.articles, mainOeuvre: catalogue.mainOeuvre };
+}
+
+async function lireCatalogue() {
+  return resoudreCatalogue((await lireCatalogueCompte()).catalogue);
+}
+
+/* null = revenir au catalogue de départ (« Réinitialiser »). */
+async function ecrireCatalogue(catalogue) {
+  if (!etat.compte) return false;
+  const brut = await lireJson(CLES_STOCKAGE.catalogue);
+  const tous = brut && typeof brut === "object" && !Array.isArray(brut) ? brut : {};
+  if (catalogue === null) {
+    delete tous[etat.compte.id];
+  } else {
+    const propre = catalogueValide(catalogue, deviseCompte());
+    if (!propre) return false;
+    tous[etat.compte.id] = propre;
+  }
+  return ecrireValeur(CLES_STOCKAGE.catalogue, JSON.stringify(tous));
+}
+
+function referencePerso() {
+  return "perso-" + [...crypto.getRandomValues(new Uint8Array(4))].map((o) => o.toString(16).padStart(2, "0")).join("");
+}
+
+function libelleUnite(unite) {
+  return unite === "m" ? " le mètre" : (unite === "lot" ? " le lot" : (unite === "forfait" ? " le forfait" : " l'unité"));
+}
+
+/* Enregistre le prix d'une ligne de devis dans Mes prix (jamais sans l'accord de l'électricien).
+   Article connu : le prix du fournisseur retenu change. Ligne libre : un nouvel article est créé. */
+async function enregistrerPrixCatalogue(ligne) {
+  const { catalogue } = await lireCatalogueCompte();
+  let article = ligne.ref ? catalogue.articles.find((a) => a.ref === ligne.ref) : null;
+  if (!article && ligne.ref && Object.prototype.hasOwnProperty.call(CATALOGUE_DEFAUT, ligne.ref)) {
+    const d = CATALOGUE_DEFAUT[ligne.ref];
+    article = { ref: ligne.ref, designation: d.designation, unite: d.unite, categorie: d.categorie, fournisseurs: [{ nom: ligne.fournisseur, prix: 0 }], choisi: null };
+    catalogue.articles.push(article);
+  }
+  if (!article) {
+    if (catalogue.articles.length >= BORNES_CATALOGUE.articlesMax) return null;
+    article = { ref: referencePerso(), designation: ligne.designation, unite: ligne.unite, categorie: ligne.categorie, fournisseurs: [{ nom: ligne.fournisseur, prix: 0 }], choisi: null };
+    catalogue.articles.push(article);
+  }
+  const index = indexRetenu(article);
+  article.fournisseurs[index].prix = ligne.prix;
+  /* Le fournisseur mis à jour reste celui du devis, même s'il n'est plus le moins cher. */
+  if (indexMoinsCher(article) !== index) article.choisi = index;
+  const ok = await ecrireCatalogue(catalogue);
+  return ok ? { ref: article.ref, fournisseur: article.fournisseurs[index].nom } : null;
+}
+
+/* ----- Écran « Mes prix » ----- */
+
+const mesPrix = { catalogue: null, minuterie: 0 };
+
+function cleArticle(ref) {
+  return ref.replace(/\./g, "_");
+}
+
+function construireMesPrix() {
+  $("article-categorie").replaceChildren(...Object.entries(CATEGORIES_MATERIEL).map(([id, libelle]) => new Option(libelle, id)));
+  $("article-categorie").value = "autres";
+  $("article-unite").replaceChildren(...Object.entries(UNITES).map(([id, libelle]) => new Option(libelle, id)));
+  $("prix-mo-liste").replaceChildren(...Object.entries(MAIN_OEUVRE_POINTS).map(([id, p]) => [id, p.libelle])
+    .map(([id, libelle]) => {
+      const li = document.createElement("li");
+      li.className = "ligne-prix-mo";
+      const entree = creerEntreeTexte("prix-mo-" + id, "decimal", 12, { prixMo: id });
+      li.appendChild(creerChamp(entree.id, libelle, entree));
+      return li;
+    }));
+}
+
+async function ouvrirMesPrix() {
+  if (!etat.compte) return;
+  if (mesPrix.minuterie) await enregistrerMesPrix();
+  mesPrix.catalogue = (await lireCatalogueCompte()).catalogue;
+  $("article-devise").textContent = "(" + (DEVISES[deviseCompte()] || DEVISES.XOF).libelle + ")";
+  $("etat-prix").textContent = "";
+  afficherArticles();
+  remplirMainOeuvreHabituelle();
+}
+
+function texteResumeArticle(article) {
+  const retenu = article.fournisseurs[indexRetenu(article)];
+  return { prix: retenu.prix, fournisseur: retenu.nom };
+}
+
+function majResumeArticle(details, article) {
+  const { prix, fournisseur } = texteResumeArticle(article);
+  const resume = details.querySelector(".article-resume-prix");
+  const alerte = details.querySelector(".prix-a-completer");
+  const source = details.querySelector(".article-fournisseur");
+  resume.textContent = prix ? montantTexte(prix) + libelleUnite(article.unite) : "";
+  resume.hidden = !prix;
+  alerte.hidden = Boolean(prix);
+  ecrireInsecable(source, fournisseur ? "Fournisseur : " + fournisseur : (article.fournisseurs.length > 1 ? "Fournisseur sans nom" : ""));
+  ecrireInsecable(details.querySelector(".article-nom"), article.designation);
+  const moinsCher = indexMoinsCher(article);
+  details.querySelectorAll("[data-badge-fournisseur]").forEach((badge) => {
+    badge.hidden = article.fournisseurs.length < 2 || Number(badge.dataset.badgeFournisseur) !== moinsCher;
+  });
+}
+
+function creerLigneFournisseur(article, fournisseur, index) {
+  const cle = cleArticle(article.ref);
+  const li = document.createElement("li");
+  li.className = "ligne-fournisseur";
+  const nom = creerEntreeTexte("art-" + cle + "-f" + index + "-nom", "text", BORNES_CATALOGUE.fournisseurMax, { article: article.ref, fournisseurChamp: "nom", index: String(index) });
+  nom.value = fournisseur.nom;
+  nom.placeholder = "Ex. : Quincaillerie du marché";
+  const prix = creerEntreeTexte("art-" + cle + "-f" + index + "-prix", "decimal", 12, { article: article.ref, fournisseurChamp: "prix", index: String(index) });
+  prix.value = fournisseur.prix ? formaterDecimal(fournisseur.prix) : "";
+  prix.placeholder = "0";
+  const choix = document.createElement("label");
+  choix.className = "case case-fournisseur";
+  const radio = document.createElement("input");
+  radio.type = "radio";
+  radio.name = "choisi-" + cle;
+  radio.value = String(index);
+  radio.dataset.article = article.ref;
+  radio.dataset.choisirFournisseur = String(index);
+  radio.checked = article.choisi === index;
+  const texteChoix = document.createElement("span");
+  texteChoix.textContent = "Toujours celui-ci";
+  choix.append(radio, texteChoix);
+  const badge = document.createElement("span");
+  badge.className = "badge-moins-cher";
+  badge.dataset.badgeFournisseur = String(index);
+  badge.textContent = "Le moins cher";
+  const supprimer = document.createElement("button");
+  supprimer.type = "button";
+  supprimer.className = "bouton-icone bouton-outil outil-danger";
+  supprimer.dataset.article = article.ref;
+  supprimer.dataset.supprimerFournisseur = String(index);
+  supprimer.setAttribute("aria-label", "Supprimer le fournisseur " + (index + 1));
+  supprimer.appendChild(creerIcone("i-poubelle"));
+  supprimer.hidden = article.fournisseurs.length < 2;
+  const pied = document.createElement("div");
+  pied.className = "fournisseur-pied";
+  pied.append(choix, badge);
+  li.append(creerChamp(nom.id, "Fournisseur " + (index + 1), nom), creerChamp(prix.id, "Prix" + libelleUnite(article.unite).replace(" l'", " par ").replace(" le ", " par "), prix), supprimer, pied);
+  return li;
+}
+
+function remplirArticle(details, article) {
+  const cle = cleArticle(article.ref);
+  const corps = details.querySelector(".article-corps");
+  const designation = creerEntreeTexte("art-" + cle + "-designation", "text", BORNES_CATALOGUE.designationMax, { article: article.ref, articleChamp: "designation" });
+  designation.value = article.designation;
+  const unite = document.createElement("select");
+  unite.id = "art-" + cle + "-unite";
+  unite.dataset.article = article.ref;
+  unite.dataset.articleChamp = "unite";
+  unite.replaceChildren(...Object.entries(UNITES).map(([id, libelle]) => new Option(libelle, id)));
+  unite.value = article.unite;
+  const duo = document.createElement("div");
+  duo.className = "duo";
+  duo.append(creerChamp(designation.id, "Désignation", designation), creerChamp(unite.id, "Unité", unite));
+  const liste = document.createElement("ul");
+  liste.className = "liste-fournisseurs";
+  liste.setAttribute("aria-label", "Fournisseurs");
+  liste.replaceChildren(...article.fournisseurs.map((f, index) => creerLigneFournisseur(article, f, index)));
+  const auto = document.createElement("label");
+  auto.className = "case";
+  const radioAuto = document.createElement("input");
+  radioAuto.type = "radio";
+  radioAuto.name = "choisi-" + cle;
+  radioAuto.value = "auto";
+  radioAuto.dataset.article = article.ref;
+  radioAuto.dataset.choisirFournisseur = "auto";
+  radioAuto.checked = article.choisi === null;
+  const texteAuto = document.createElement("span");
+  texteAuto.textContent = "Prendre automatiquement le moins cher";
+  auto.append(radioAuto, texteAuto);
+  auto.hidden = article.fournisseurs.length < 2;
+  const actions = document.createElement("div");
+  actions.className = "article-actions";
+  const ajouter = document.createElement("button");
+  ajouter.type = "button";
+  ajouter.className = "lien-texte";
+  ajouter.dataset.article = article.ref;
+  ajouter.dataset.ajouterFournisseur = "1";
+  ajouter.append(creerIcone("i-plus"), document.createTextNode("Ajouter un fournisseur"));
+  ajouter.hidden = article.fournisseurs.length >= BORNES_CATALOGUE.fournisseursMax;
+  const supprimer = document.createElement("button");
+  supprimer.type = "button";
+  supprimer.className = "lien-texte lien-danger";
+  supprimer.dataset.article = article.ref;
+  supprimer.dataset.supprimerArticle = "1";
+  supprimer.append(creerIcone("i-poubelle"), document.createTextNode("Supprimer l'article"));
+  actions.append(ajouter, supprimer);
+  corps.replaceChildren(duo, liste, auto, actions);
+  majResumeArticle(details, article);
+}
+
+function creerArticle(article) {
+  const li = document.createElement("li");
+  li.dataset.ref = article.ref;
+  const details = document.createElement("details");
+  details.className = "article-prix";
+  details.id = "article-" + cleArticle(article.ref);
+  const resume = document.createElement("summary");
+  const nom = document.createElement("strong");
+  nom.className = "article-nom";
+  const droite = document.createElement("span");
+  droite.className = "article-droite";
+  const prix = document.createElement("span");
+  prix.className = "article-resume-prix montant";
+  const alerte = document.createElement("span");
+  alerte.className = "prix-a-completer";
+  alerte.textContent = "Prix à compléter";
+  droite.append(prix, alerte);
+  const source = document.createElement("span");
+  source.className = "article-fournisseur";
+  resume.append(nom, droite, source);
+  const corps = document.createElement("div");
+  corps.className = "article-corps";
+  details.append(resume, corps);
+  li.appendChild(details);
+  remplirArticle(details, article);
+  return li;
+}
+
+function afficherArticles() {
+  const articles = mesPrix.catalogue.articles;
+  $("prix-groupes").replaceChildren(...Object.entries(CATEGORIES_MATERIEL).map(([categorie, titre]) => {
+    const membres = articles.filter((a) => a.categorie === categorie);
+    if (!membres.length) return null;
+    const bloc = document.createElement("section");
+    bloc.className = "carte groupe-prix";
+    bloc.dataset.categorie = categorie;
+    const h2 = document.createElement("h2");
+    h2.className = "bloc-titre";
+    h2.textContent = titre;
+    const ul = document.createElement("ul");
+    ul.className = "liste-articles";
+    ul.replaceChildren(...membres.map(creerArticle));
+    bloc.append(h2, ul);
+    return bloc;
+  }).filter(Boolean));
+  filtrerArticles();
+}
+
+function filtrerArticles() {
+  const recherche = normaliser($("prix-recherche").value);
+  let visibles = 0;
+  document.querySelectorAll("#prix-groupes .groupe-prix").forEach((bloc) => {
+    let dansBloc = 0;
+    bloc.querySelectorAll(".liste-articles > li").forEach((li) => {
+      const article = mesPrix.catalogue.articles.find((a) => a.ref === li.dataset.ref);
+      const texte = article ? normaliser([article.designation, CATEGORIES_MATERIEL[article.categorie], ...article.fournisseurs.map((f) => f.nom)].join(" ")) : "";
+      li.hidden = Boolean(recherche) && !texte.includes(recherche);
+      if (!li.hidden) dansBloc += 1;
+    });
+    bloc.hidden = dansBloc === 0;
+    visibles += dansBloc;
+  });
+  const total = mesPrix.catalogue.articles.length;
+  const aCompleter = mesPrix.catalogue.articles.filter((a) => !texteResumeArticle(a).prix).length;
+  $("prix-compte").textContent = (recherche ? visibles + " sur " : "") + pluriel(total, "article", "articles")
+    + (aCompleter ? " · " + aCompleter + " à compléter" : "");
+  $("prix-vide").hidden = visibles > 0 || total === 0;
+}
+
+function remplirMainOeuvreHabituelle() {
+  const devise = deviseCompte();
+  const mo = mesPrix.catalogue.mainOeuvre;
+  Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => {
+    const entree = $("prix-mo-" + id);
+    if (document.activeElement !== entree) entree.value = formaterDecimal(prixMainOeuvreHabituel(id, devise, mo));
+  });
+  const journee = $("prix-mo-journee");
+  if (document.activeElement !== journee) journee.value = formaterDecimal(tarifJourneeHabituel(devise, mo));
+}
+
+function articleDe(element) {
+  const ref = element.dataset.article;
+  return ref && mesPrix.catalogue ? mesPrix.catalogue.articles.find((a) => a.ref === ref) || null : null;
+}
+
+function surSaisieMesPrix(evenement) {
+  const cible = evenement.target;
+  if (!mesPrix.catalogue) return;
+  if (cible.id === "prix-recherche") {
+    filtrerArticles();
+    return;
+  }
+  const d = cible.dataset;
+  if (d.prixMo) {
+    const prix = montantFacultatif(cible.value.trim());
+    const mo = mesPrix.catalogue.mainOeuvre;
+    if (d.prixMo === "journee") mo.journee = prix;
+    else if (prix === null) delete mo.points[d.prixMo];
+    else mo.points[d.prixMo] = prix;
+    planifierMesPrix();
+    return;
+  }
+  const article = articleDe(cible);
+  if (!article) return;
+  const details = cible.closest("details");
+  if (d.articleChamp === "designation") {
+    const texte = texteBorne(cible.value, BORNES_CATALOGUE.designationMax);
+    if (texte) article.designation = texte;
+  } else if (d.articleChamp === "unite") {
+    if (Object.prototype.hasOwnProperty.call(UNITES, cible.value)) article.unite = cible.value;
+  } else if (d.fournisseurChamp) {
+    const fournisseur = article.fournisseurs[Number(d.index)];
+    if (!fournisseur) return;
+    if (d.fournisseurChamp === "nom") fournisseur.nom = texteBorne(cible.value, BORNES_CATALOGUE.fournisseurMax);
+    else fournisseur.prix = montantSaisi(cible.value.trim());
+  } else if (d.choisirFournisseur) {
+    if (!cible.checked) return;
+    article.choisi = d.choisirFournisseur === "auto" ? null : Number(d.choisirFournisseur);
+  } else return;
+  majResumeArticle(details, article);
+  filtrerArticles();
+  planifierMesPrix();
+}
+
+/* En quittant un champ, il affiche la valeur réellement retenue. */
+function surChangementMesPrix(evenement) {
+  const cible = evenement.target;
+  const d = cible.dataset;
+  if (!mesPrix.catalogue || cible.type === "radio") return;
+  if (d.prixMo) {
+    remplirMainOeuvreHabituelle();
+    return;
+  }
+  const article = articleDe(cible);
+  if (!article) return;
+  if (d.articleChamp === "designation") cible.value = article.designation;
+  else if (d.fournisseurChamp === "prix") {
+    const fournisseur = article.fournisseurs[Number(d.index)];
+    if (fournisseur) cible.value = fournisseur.prix ? formaterDecimal(fournisseur.prix) : "";
+  } else if (d.articleChamp === "unite") {
+    remplirArticle(cible.closest("details"), article);
+    $("art-" + cleArticle(article.ref) + "-unite").focus();
+  }
+}
+
+async function surClicMesPrix(evenement) {
+  const bouton = evenement.target.closest("button[data-article]");
+  if (!bouton || !mesPrix.catalogue) return;
+  const article = articleDe(bouton);
+  if (!article) return;
+  const details = bouton.closest("details");
+  if (bouton.dataset.ajouterFournisseur) {
+    if (article.fournisseurs.length >= BORNES_CATALOGUE.fournisseursMax) return;
+    article.fournisseurs.push({ nom: "", prix: 0 });
+    remplirArticle(details, article);
+    $("art-" + cleArticle(article.ref) + "-f" + (article.fournisseurs.length - 1) + "-nom").focus();
+  } else if (bouton.dataset.supprimerFournisseur) {
+    const index = Number(bouton.dataset.supprimerFournisseur);
+    if (article.fournisseurs.length < 2 || !article.fournisseurs[index]) return;
+    article.fournisseurs.splice(index, 1);
+    if (article.choisi === index) article.choisi = null;
+    else if (article.choisi !== null && article.choisi > index) article.choisi -= 1;
+    remplirArticle(details, article);
+    details.querySelector("[data-ajouter-fournisseur]").focus({ preventScroll: true });
+  } else if (bouton.dataset.supprimerArticle) {
+    const ok = await demanderConfirmation("Supprimer l'article ?", "« " + article.designation + " » sera retiré de Mes prix. Les devis déjà faits ne changent pas ; dans un nouveau chantier, la ligne sera signalée « Prix à compléter ».", "Supprimer", "Annuler");
+    if (!ok) return;
+    mesPrix.catalogue.articles = mesPrix.catalogue.articles.filter((a) => a !== article);
+    afficherArticles();
+    await enregistrerMesPrix();
+    afficherToast("Article supprimé de Mes prix.");
+    return;
+  } else return;
+  filtrerArticles();
+  planifierMesPrix();
+}
+
+async function surAjouterArticle(evenement) {
+  evenement.preventDefault();
+  if (!mesPrix.catalogue) return;
+  const champ = $("article-designation");
+  effacerErreur(champ);
+  effacerErreur($("article-prix"));
+  message("msg-nouvel-article", "");
+  const designation = texteBorne(champ.value, BORNES_CATALOGUE.designationMax);
+  if (!designation) {
+    afficherErreur("article-designation", "Indiquez la désignation de l'article.");
+    champ.focus();
+    return;
+  }
+  const prixSaisi = $("article-prix").value.trim();
+  const prix = montantFacultatif(prixSaisi);
+  if (prixSaisi && prix === null) {
+    afficherErreur("article-prix", "Prix invalide : un nombre positif, par exemple 2500.");
+    $("article-prix").focus();
+    return;
+  }
+  if (mesPrix.catalogue.articles.length >= BORNES_CATALOGUE.articlesMax) {
+    message("msg-nouvel-article", BORNES_CATALOGUE.articlesMax + " articles au maximum.", false);
+    return;
+  }
+  const article = {
+    ref: referencePerso(),
+    designation,
+    unite: Object.prototype.hasOwnProperty.call(UNITES, $("article-unite").value) ? $("article-unite").value : "u",
+    categorie: Object.prototype.hasOwnProperty.call(CATEGORIES_MATERIEL, $("article-categorie").value) ? $("article-categorie").value : "autres",
+    fournisseurs: [{ nom: texteBorne($("article-fournisseur").value, BORNES_CATALOGUE.fournisseurMax), prix: prix === null ? 0 : arrondi(prix, decimalesDevise(deviseCompte())) }],
+    choisi: null
+  };
+  mesPrix.catalogue.articles.push(article);
+  $("prix-recherche").value = "";
+  afficherArticles();
+  const ok = await enregistrerMesPrix();
+  if (!ok) return;
+  ["article-designation", "article-fournisseur", "article-prix"].forEach((id) => { $(id).value = ""; });
+  message("msg-nouvel-article", "« " + designation + " » ajouté dans « " + CATEGORIES_MATERIEL[article.categorie] + " ».", true);
+}
+
+async function surReinitialiserPrix() {
+  if (!etat.compte) return;
+  const ok = await demanderConfirmation("Revenir aux prix de départ ?", "Tous vos articles, fournisseurs et prix de main-d'œuvre seront remplacés par les prix de départ. Les devis déjà faits ne changent pas.", "Réinitialiser", "Annuler");
+  if (!ok) return;
+  clearTimeout(mesPrix.minuterie);
+  mesPrix.minuterie = 0;
+  const reussi = await ecrireCatalogue(null);
+  await ouvrirMesPrix();
+  $("etat-prix").textContent = reussi ? "Prix de départ rétablis." : "Réinitialisation impossible : mémoire de l'appareil indisponible.";
+}
+
+function planifierMesPrix() {
+  clearTimeout(mesPrix.minuterie);
+  mesPrix.minuterie = setTimeout(enregistrerMesPrix, DELAI_BROUILLON);
+}
+
+async function enregistrerMesPrix() {
+  clearTimeout(mesPrix.minuterie);
+  mesPrix.minuterie = 0;
+  if (!mesPrix.catalogue || !etat.compte) return false;
+  const reussi = await ecrireCatalogue(mesPrix.catalogue);
+  $("etat-prix").textContent = reussi
+    ? "Prix enregistrés à " + heureCourte(new Date())
+    : "Prix non enregistrés : mémoire de l'appareil indisponible.";
+  return reussi;
+}
+
+/* ==========================================================================
+   Fiche devis (étape 7) : matériel modifiable (lignes supprimées puis restaurées,
+   lignes libres), main-d'œuvre 4 modes, remise, TVA, acompte, conditions et note.
+   Tout est recalculé à chaque frappe ; enregistrement 600 ms après la dernière saisie.
+   ========================================================================== */
+
+const fiche = { id: null, devis: null, calcul: null, catalogue: null, minuterie: 0, lignes: new Map(), lignesMo: new Map() };
+
+function construireFicheDevis() {
+  $("devis-statut").replaceChildren(...Object.entries(STATUTS_DEVIS).map(([id, statut]) => new Option(statut.libelle, id)));
+}
+
+function ouvrirDevis(id) {
+  fiche.id = id;
+  montrer("fiche-devis");
+}
+
+async function ouvrirFicheDevis() {
+  if (!etat.compte) return;
+  if (fiche.minuterie) await enregistrerDevis();
+  const devis = (await lireDevis(etat.compte.id)).find((d) => d.complet && d.id === fiche.id);
+  if (!devis) {
+    montrer("accueil", { retour: true });
+    return;
+  }
+  fiche.devis = devis;
+  fiche.catalogue = await lireCatalogue();
+  $("etat-devis").textContent = "";
+  $("devis-mo-habituels").checked = false;
+  remplirFicheDevis();
+}
+
+function dateCourte(iso) {
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(new Date(iso));
+}
+
+function remplirFicheDevis() {
+  const d = fiche.devis;
+  $("devis-numero").textContent = "Devis " + d.numero;
+  $("devis-titre").value = d.titre;
+  $("devis-client").value = d.client;
+  $("devis-lieu").value = d.lieu;
+  $("devis-statut").value = d.statut;
+  $("devis-devise-forfait").textContent = "(" + (DEVISES[deviseCompte()] || DEVISES.XOF).libelle + ")";
+  $("devis-conditions").value = d.conditions;
+  $("devis-note").value = d.note;
+  majEnteteDevis();
+  remplirAjoutArticle();
+  afficherLignesDevis();
+  afficherMainOeuvreDevis();
+  remplirTotauxDevis();
+  actualiserDevis();
+}
+
+function majEnteteDevis() {
+  const d = fiche.devis;
+  ecrireInsecable($("titre-fiche-devis"), d.titre || "Devis");
+  $("devis-infos").replaceChildren(...[d.client, d.lieu, "Créé le " + dateCourte(d.creeLe)].filter(Boolean)
+    .map((texte) => ecrireInsecable(document.createElement("span"), texte)));
+  const statut = STATUTS_DEVIS[d.statut];
+  $("devis-badge").textContent = statut.libelle;
+  $("devis-badge").dataset.ton = statut.ton;
+}
+
+/* ----- Matériel ----- */
+
+function remplirAjoutArticle() {
+  const liste = fiche.catalogue.liste;
+  const choix = $("devis-ajout-article");
+  const groupes = Object.entries(CATEGORIES_MATERIEL).map(([categorie, titre]) => {
+    const membres = liste.filter((a) => a.categorie === categorie);
+    if (!membres.length) return null;
+    const groupe = document.createElement("optgroup");
+    groupe.label = titre;
+    groupe.append(...membres.map((a) => {
+      const prix = fiche.catalogue.articles[a.ref].prix;
+      return new Option(a.designation + " — " + (prix ? montantTexte(prix) : "prix à compléter"), a.ref);
+    }));
+    return groupe;
+  }).filter(Boolean);
+  choix.replaceChildren(new Option("Choisir un article de Mes prix…", ""), new Option("Ligne libre (désignation et prix à saisir)", "libre"), ...groupes);
+  choix.value = "";
+}
+
+function texteInfosLigne(ligne) {
+  return [ligne.ref ? null : "Ligne libre", UNITES[ligne.unite] ? "Unité : " + UNITES[ligne.unite] : null, ligne.fournisseur ? "Fournisseur : " + ligne.fournisseur : null]
+    .filter(Boolean).join(" · ");
+}
+
+function creerLigneMaterielDevis(ligne) {
+  const li = document.createElement("li");
+  li.className = "ligne-devis";
+  li.dataset.ligne = ligne.id;
+  const tete = document.createElement("div");
+  tete.className = "ligne-devis-tete";
+  const designation = creerEntreeTexte("devis-" + ligne.id + "-designation", "text", BORNES_CATALOGUE.designationMax, { ligne: ligne.id, ligneChamp: "designation" });
+  designation.value = ligne.designation;
+  designation.placeholder = "Ex. : Projecteur LED 50 W";
+  const supprimer = document.createElement("button");
+  supprimer.type = "button";
+  supprimer.className = "bouton-icone bouton-outil outil-danger";
+  supprimer.dataset.supprimerLigne = ligne.id;
+  supprimer.setAttribute("aria-label", "Supprimer la ligne « " + (ligne.designation || "ligne libre") + " »");
+  supprimer.appendChild(creerIcone("i-poubelle"));
+  tete.append(creerChamp(designation.id, "Désignation", designation), supprimer);
+  const infos = document.createElement("p");
+  infos.className = "aide ligne-devis-infos";
+  ecrireInsecable(infos, texteInfosLigne(ligne));
+  infos.hidden = !infos.textContent;
+  const quantite = creerEntreeTexte("devis-" + ligne.id + "-qte", "numeric", 6, { ligne: ligne.id, ligneChamp: "quantite" });
+  quantite.value = String(ligne.quantite);
+  const prix = creerEntreeTexte("devis-" + ligne.id + "-prix", "decimal", 12, { ligne: ligne.id, ligneChamp: "prix" });
+  prix.value = ligne.prix ? formaterDecimal(ligne.prix) : "";
+  prix.placeholder = "0";
+  const montant = document.createElement("div");
+  montant.className = "ligne-mo-montant";
+  const etiquette = document.createElement("span");
+  etiquette.className = "etiquette-champ";
+  etiquette.textContent = "Montant";
+  const droite = document.createElement("span");
+  droite.className = "montant-et-action";
+  const maj = document.createElement("button");
+  maj.type = "button";
+  maj.className = "bouton-maj-prix";
+  maj.dataset.majPrix = ligne.id;
+  maj.title = "Mettre à jour dans Mes prix ?";
+  maj.setAttribute("aria-label", "Mettre à jour dans Mes prix ?");
+  maj.appendChild(creerIcone("i-actualiser"));
+  maj.hidden = true;
+  const valeur = document.createElement("strong");
+  valeur.className = "montant";
+  droite.append(maj, valeur);
+  montant.append(etiquette, droite);
+  const encadre = document.createElement("div");
+  encadre.className = "encadre-prix";
+  encadre.hidden = true;
+  const titreEncadre = document.createElement("strong");
+  const texteEncadre = document.createElement("p");
+  const enregistrer = document.createElement("button");
+  enregistrer.type = "button";
+  enregistrer.className = "bouton bouton-compact bouton-jaune";
+  enregistrer.dataset.enregistrerPrix = ligne.id;
+  enregistrer.append(creerIcone("i-prix"), document.createTextNode("Enregistrer dans Mes prix"));
+  encadre.append(titreEncadre, texteEncadre, enregistrer);
+  li.append(tete, infos, creerChamp(quantite.id, ligne.unite === "m" ? "Quantité (m)" : "Quantité", quantite), creerChamp(prix.id, "Prix unitaire", prix), montant, encadre);
+  return { li, valeur, maj, encadre, titreEncadre, texteEncadre, enregistrer, infos };
+}
+
+function afficherLignesDevis() {
+  const d = fiche.devis;
+  fiche.lignes = new Map();
+  const actives = d.lignes.filter((l) => !l.supprimee);
+  const supprimees = d.lignes.filter((l) => l.supprimee);
+  $("devis-lignes").replaceChildren(...actives.map((ligne) => {
+    const element = creerLigneMaterielDevis(ligne);
+    fiche.lignes.set(ligne.id, element);
+    return element.li;
+  }));
+  $("devis-lignes-vide").hidden = actives.length > 0;
+  const dec = decimalesDevise(deviseCompte());
+  $("devis-supprimees").replaceChildren(...supprimees.map((ligne) => {
+    const li = document.createElement("li");
+    const texte = document.createElement("div");
+    texte.className = "devis-texte";
+    const nom = ecrireInsecable(document.createElement("strong"), ligne.designation || "Ligne libre");
+    const detail = document.createElement("span");
+    detail.className = "montant";
+    detail.textContent = formaterEntier(ligne.quantite) + " × " + montantTexte(ligne.prix) + " = " + montantTexte(arrondi(ligne.quantite * ligne.prix, dec));
+    texte.append(nom, detail);
+    const restaurer = document.createElement("button");
+    restaurer.type = "button";
+    restaurer.className = "bouton bouton-discret bouton-compact";
+    restaurer.dataset.restaurerLigne = ligne.id;
+    restaurer.setAttribute("aria-label", "Restaurer la ligne « " + (ligne.designation || "ligne libre") + " »");
+    restaurer.append(creerIcone("i-actualiser"), document.createTextNode("Restaurer"));
+    li.append(texte, restaurer);
+    return li;
+  }));
+  $("devis-bloc-supprimees").hidden = supprimees.length === 0;
+  $("devis-titre-supprimees").textContent = "Lignes supprimées (" + supprimees.length + ")";
+  $("devis-bouton-ajouter").disabled = d.lignes.length >= BORNES_DEVIS.lignesMax;
+}
+
+/* État d'une ligne par rapport à Mes prix : encadré jaune si le prix manque, ↻ si le prix a changé. */
+function majEtatPrixLigne(ligne, element) {
+  const article = ligne.ref && Object.prototype.hasOwnProperty.call(fiche.catalogue.articles, ligne.ref) ? fiche.catalogue.articles[ligne.ref] : null;
+  const prixCatalogue = article ? article.prix : 0;
+  const absent = prixCatalogue === 0;
+  const aZero = ligne.prix === 0;
+  element.encadre.hidden = !(aZero || absent);
+  element.titreEncadre.textContent = aZero ? "Prix à compléter" : "Prix absent de Mes prix";
+  element.texteEncadre.textContent = aZero
+    ? "Saisissez le prix de cette ligne, puis enregistrez-le dans Mes prix : il remplira automatiquement vos prochains devis."
+    : "Enregistrez ce prix dans Mes prix pour ne plus avoir à le saisir.";
+  element.enregistrer.disabled = aZero;
+  element.maj.hidden = aZero || absent || ligne.prix === prixCatalogue;
+}
+
+/* ----- Main-d'œuvre ----- */
+
+function afficherMainOeuvreDevis() {
+  const mo = fiche.devis.mainOeuvre;
+  const calcul = calculerDevis(fiche.devis, deviseCompte()).mainOeuvre;
+  fiche.lignesMo = new Map();
+  $("devis-mo-points").replaceChildren(...calcul.lignes.map((ligne) => {
+    const element = creerLigneModifiable({
+      id: "devis-mo-" + ligne.id,
+      libelle: ligne.libelle,
+      aide: "Calcul de l'étude : " + formaterEntier(ligne.auto),
+      libelleQuantite: "Quantité",
+      quantite: ligne.quantite,
+      prix: ligne.prix,
+      donneesQuantite: { devisMoQuantite: ligne.id },
+      donneesPrix: { devisMoPrix: ligne.id }
+    });
+    fiche.lignesMo.set(ligne.id, element);
+    return element.li;
+  }));
+  $("devis-mo-forfait").value = mo.forfait ? formaterDecimal(mo.forfait) : "";
+  $("devis-mo-ouvriers").value = mo.journees.ouvriers ? String(mo.journees.ouvriers) : "";
+  $("devis-mo-jours").value = mo.journees.jours ? formaterDecimal(mo.journees.jours) : "";
+  $("devis-mo-tarif").value = formaterDecimal(mo.journees.tarif);
+  afficherLibresDevis();
+}
+
+function afficherLibresDevis() {
+  const libres = fiche.devis.mainOeuvre.libres;
+  $("devis-mo-libres").replaceChildren(...libres.map((ligne, index) => {
+    const li = document.createElement("li");
+    li.className = "ligne-libre";
+    const libelle = creerEntreeTexte("devis-libre-libelle-" + index, "text", 120, { devisLibre: "libelle", index: String(index) });
+    libelle.value = ligne.libelle;
+    libelle.placeholder = "Ex. : Saignées dans le béton";
+    const montant = creerEntreeTexte("devis-libre-montant-" + index, "decimal", 12, { devisLibre: "montant", index: String(index) });
+    montant.value = ligne.montant ? formaterDecimal(ligne.montant) : "";
+    montant.placeholder = "0";
+    const supprimer = document.createElement("button");
+    supprimer.type = "button";
+    supprimer.className = "bouton-icone bouton-outil outil-danger";
+    supprimer.dataset.supprimerLibreDevis = String(index);
+    supprimer.setAttribute("aria-label", "Supprimer la ligne libre " + (index + 1));
+    supprimer.appendChild(creerIcone("i-poubelle"));
+    li.append(creerChamp(libelle.id, "Désignation", libelle), creerChamp(montant.id, "Montant", montant), supprimer);
+    return li;
+  }));
+  $("devis-ajouter-libre").hidden = libres.length >= BORNES_CHANTIER.lignesLibresMax;
+}
+
+function remplirTotauxDevis() {
+  const t = fiche.devis.totaux;
+  cocherPuce("devis-remise-type", t.remiseType);
+  $("devis-remise").value = t.remise ? formaterDecimal(t.remise) : "";
+  $("devis-tva").checked = t.tva;
+  $("devis-taux-tva").value = formaterDecimal(t.tauxTva);
+  $("devis-acompte").value = formaterDecimal(t.acompte);
+}
+
+/* Recalcul instantané : seules les valeurs calculées sont réécrites, jamais le champ en cours de saisie. */
+function actualiserDevis() {
+  fiche.calcul = calculerDevis(fiche.devis, deviseCompte());
+  const { lignes, totalMateriel, mainOeuvre, total } = fiche.calcul;
+  lignes.forEach((ligne) => {
+    const element = fiche.lignes.get(ligne.id);
+    if (!element) return;
+    element.valeur.textContent = montantTexte(ligne.montant);
+    majEtatPrixLigne(ligne, element);
+  });
+  $("devis-total-materiel").textContent = montantTexte(totalMateriel);
+  mainOeuvre.lignes.forEach((ligne) => {
+    const element = fiche.lignesMo.get(ligne.id);
+    if (element) element.valeur.textContent = montantTexte(ligne.montant);
+  });
+  $("devis-mo-journees").textContent = montantTexte(mainOeuvre.journees.total);
+  ecrireMontantFort("devis-total-mo", mainOeuvre.total);
+  $("devis-tot-materiel").textContent = montantTexte(total.materiel);
+  $("devis-tot-mo").textContent = montantTexte(total.mainOeuvre);
+  $("devis-tot-sous-total").textContent = montantTexte(total.sousTotal);
+  $("devis-remise-libelle").textContent = total.typeRemise === "pourcent" ? "Remise (%)" : "Remise (" + (DEVISES[deviseCompte()] || DEVISES.XOF).libelle + ")";
+  $("devis-tot-remise").textContent = (total.remise ? "−\u00A0" : "") + montantTexte(total.remise);
+  $("devis-bloc-taux-tva").hidden = !total.tvaActive;
+  $("devis-tot-tva").textContent = total.tvaActive ? montantTexte(total.tva) : "Non appliquée";
+  ecrireMontantFort("devis-tot-general", total.totalGeneral);
+  $("devis-tot-acompte").textContent = montantTexte(total.acompte);
+  $("devis-tot-reste").textContent = montantTexte(total.reste);
+  ecrireMontantFort("devis-resume-total", total.totalGeneral);
+}
+
+/* ----- Saisie ----- */
+
+function lireSaisieDevis(cible) {
+  const d = fiche.devis;
+  const valeur = cible.type === "checkbox" ? cible.checked : String(cible.value);
+  const ds = cible.dataset;
+  if (ds.ligneChamp) {
+    const ligne = d.lignes.find((l) => l.id === ds.ligne);
+    if (!ligne) return false;
+    if (ds.ligneChamp === "designation") ligne.designation = texteBorne(valeur, BORNES_CATALOGUE.designationMax);
+    else if (ds.ligneChamp === "quantite") ligne.quantite = entierBorne(valeur.trim(), 0, BORNES_DEVIS.quantiteMax, 0);
+    else ligne.prix = montantSaisi(valeur.trim());
+  } else if (ds.devisMoQuantite || ds.devisMoPrix) {
+    const point = d.mainOeuvre.points[ds.devisMoQuantite || ds.devisMoPrix];
+    if (!point) return false;
+    if (ds.devisMoQuantite) point.quantite = entierBorne(valeur.trim(), 0, BORNES_CHANTIER.quantiteMax, 0);
+    else point.prix = montantSaisi(valeur.trim());
+  } else if (ds.devisLibre) {
+    const ligne = d.mainOeuvre.libres[Number(ds.index)];
+    if (!ligne) return false;
+    if (ds.devisLibre === "libelle") ligne.libelle = texteBorne(valeur, 120);
+    else ligne.montant = montantSaisi(valeur.trim());
+  } else if (ds.devisMo === "forfait") d.mainOeuvre.forfait = montantSaisi(valeur.trim());
+  else if (ds.devisMo === "ouvriers") d.mainOeuvre.journees.ouvriers = entierBorne(valeur.trim(), 0, BORNES_CHANTIER.ouvriersMax, 0);
+  else if (ds.devisMo === "jours") d.mainOeuvre.journees.jours = arrondi(borner(valeur.trim(), 0, BORNES_CHANTIER.joursMax, 0), 1);
+  else if (ds.devisMo === "tarif") d.mainOeuvre.journees.tarif = montantSaisi(valeur.trim());
+  else if (ds.devisTotal === "remiseType") {
+    if (!cible.checked) return false;
+    d.totaux.remiseType = cible.value === "montant" ? "montant" : "pourcent";
+    d.totaux.remise = 0;
+    $("devis-remise").value = "";
+  } else if (ds.devisTotal === "remise") d.totaux.remise = d.totaux.remiseType === "pourcent" ? arrondi(borner(valeur.trim(), 0, 100, 0), 2) : montantSaisi(valeur.trim());
+  else if (ds.devisTotal === "tva") d.totaux.tva = valeur === true;
+  else if (ds.devisTotal === "tauxTva") d.totaux.tauxTva = arrondi(borner(valeur.trim(), 0, TVA_MAX, TVA_DEFAUT), 2);
+  else if (ds.devisTotal === "acompte") d.totaux.acompte = arrondi(borner(valeur.trim(), 0, 100, ACOMPTE_DEFAUT), 2);
+  else if (ds.devisChamp === "statut") {
+    if (!Object.prototype.hasOwnProperty.call(STATUTS_DEVIS, valeur)) return false;
+    d.statut = valeur;
+    majEnteteDevis();
+  } else if (ds.devisChamp === "titre" || ds.devisChamp === "client" || ds.devisChamp === "lieu") {
+    d[ds.devisChamp] = texteBorne(valeur, ds.devisChamp === "titre" ? BORNES_DEVIS.titreMax : BORNES.texteMax);
+    majEnteteDevis();
+  } else if (ds.devisChamp === "conditions") d.conditions = valeur.slice(0, BORNES.conditionsMax);
+  else if (ds.devisChamp === "note") d.note = valeur.slice(0, BORNES_DEVIS.noteMax);
+  else return false;
+  return true;
+}
+
+function surSaisieDevis(evenement) {
+  if (!fiche.devis || !lireSaisieDevis(evenement.target)) return;
+  actualiserDevis();
+  planifierDevis();
+}
+
+/* En quittant un champ chiffré, il affiche la valeur réellement retenue (bornée, arrondie). */
+function surChangementDevis(evenement) {
+  const cible = evenement.target;
+  const ds = cible.dataset;
+  const d = fiche.devis;
+  if (!d || cible.type === "checkbox" || cible.type === "radio") return;
+  if (ds.ligneChamp === "quantite" || ds.ligneChamp === "prix") {
+    const ligne = d.lignes.find((l) => l.id === ds.ligne);
+    if (ligne) cible.value = ds.ligneChamp === "quantite" ? String(ligne.quantite) : (ligne.prix ? formaterDecimal(ligne.prix) : "");
+  } else if (ds.devisMoQuantite || ds.devisMoPrix) {
+    const point = d.mainOeuvre.points[ds.devisMoQuantite || ds.devisMoPrix];
+    if (point) cible.value = ds.devisMoQuantite ? String(point.quantite) : formaterDecimal(point.prix);
+  } else if (ds.devisLibre === "montant") {
+    const ligne = d.mainOeuvre.libres[Number(ds.index)];
+    if (ligne) cible.value = ligne.montant ? formaterDecimal(ligne.montant) : "";
+  } else if (ds.devisMo === "forfait") cible.value = d.mainOeuvre.forfait ? formaterDecimal(d.mainOeuvre.forfait) : "";
+  else if (ds.devisMo === "ouvriers") cible.value = d.mainOeuvre.journees.ouvriers ? String(d.mainOeuvre.journees.ouvriers) : "";
+  else if (ds.devisMo === "jours") cible.value = d.mainOeuvre.journees.jours ? formaterDecimal(d.mainOeuvre.journees.jours) : "";
+  else if (ds.devisMo === "tarif") cible.value = formaterDecimal(d.mainOeuvre.journees.tarif);
+  else if (ds.devisTotal === "remise") cible.value = d.totaux.remise ? formaterDecimal(d.totaux.remise) : "";
+  else if (ds.devisTotal === "tauxTva") cible.value = formaterDecimal(d.totaux.tauxTva);
+  else if (ds.devisTotal === "acompte") cible.value = formaterDecimal(d.totaux.acompte);
+  else if (ds.ligneChamp === "designation") {
+    const element = fiche.lignes.get(ds.ligne);
+    const ligne = d.lignes.find((l) => l.id === ds.ligne);
+    if (element && ligne) element.li.querySelector("[data-supprimer-ligne]").setAttribute("aria-label", "Supprimer la ligne « " + (ligne.designation || "ligne libre") + " »");
+  }
+}
+
+function ajouterLigneDevis() {
+  const d = fiche.devis;
+  const choix = $("devis-ajout-article");
+  if (!d) return;
+  if (!choix.value) {
+    choix.focus();
+    return;
+  }
+  if (d.lignes.length >= BORNES_DEVIS.lignesMax) {
+    afficherToast(BORNES_DEVIS.lignesMax + " lignes au maximum par devis.");
+    return;
+  }
+  const article = choix.value === "libre" ? null : (Object.prototype.hasOwnProperty.call(fiche.catalogue.articles, choix.value) ? fiche.catalogue.articles[choix.value] : undefined);
+  if (article === undefined) return;
+  const id = "l" + (d.lignes.reduce((max, l) => Math.max(max, Number(l.id.slice(1)) || 0), 0) + 1);
+  d.lignes.push(article
+    ? { id, ref: article.ref, designation: article.designation, unite: article.unite, categorie: article.categorie, quantite: 1, prix: article.prix, fournisseur: article.fournisseur, supprimee: false }
+    : { id, ref: null, designation: "", unite: "u", categorie: "autres", quantite: 1, prix: 0, fournisseur: "", supprimee: false });
+  choix.value = "";
+  afficherLignesDevis();
+  actualiserDevis();
+  planifierDevis();
+  $(article ? "devis-" + id + "-qte" : "devis-" + id + "-designation").focus();
+}
+
+/* « Enregistrer dans Mes prix » (prix absent) ou ↻ (prix différent, avec confirmation) :
+   le catalogue ne change jamais sans la décision de l'électricien. */
+async function envoyerPrixVersCatalogue(ligne) {
+  if (!ligne || ligne.prix <= 0) return;
+  const article = ligne.ref && Object.prototype.hasOwnProperty.call(fiche.catalogue.articles, ligne.ref) ? fiche.catalogue.articles[ligne.ref] : null;
+  if (article && article.prix > 0) {
+    const ok = await demanderConfirmation("Mettre à jour dans Mes prix ?",
+      "« " + article.designation + " » : " + montantTexte(article.prix) + " → " + montantTexte(ligne.prix) + libelleUnite(article.unite)
+      + (article.fournisseur ? " chez " + article.fournisseur : "") + ". Les devis déjà faits ne changent pas.", "Mettre à jour", "Annuler");
+    if (!ok) return;
+  }
+  const enregistre = await enregistrerPrixCatalogue({ ...ligne, designation: ligne.designation || "Article" });
+  if (!enregistre) {
+    afficherToast("Enregistrement impossible : Mes prix est plein ou la mémoire est indisponible.");
+    return;
+  }
+  ligne.ref = enregistre.ref;
+  if (enregistre.fournisseur) ligne.fournisseur = enregistre.fournisseur;
+  fiche.catalogue = await lireCatalogue();
+  remplirAjoutArticle();
+  afficherLignesDevis();
+  actualiserDevis();
+  planifierDevis();
+  afficherToast("Prix enregistré dans Mes prix : il remplira vos prochains devis.");
+}
+
+/* « − 10 % » / « + 10 % » sur toute la main-d'œuvre ; « Prix habituels » remet les prix au point
+   et le tarif journée de Mes prix (forfait et lignes libres ne changent pas). */
+function ajusterMainOeuvreDevis(mode) {
+  const d = fiche.devis;
+  const devise = deviseCompte();
+  if (mode === "habituels") {
+    Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => { d.mainOeuvre.points[id].prix = prixMainOeuvreHabituel(id, devise, fiche.catalogue.mainOeuvre); });
+    d.mainOeuvre.journees.tarif = tarifJourneeHabituel(devise, fiche.catalogue.mainOeuvre);
+  } else {
+    const facteur = mode === "plus" ? 1 + AJUSTEMENT_MAIN_OEUVRE : 1 - AJUSTEMENT_MAIN_OEUVRE;
+    d.mainOeuvre = mainOeuvreDevisValide(ajusterMainOeuvre(d.mainOeuvre, calculerDevis(d, devise).mainOeuvre, facteur, devise), decimalesDevise(devise));
+  }
+  afficherMainOeuvreDevis();
+  actualiserDevis();
+  planifierDevis();
+  afficherToast((mode === "habituels" ? "Prix habituels appliqués" : (mode === "plus" ? "Main-d'œuvre + 10 %" : "Main-d'œuvre − 10 %"))
+    + " : " + montantTexte(fiche.calcul.mainOeuvre.total));
+}
+
+async function surClicDevis(evenement) {
+  const bouton = evenement.target.closest("button");
+  const d = fiche.devis;
+  if (!bouton || !d || bouton.disabled) return;
+  const ds = bouton.dataset;
+  const ligneDe = (id) => d.lignes.find((l) => l.id === id) || null;
+  if (ds.supprimerLigne || ds.restaurerLigne) {
+    const ligne = ligneDe(ds.supprimerLigne || ds.restaurerLigne);
+    if (!ligne) return;
+    ligne.supprimee = Boolean(ds.supprimerLigne);
+    afficherLignesDevis();
+    actualiserDevis();
+    planifierDevis();
+    if (ligne.supprimee) {
+      $("devis-ajout-article").focus({ preventScroll: true });
+      afficherToast("Ligne supprimée. Vous pouvez la restaurer dans « Lignes supprimées ».");
+    } else {
+      $("devis-" + ligne.id + "-qte").focus();
+    }
+  } else if (ds.enregistrerPrix || ds.majPrix) {
+    await envoyerPrixVersCatalogue(ligneDe(ds.enregistrerPrix || ds.majPrix));
+  } else if (ds.supprimerLibreDevis) {
+    d.mainOeuvre.libres.splice(Number(ds.supprimerLibreDevis), 1);
+    afficherLibresDevis();
+    actualiserDevis();
+    planifierDevis();
+    $("devis-ajouter-libre").focus({ preventScroll: true });
+  } else if (ds.ajusterDevis) {
+    ajusterMainOeuvreDevis(ds.ajusterDevis);
+  }
+}
+
+function ajouterLibreDevis() {
+  const libres = fiche.devis && fiche.devis.mainOeuvre.libres;
+  if (!libres || libres.length >= BORNES_CHANTIER.lignesLibresMax) return;
+  libres.push({ libelle: "", montant: 0 });
+  afficherLibresDevis();
+  $("devis-libre-libelle-" + (libres.length - 1)).focus();
+  planifierDevis();
+}
+
+/* ----- Enregistrement ----- */
+
+function planifierDevis() {
+  clearTimeout(fiche.minuterie);
+  fiche.minuterie = setTimeout(enregistrerDevis, DELAI_BROUILLON);
+}
+
+async function enregistrerDevis() {
+  clearTimeout(fiche.minuterie);
+  fiche.minuterie = 0;
+  const d = fiche.devis;
+  if (!d || !etat.compte || d.compteId !== etat.compte.id) return false;
+  const propre = devisValide({ ...d, modifieLe: new Date().toISOString() }, deviseCompte());
+  if (!propre) return false;
+  const { complet, ...stocke } = propre;
+  const bruts = await lireDevisBruts();
+  const index = bruts.findIndex((x) => x && typeof x === "object" && x.id === stocke.id && x.compteId === stocke.compteId);
+  if (index >= 0) bruts[index] = stocke;
+  else bruts.push(stocke);
+  const reussi = complet && await ecrireValeur(CLES_STOCKAGE.devis, JSON.stringify(bruts));
+  d.modifieLe = propre.modifieLe;
+  $("etat-devis").textContent = reussi
+    ? "Devis enregistré à " + heureCourte(new Date())
+    : "Devis non enregistré : mémoire de l'appareil indisponible.";
+  return reussi;
+}
+
+/* Les prix de main-d'œuvre affichés deviennent les prix habituels (case cochée, au clic sur Enregistrer). */
+async function enregistrerHabituels(calculMainOeuvre) {
+  const { catalogue } = await lireCatalogueCompte();
+  calculMainOeuvre.lignes.forEach((ligne) => { catalogue.mainOeuvre.points[ligne.id] = ligne.prix; });
+  catalogue.mainOeuvre.journee = calculMainOeuvre.journees.tarif;
+  return ecrireCatalogue(catalogue);
+}
+
+async function surEnregistrerDevis() {
+  if (!fiche.devis) return;
+  const ok = await enregistrerDevis();
+  if (!ok) return;
+  let texte = "Devis " + fiche.devis.numero + " enregistré.";
+  if ($("devis-mo-habituels").checked) {
+    if (await enregistrerHabituels(fiche.calcul.mainOeuvre)) {
+      $("devis-mo-habituels").checked = false;
+      fiche.catalogue = await lireCatalogue();
+      texte += " Ces prix de main-d'œuvre sont désormais vos prix habituels.";
+    }
+  }
+  afficherToast(texte);
+}
+
+/* ----- Création depuis le résultat de l'étude ----- */
+
+async function majBoutonsDevisResultat() {
+  const c = resultat.chantier;
+  if (!c || !etat.compte) return;
+  const lies = (await lireDevis(etat.compte.id)).filter((d) => d.complet && d.chantierId === c.id)
+    .sort((a, b) => Date.parse(b.creeLe) - Date.parse(a.creeLe));
+  const bouton = $("bouton-ouvrir-devis");
+  bouton.hidden = lies.length === 0;
+  if (lies.length) {
+    bouton.dataset.devis = lies[0].id;
+    $("libelle-ouvrir-devis").textContent = "Ouvrir le devis " + lies[0].numero;
+  }
+  $("libelle-creer-devis").textContent = lies.length ? "Créer un autre devis" : "Créer le devis";
+}
+
+/* Le devis reprend exactement le chiffrage affiché (prix de Mes prix et corrections du chantier),
+   puis vit sa vie : ses prix sont figés. */
+async function surCreerDevis() {
+  const c = resultat.chantier;
+  const compte = etat.compte;
+  if (!c || !compte) return;
+  await enregistrerResultat();
+  actualiserResultat();
+  const existants = await lireDevis(compte.id);
+  const numero = await prochainNumeroDevis(compte.id, existants);
+  const maintenant = new Date().toISOString();
+  const devis = devisValide({
+    id: "d" + identifiantCourt().slice(1), compteId: compte.id, numero, statut: "brouillon", creeLe: maintenant, modifieLe: maintenant,
+    chantierId: c.id, titre: c.nom || "Installation électrique", client: c.client.nom, clientTelephone: c.client.telephone, lieu: c.lieu,
+    ...devisDepuisChiffrage(resultat.chiffrage),
+    conditions: typeof compte.conditions === "string" ? compte.conditions : CONDITIONS_DEFAUT,
+    note: ""
+  }, deviseCompte());
+  if (!devis) return;
+  const { complet, ...stocke } = devis;
+  const reussi = complet && await ecrireValeur(CLES_STOCKAGE.devis, JSON.stringify([...(await lireDevisBruts()), stocke]));
+  if (!reussi) {
+    $("etat-resultat").textContent = "Devis non créé : mémoire de l'appareil indisponible.";
+    return;
+  }
+  ouvrirDevis(devis.id);
+  afficherToast("Devis " + numero + " créé à partir de l'étude.");
+}
+
+function surOuvrirDevisResultat() {
+  const id = $("bouton-ouvrir-devis").dataset.devis;
+  if (id) ouvrirDevis(id);
+}
+
+function surClicDevisAccueil(evenement) {
+  const bouton = evenement.target.closest("[data-devis]");
+  if (bouton) ouvrirDevis(bouton.dataset.devis);
 }
 
 /* ---------- Écran de démarrage natif ---------- */
@@ -4600,6 +5938,33 @@ function brancherEvenements() {
   $("res-ajouter-libre").addEventListener("click", ajouterLibreResultat);
   $("bouton-modifier-chantier").addEventListener("click", surModifierChantier);
   $("accueil-etudes").addEventListener("click", surClicEtude);
+  $("accueil-devis").addEventListener("click", surClicDevisAccueil);
+  $("bouton-creer-devis").addEventListener("click", surCreerDevis);
+  $("bouton-ouvrir-devis").addEventListener("click", surOuvrirDevisResultat);
+  const ecranDevis = $("ecran-fiche-devis");
+  ecranDevis.addEventListener("input", (evenement) => {
+    if (evenement.target.type !== "radio" && evenement.target.type !== "checkbox" && evenement.target.tagName !== "SELECT") surSaisieDevis(evenement);
+  });
+  ecranDevis.addEventListener("change", (evenement) => {
+    if (evenement.target.id === "devis-ajout-article" || evenement.target.id === "devis-mo-habituels") return;
+    if (evenement.target.type === "radio" || evenement.target.type === "checkbox" || evenement.target.tagName === "SELECT") surSaisieDevis(evenement);
+    else surChangementDevis(evenement);
+  });
+  ecranDevis.addEventListener("click", surClicDevis);
+  $("devis-bouton-ajouter").addEventListener("click", ajouterLigneDevis);
+  $("devis-ajouter-libre").addEventListener("click", ajouterLibreDevis);
+  $("devis-bouton-enregistrer").addEventListener("click", surEnregistrerDevis);
+  const ecranPrix = $("ecran-prix");
+  ecranPrix.addEventListener("input", (evenement) => {
+    if (evenement.target.type !== "radio" && evenement.target.tagName !== "SELECT") surSaisieMesPrix(evenement);
+  });
+  ecranPrix.addEventListener("change", (evenement) => {
+    if (evenement.target.type === "radio" || (evenement.target.tagName === "SELECT" && evenement.target.dataset.article)) surSaisieMesPrix(evenement);
+    surChangementMesPrix(evenement);
+  });
+  $("prix-groupes").addEventListener("click", surClicMesPrix);
+  $("form-nouvel-article").addEventListener("submit", surAjouterArticle);
+  $("bouton-reinitialiser-prix").addEventListener("click", surReinitialiserPrix);
   $("bouton-ajouter-piece").addEventListener("click", surAjouterPiece);
   $("piece-surface").addEventListener("input", surSaisieSurfaceAjout);
   $("piece-surface").addEventListener("keydown", surToucheSurfaceAjout);
@@ -4609,6 +5974,7 @@ function brancherEvenements() {
   $("liste-appareils").addEventListener("change", surSaisieAppareil);
   $("etape-chantier-5").addEventListener("input", surSaisieMainOeuvre);
   $("etape-chantier-5").addEventListener("change", surSaisieMainOeuvre);
+  $("etape-chantier-5").addEventListener("click", surAjusterAssistant);
   $("liste-lignes-libres").addEventListener("click", surSupprimerLigneLibre);
   $("bouton-ajouter-ligne").addEventListener("click", surAjouterLigneLibre);
   document.addEventListener("visibilitychange", surVisibilite);
@@ -4632,6 +5998,8 @@ function preparerInterface() {
   surveillerPhotos();
   construireAssistant();
   construireResultat();
+  construireFicheDevis();
+  construireMesPrix();
   construireNavigation();
   masquerLiensAbsents();
   remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);

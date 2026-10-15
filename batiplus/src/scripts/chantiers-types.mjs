@@ -27,7 +27,7 @@ export function chargerMoteur() {
   const donnees = readFileSync(join(RACINE, "src", "donnees.js"), "utf8");
   const section = sectionMoteur();
   const contexte = vm.createContext({});
-  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { etudierChantier, chiffrerChantier, calculerTotal, verifierConformite, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS, CATALOGUE_DEFAUT, TVA_MAX };", contexte, { filename: "moteur-nfc15100.js" });
+  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { etudierChantier, chiffrerChantier, calculerTotal, calculerDevis, devisDepuisChiffrage, ajusterMainOeuvre, calculerMainOeuvre, verifierConformite, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS, CATALOGUE_DEFAUT, TVA_MAX };", contexte, { filename: "moteur-nfc15100.js" });
   return contexte.__moteur;
 }
 

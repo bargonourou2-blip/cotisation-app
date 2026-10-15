@@ -13,6 +13,7 @@
      AS assistant Nouveau chantier : 5 étapes, 360 et 1440 px, rien de coupé, Suivant visible
      SV schéma SVG du tableau : textes dans leurs modules, aucun chevauchement, taille lisible
      RE écran Résultat : 6 onglets, 360 et 1440 px, clair et sombre, rien de coupé
+     ㊱ fiche devis et Mes prix : 360 et 1440 px, clair et sombre, rien de coupé
      ㉒ tous les logos chargent et sont détourés, aucune image cassée, photo absente
         remplacée par l'illustration de repli
      ㉓ icônes maskable (navigateur et Android) : le pictogramme reste dans la zone sûre
@@ -477,6 +478,7 @@ async function main() {
 
   /* SV schéma du tableau mesuré dans le vrai moteur de rendu ; RE écran Résultat : 6 onglets,
      360 et 1440 px, clair et sombre, rien ne déborde, aucun mot ni montant coupé. */
+  let avecEtudes36 = null;
   const fautesSV = [];
   const fautesRE = [];
   let vuesRE = 0;
@@ -507,6 +509,7 @@ async function main() {
       mainOeuvre: { points: {}, forfait: 0, journees: { ouvriers: 0, jours: 0, tarif: null }, libres: [] }
     };
     const avecEtudes = { ...base, bp_v1_chantiers: JSON.stringify([villa, grand]) };
+    avecEtudes36 = avecEtudes;
     const mesurerSchema = () => {
       const svg = document.querySelector("#schema-tableau svg");
       if (!svg) return { absent: true };
@@ -585,6 +588,67 @@ async function main() {
   controle("RE", "écran Résultat : rien ne déborde ni n'est coupé (360 et 1440)", fautesRE.length === 0,
     fautesRE.length ? fautesRE.slice(0, 3).join(" | ")
       : vuesRE + " vues (6 onglets, clair et sombre), " + motsRE.toLocaleString("fr-FR") + " mots mesurés, montants jusqu'à 13 chiffres (1 091 610 041 974 FCFA) sur une ligne, rien sous le menu fixe");
+
+  /* ㊱ fiche devis et Mes prix : devis réel créé depuis l'étude volumineuse (montants à 13 chiffres),
+     ligne supprimée, catalogue à 5 fournisseurs aux noms longs ; 360 et 1440 px, clair et sombre. */
+  {
+    const fautes36 = [];
+    let vues36 = 0;
+    let mots36 = 0;
+    const fournisseursLongs = [
+      { nom: "Quincaillerie Générale du Kadiogo et Frères", prix: 99999999 },
+      { nom: "Électro-Distribution Ouaga 2000", prix: 1250 },
+      { nom: "Comptoir Burkinabè du Matériel", prix: 1400 },
+      { nom: "Société Commerciale de Bobo-Dioulasso", prix: 1325.5 },
+      { nom: "Grossiste du Marché Rood-Woko", prix: 0 }
+    ];
+    const catalogue36 = { [compteId]: {
+      articles: [
+        { ref: "prise", designation: "Prise de courant 2P+T 16 A à éclips Legrand Niloé", unite: "u", categorie: "appareillage", fournisseurs: fournisseursLongs, choisi: 1 },
+        { ref: "cable-1.5", designation: "Câble rigide H07V-U 1,5 mm² (couronne de 100 m)", unite: "m", categorie: "cables", fournisseurs: fournisseursLongs, choisi: null },
+        { ref: "perso-0a1b2c3d", designation: "Projecteur LED étanche 150 W détecteur crépusculaire", unite: "u", categorie: "autres", fournisseurs: [{ nom: "Importateur Général Électrique du Sahel", prix: 99999999 }], choisi: null }
+      ],
+      mainOeuvre: { points: { prise: 99999999, tableau: 25000 }, journee: 99999999 }
+    } };
+    const etat36 = { ...avecEtudes36, bp_v1_catalogue: JSON.stringify(catalogue36) };
+    for (const [largeur, hauteur, sombre] of [[360, 640, false], [360, 640, true], [1440, 900, false], [1440, 900, true]]) {
+      const { page, contexte, nom } = await nouvellePage(largeur, hauteur, sombre, true, etat36);
+      await pause(1800);
+      const mesurer = async (vue) => {
+        const t = await page.evaluate(mesurerTextes, [".ecran.actif", ".entete", largeur > 1024 ? "#tiroir" : ".onglets"]);
+        vues36++;
+        mots36 += t.mots;
+        if (t.motsCoupes.length || t.rognes.length || t.deborde.length || t.defileX) fautes36.push(nom + " " + vue + " " + JSON.stringify(t));
+        if (largeur > 1024) {
+          const m = await page.evaluate(mesurerSousMenu);
+          if (m.total) fautes36.push(nom + " " + vue + " sous le menu " + JSON.stringify(m));
+        }
+        await capturer(page, nom + "-" + vue, true);
+      };
+      await page.evaluate(() => document.querySelector("#accueil-etudes [data-chantier='villa-etude-0001']").click());
+      await pause(500);
+      await page.evaluate(() => document.getElementById("bouton-creer-devis").click());
+      await pause(900);
+      const actif = await page.evaluate(() => document.querySelector(".ecran.actif").id);
+      if (actif !== "ecran-fiche-devis") { fautes36.push(nom + " création du devis : écran " + actif); await contexte.close(); continue; }
+      await page.evaluate(() => document.querySelector("#devis-lignes [data-supprimer-ligne]").click());
+      await pause(400);
+      await page.evaluate(() => { const b = document.getElementById("devis-bloc-supprimees"); if (b && b.tagName === "DETAILS") b.open = true; });
+      await pause(200);
+      await mesurer("fiche-devis");
+      await page.evaluate(() => document.querySelector("#tiroir-menu [data-ecran='prix']").click());
+      await pause(600);
+      const actifPrix = await page.evaluate(() => document.querySelector(".ecran.actif").id);
+      if (actifPrix !== "ecran-prix") { fautes36.push(nom + " Mes prix : écran " + actifPrix); await contexte.close(); continue; }
+      await page.evaluate(() => document.querySelectorAll("#ecran-prix details").forEach((d) => { d.open = true; }));
+      await pause(300);
+      await mesurer("mes-prix");
+      await contexte.close();
+    }
+    controle("㊱", "fiche devis et Mes prix : rien ne déborde ni n'est coupé (360 et 1440)", fautes36.length === 0,
+      fautes36.length ? fautes36.slice(0, 3).join(" | ")
+        : vues36 + " vues (fiche devis créée depuis l'étude, ligne supprimée, Mes prix tout déplié, clair et sombre), " + mots36.toLocaleString("fr-FR") + " mots mesurés, montants à 13 chiffres et 5 fournisseurs aux noms longs sur une ligne, rien sous le menu fixe");
+  }
 
   /* I images réelles : photo et logo redessinés, fichiers piégés refusés */
   {

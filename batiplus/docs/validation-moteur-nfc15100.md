@@ -144,7 +144,7 @@ Contrôle : reproductible ✔ · valeurs de référence ✔ · règles ✔ · no
 
 ## Robustesse : 1 000 chantiers aléatoires
 
-Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé ; le schéma du tableau et la liste de conformité sont contrôlés aussi.
+Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé, et des prix habituels de main-d'œuvre piégés ; le schéma du tableau et la liste de conformité sont contrôlés aussi. Chaque chiffrage est ensuite transformé en devis (étape 7) : le total du devis doit être identique au centime, « + 10 % » et « − 10 % » doivent aller dans le bon sens, et un devis piégé (lignes, main-d'œuvre, remise, TVA, acompte) ne doit produire ni exception, ni NaN, ni négatif.
 
 | Mesure | Résultat |
 |---|---:|
