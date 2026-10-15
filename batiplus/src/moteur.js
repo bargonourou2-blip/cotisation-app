@@ -26,13 +26,14 @@ const etat = {
   adminBloqueJusqua: 0,
   elementAvantModale: null,
   elementAvantRecherche: null,
-  resoudreModale: null
+  resoudreModale: null,
+  verrouille: false
 };
 
 /* Codes en cours de saisie : jamais dans le DOM, jamais stockés. */
-const codes = { "ins-code": "", "ins-confirmation": "", "cnx-code": "", "pro-ancien": "", "pro-nouveau": "", "pro-confirmation": "" };
+const codes = { "ins-code": "", "ins-confirmation": "", "cnx-code": "", "ver-code": "", "pro-ancien": "", "pro-nouveau": "", "pro-confirmation": "" };
 const codesVisibles = new Set();
-const cibleClavier = { "clavier-inscription": "ins-code", "clavier-connexion": "cnx-code", "clavier-profil": "pro-ancien" };
+const cibleClavier = { "clavier-inscription": "ins-code", "clavier-connexion": "cnx-code", "clavier-verrou": "ver-code", "clavier-profil": "pro-ancien" };
 /* Champ suivant quand un code atteint 6 chiffres. */
 const CODE_SUIVANT = { "ins-code": "ins-confirmation", "pro-ancien": "pro-nouveau", "pro-nouveau": "pro-confirmation" };
 const animationsCompteurs = new WeakMap();
@@ -231,7 +232,9 @@ function estEcranEntree(id) {
 /* options.retour : ne pas empiler (bouton retour). L'historique ne garde que les
    écrans de l'application ; revenir à l'accueil ou à l'entrée le vide. */
 function montrer(id, options) {
-  const destination = !estEcranEntree(id) && !etat.compte ? "connexion" : id;
+  /* Application verrouillée : aucun écran n'est accessible avant le code (menu, retour, raccourcis). */
+  const demande = etat.verrouille && etat.compte && id !== "verrou" ? "verrou" : id;
+  const destination = !estEcranEntree(demande) && !etat.compte ? "connexion" : demande;
   const cible = $("ecran-" + destination);
   if (!cible) {
     journal("écran inexistant :", destination);
@@ -277,6 +280,7 @@ function preparerEcran(id) {
   else if (id === "chantiers") ouvrirMesChantiers();
   else if (id === "clients") ouvrirMesClients();
   else if (id === "stats") ouvrirStats();
+  else if (id === "verrou") preparerVerrou();
 }
 
 /* Un seul écouteur pour tous les éléments [data-ecran] (menu, onglets, raccourcis…). */
@@ -447,12 +451,19 @@ function ouvrirConditions() {
 }
 
 /* ---------- Bouton retour Android ----------
-   Ordre : modale → recherche → tiroir → diapositive précédente → historique
+   Ordre : modale → (écran verrouillé : quitter) → recherche → tiroir → diapositive précédente → historique
    (confirmation si un travail n'est pas enregistré) → accueil → quitter. */
 
 async function surBoutonRetour() {
   if (!$("modale").hidden) {
     fermerModale(false);
+    return;
+  }
+  /* Écran verrouillé : le retour ne mène nulle part ailleurs, il ferme l'application
+     (l'historique reste intact pour après le déverrouillage). */
+  if (etat.verrouille) {
+    const appVerrou = plugin("App");
+    if (appVerrou) appVerrou.exitApp();
     return;
   }
   if (!$("recherche").hidden) {
@@ -1037,22 +1048,23 @@ function surOeil(evenement) {
 }
 
 /* Refuse 0000, 1111, 1234, 4321, 123456, 1212… */
+/* Codes refusés parce qu'ils sont parmi les premiers essayés par un voleur :
+   motif répété (0000, 4545, 121212, 123123), suite (1234, 9876, 7890, 3210),
+   année à 4 chiffres de 1940 à 2039 (naissance, mariage, année en cours). */
 function codeTrivial(code) {
-  if (/^(\d)\1+$/.test(code)) return true;
+  if (/^(\d{1,3})\1+$/.test(code)) return true;
   const chiffres = [...code].map(Number);
   const montante = chiffres.every((c, i) => i === 0 || c === (chiffres[i - 1] + 1) % 10);
   const descendante = chiffres.every((c, i) => i === 0 || c === (chiffres[i - 1] + 9) % 10);
   if (montante || descendante) return true;
-  const moitie = code.length / 2;
-  return Number.isInteger(moitie) && moitie >= 2 && code.slice(0, moitie) === code.slice(moitie)
-    || code.length === 4 && code.slice(0, 2) === code.slice(2);
+  return code.length === 4 && /^(19[4-9]\d|20[0-3]\d)$/.test(code);
 }
 
 function erreurCodeNeuf(code) {
   if (code.length < CODE.longueurMin || code.length > CODE.longueurMax || !/^\d+$/.test(code)) {
     return "Le code doit comporter de 4 à 6 chiffres.";
   }
-  if (codeTrivial(code)) return "Code trop simple (comme 1234 ou 0000). Choisissez-en un moins évident.";
+  if (codeTrivial(code)) return "Code trop simple (comme 1234, 0000, 1212 ou une année). Choisissez-en un moins évident.";
   return "";
 }
 
@@ -1124,7 +1136,11 @@ async function lireSession() {
 }
 
 async function ouvrirSession(compte) {
-  await ecrireValeur(CLES_STOCKAGE.session, JSON.stringify({ compteId: compte.id, ouverte: Date.now() }));
+  const maintenant = Date.now();
+  await ecrireValeur(CLES_STOCKAGE.session, JSON.stringify({ compteId: compte.id, ouverte: maintenant, derniereActivite: maintenant }));
+  activite.derniere = maintenant;
+  activite.ecrite = maintenant;
+  etat.verrouille = false;
   etat.compte = compte;
   etat.abonnement = abonnementCourant();
   afficherCompte(compte);
@@ -1133,6 +1149,10 @@ async function ouvrirSession(compte) {
 async function fermerSession() {
   if (assistant.minuterie) await enregistrerBrouillon();
   if (resultat.minuterie) await enregistrerResultat();
+  if (fiche.minuterie) await enregistrerDevis();
+  if (mesPrix.minuterie) await enregistrerMesPrix();
+  etat.verrouille = false;
+  viderCode("ver-code");
   assistant.chantier = null;
   resultat.chantier = null;
   resultat.id = null;
@@ -1174,19 +1194,29 @@ function formaterDuree(ms) {
   return Math.floor(secondes / 60) + ":" + String(secondes % 60).padStart(2, "0");
 }
 
+/* Le même compteur d'échecs sert à la connexion et au déverrouillage : changer d'écran ne remet rien à zéro. */
+const ZONES_BLOCAGE = Object.freeze([
+  Object.freeze({ message: "msg-blocage", texte: "texte-blocage", bouton: "bouton-connexion" }),
+  Object.freeze({ message: "msg-blocage-verrou", texte: "texte-blocage-verrou", bouton: "bouton-deverrouiller" })
+]);
+
 function afficherBlocage(jusqua) {
   clearInterval(etat.minuterieBlocage);
   const mettreAJour = () => {
     const reste = jusqua - Date.now();
     if (reste <= 0) {
       clearInterval(etat.minuterieBlocage);
-      $("msg-blocage").hidden = true;
-      $("bouton-connexion").disabled = false;
+      ZONES_BLOCAGE.forEach((zone) => {
+        $(zone.message).hidden = true;
+        $(zone.bouton).disabled = false;
+      });
       return;
     }
-    $("msg-blocage").hidden = false;
-    $("bouton-connexion").disabled = true;
-    $("texte-blocage").textContent = "Trop d'essais. Réessayez dans " + formaterDuree(reste) + ".";
+    ZONES_BLOCAGE.forEach((zone) => {
+      $(zone.message).hidden = false;
+      $(zone.bouton).disabled = true;
+      $(zone.texte).textContent = "Trop d'essais. Réessayez dans " + formaterDuree(reste) + ".";
+    });
   };
   mettreAJour();
   etat.minuterieBlocage = setInterval(mettreAJour, 1000);
@@ -1211,6 +1241,114 @@ function effacerErreur(champ) {
   bloc.classList.remove("invalide");
   champ.removeAttribute("aria-invalid");
 }
+
+/* ---------- Saisies numériques : règles partagées (REGLES_SAISIE, contrôle ㊻) ----------
+   Tout champ numérique porte data-regle. Un écouteur unique, en phase de capture, contrôle
+   chaque frappe AVANT les écouteurs de l'écran : une valeur refusée (lettres, négatif, trop
+   de décimales, hors bornes) n'atteint jamais le modèle, un message dit pourquoi, et la
+   dernière valeur valide est remise en place quand on quitte le champ. Le moteur borne
+   de nouveau tout ce qu'il reçoit (stockage falsifié, sauvegarde, fiche ancienne). */
+
+function regleChamp(entree) {
+  const nom = entree && entree.dataset ? entree.dataset.regle : "";
+  return nom && Object.prototype.hasOwnProperty.call(REGLE, nom) ? REGLE[nom] : null;
+}
+
+function decimalesRegle(regle) {
+  return regle.devise ? Math.min(regle.decimales, decimalesDevise(deviseCompte())) : regle.decimales;
+}
+
+function borneLisible(nombre, regle) {
+  if (regle.devise) return formaterMontant(nombre, deviseCompte());
+  return formaterQuantite(nombre) + (regle.unite ? "\u00A0" + regle.unite : "");
+}
+
+/* Raison du refus, ou "" si la saisie respecte la règle. Vide = valeur par défaut : accepté. */
+function raisonRefus(texte, regle) {
+  const brut = String(texte).replace(/[\s\u00A0\u202F]/g, "");
+  if (brut === "") return "";
+  if (/^[-−]/.test(brut)) return "les nombres négatifs ne sont pas acceptés";
+  if (!/^(\d+([.,]\d*)?|[.,]\d+)$/.test(brut)) return "chiffres et virgule uniquement";
+  const decimales = decimalesRegle(regle);
+  if ((brut.split(/[.,]/)[1] || "").length > decimales) {
+    if (decimales > 0) return decimales + (decimales > 1 ? " décimales" : " décimale") + " au maximum";
+    return regle.devise ? "pas de centimes en " + (DEVISES[deviseCompte()] || DEVISES.XOF).libelle : "nombre entier uniquement";
+  }
+  const nombre = lireNombre(brut);
+  if (!Number.isFinite(nombre) || nombre < regle.min || nombre > regle.max) {
+    return regle.libelle.charAt(0).toLowerCase() + regle.libelle.slice(1) + " va de " + borneLisible(regle.min, regle) + " à " + borneLisible(regle.max, regle);
+  }
+  return "";
+}
+
+/* Zone de message du champ : celle de l'écran si elle existe, sinon créée juste après. */
+function zoneRefus(entree) {
+  const existante = $("err-" + entree.id);
+  if (existante) return existante;
+  const zone = document.createElement("p");
+  zone.className = "champ-erreur erreur-saisie";
+  zone.id = "err-" + entree.id;
+  (entree.closest(".compteur-saisie") || entree).after(zone);
+  const decrit = (entree.getAttribute("aria-describedby") || "").split(" ").filter(Boolean);
+  if (!decrit.includes(zone.id)) entree.setAttribute("aria-describedby", decrit.concat(zone.id).join(" "));
+  return zone;
+}
+
+function signalerRefus(entree, texte) {
+  zoneRefus(entree).textContent = texte;
+  entree.setAttribute("aria-invalid", "true");
+  entree.dataset.refus = "1";
+  const bloc = entree.closest(".champ");
+  if (bloc) bloc.classList.add("invalide");
+}
+
+function retirerRefus(entree) {
+  if (!entree.dataset.refus) return;
+  delete entree.dataset.refus;
+  const zone = $("err-" + entree.id);
+  if (zone) zone.textContent = "";
+  entree.removeAttribute("aria-invalid");
+  const bloc = entree.closest(".champ");
+  if (bloc) bloc.classList.remove("invalide");
+}
+
+/* Lecture groupée d'un écran : un champ dont la saisie a été refusée compte pour sa dernière valeur valide. */
+function valeurSaisie(entree) {
+  if (entree.dataset.refus && regleChamp(entree)) return (entree.dataset.derniereValide || "").trim();
+  return entree.value.trim();
+}
+
+function surFocusNumerique(evenement) {
+  const entree = evenement.target;
+  const regle = regleChamp(entree);
+  if (regle && !raisonRefus(entree.value, regle)) entree.dataset.derniereValide = entree.value;
+}
+
+function surSaisieNumerique(evenement) {
+  const entree = evenement.target;
+  const regle = regleChamp(entree);
+  if (!regle || entree.tagName !== "INPUT") return;
+  const raison = raisonRefus(entree.value, regle);
+  if (!raison) {
+    entree.dataset.derniereValide = entree.value;
+    if (surSaisieNumerique.restauration !== entree) retirerRefus(entree);
+    return;
+  }
+  evenement.stopImmediatePropagation();
+  const debut = "Saisie refusée : " + raison + ".";
+  if (evenement.type !== "change" || entree.dataset.derniereValide === undefined) {
+    signalerRefus(entree, debut);
+    return;
+  }
+  /* En quittant le champ : la dernière valeur valide revient, le message reste affiché. */
+  signalerRefus(entree, debut + (entree.dataset.derniereValide === "" ? " Le champ est vidé." : " La valeur précédente est rétablie."));
+  entree.value = entree.dataset.derniereValide;
+  trembler(entree.closest(".champ") || entree);
+  surSaisieNumerique.restauration = entree;
+  entree.dispatchEvent(new Event("change", { bubbles: true }));
+  surSaisieNumerique.restauration = null;
+}
+surSaisieNumerique.restauration = null;
 
 function nettoyerTexte(valeur) {
   return String(valeur || "").replace(/[\u0000-\u001F\u007F]/g, "").replace(/\s+/g, " ").trim();
@@ -1418,6 +1556,148 @@ async function surConnexion(evenement) {
   }
 }
 
+/* ---------- Verrouillage automatique (15 min sans activité) ----------
+   La dernière activité (toucher, clavier, saisie) est gardée en mémoire et recopiée dans
+   la session au plus toutes les 30 s et au passage en arrière-plan : une application tuée
+   puis relancée après 15 min s'ouvre verrouillée. Une session sans date d'activité lisible,
+   ou datée dans le futur, est traitée comme expirée. Tant que l'application est verrouillée,
+   montrer() ne mène qu'à l'écran de verrouillage ; le travail en cours reste en mémoire et
+   les brouillons sont enregistrés. */
+
+const activite = { derniere: 0, ecrite: 0, ecranAvant: null, minuterie: 0 };
+
+function inactiviteDepassee(maintenant) {
+  return maintenant - activite.derniere >= VERROUILLAGE.inactiviteMs;
+}
+
+/* Au démarrage : reprend la date d'activité enregistrée, verrouille si elle est trop ancienne. */
+function reprendreActivite(session) {
+  const maintenant = Date.now();
+  const lue = Number.isFinite(session.derniereActivite) ? session.derniereActivite : 0;
+  activite.derniere = lue > maintenant + VERROUILLAGE.avanceToleree ? 0 : Math.min(lue, maintenant);
+  activite.ecrite = activite.derniere;
+  if (inactiviteDepassee(maintenant)) {
+    etat.verrouille = true;
+    activite.ecranAvant = ECRAN_DEPART;
+  }
+}
+
+async function ecrireActivite(quand) {
+  const session = await lireSession();
+  if (!session || !etat.compte || session.compteId !== etat.compte.id) return;
+  activite.ecrite = Date.now();
+  await ecrireValeur(CLES_STOCKAGE.session, JSON.stringify({ compteId: session.compteId, ouverte: session.ouverte, derniereActivite: quand }));
+}
+
+function surActiviteUtilisateur() {
+  if (!etat.compte || etat.verrouille) return;
+  const maintenant = Date.now();
+  /* Un geste après 15 min d'absence verrouille, il ne prolonge pas la session. */
+  if (inactiviteDepassee(maintenant)) {
+    verrouillerApplication();
+    return;
+  }
+  activite.derniere = maintenant;
+  if (maintenant - activite.ecrite >= VERROUILLAGE.ecritureMs) ecrireActivite(maintenant);
+}
+
+function controlerInactivite() {
+  if (etat.compte && !etat.verrouille && inactiviteDepassee(Date.now())) verrouillerApplication();
+}
+
+function surVisibiliteVerrou() {
+  if (document.visibilityState === "visible") controlerInactivite();
+  else if (etat.compte && !etat.verrouille) ecrireActivite(activite.derniere);
+}
+
+function surveillerInactivite() {
+  const options = { capture: true, passive: true };
+  ["pointerdown", "keydown", "input", "wheel"].forEach((type) => document.addEventListener(type, surActiviteUtilisateur, options));
+  document.addEventListener("visibilitychange", surVisibiliteVerrou);
+  const app = plugin("App");
+  if (app) {
+    app.addListener("resume", controlerInactivite);
+    app.addListener("pause", surVisibiliteVerrou);
+  }
+  clearInterval(activite.minuterie);
+  activite.minuterie = setInterval(controlerInactivite, VERROUILLAGE.controleMs);
+}
+
+async function verrouillerApplication() {
+  if (etat.verrouille || !etat.compte) return;
+  etat.verrouille = true;
+  const courant = montrer.ecranCourant;
+  activite.ecranAvant = courant && !estEcranEntree(courant) ? courant : ECRAN_DEPART;
+  fermerModale(false);
+  fermerRecherche();
+  fermerTiroir();
+  if (!$("annulation").hidden) terminerAnnulation();
+  montrer("verrou");
+  if (assistant.minuterie) await enregistrerBrouillon();
+  await ecrireActivite(activite.derniere);
+}
+
+function preparerVerrou() {
+  if (!etat.compte) return;
+  viderCode("ver-code");
+  activerCode("ver-code");
+  effacerErreur($("ver-code"));
+  $("msg-verrou").textContent = "";
+  $("verrou-telephone").textContent = formaterTelephone(etat.compte.telephone, etat.compte.pays);
+  const texte = "Bonjour BRG Électro+, j'ai oublié mon code secret BâtiPlus. Mon numéro : " + formaterTelephone(etat.compte.telephone, etat.compte.pays) + ".";
+  $("lien-code-oublie-verrou").href = "https://wa.me/" + WHATSAPP_BRG.replace(/[^0-9]/g, "") + "?text=" + encodeURIComponent(texte);
+  lireVerrou().then((blocage) => { if (blocage.jusqua > Date.now()) afficherBlocage(blocage.jusqua); });
+}
+
+async function surDeverrouillage(evenement) {
+  evenement.preventDefault();
+  if (!etat.compte || !etat.verrouille) return;
+  $("msg-verrou").textContent = "";
+  effacerErreur($("ver-code"));
+  const blocage = await lireVerrou();
+  if (blocage.jusqua > Date.now()) {
+    afficherBlocage(blocage.jusqua);
+    trembler($("msg-blocage-verrou"));
+    return;
+  }
+  if (!cryptoDisponible()) {
+    $("msg-verrou").textContent = "Cet appareil ne permet pas de vérifier votre code de façon sûre.";
+    return;
+  }
+  const code = codes["ver-code"];
+  if (!/^\d{4,6}$/.test(code)) {
+    afficherErreur("ver-code", "Saisissez votre code de 4 à 6 chiffres.");
+    return;
+  }
+  const bouton = $("bouton-deverrouiller");
+  bouton.setAttribute("aria-busy", "true");
+  try {
+    const compte = await verifierIdentifiants(etat.compte.telephone, code);
+    viderCode("ver-code");
+    if (compte && etat.compte && compte.id === etat.compte.id) {
+      await reinitialiserVerrou();
+      etat.verrouille = false;
+      activite.derniere = Date.now();
+      await ecrireActivite(activite.derniere);
+      vibrer();
+      montrer(activite.ecranAvant || ECRAN_DEPART);
+      activite.ecranAvant = null;
+      return;
+    }
+    const nouveau = await enregistrerEchec();
+    if (nouveau.jusqua > Date.now()) {
+      $("msg-verrou").textContent = "Code incorrect.";
+      afficherBlocage(nouveau.jusqua);
+    } else {
+      const reste = BLOCAGE.essaisLibres - nouveau.echecs;
+      $("msg-verrou").textContent = "Code incorrect. Encore " + reste + " essai" + (reste > 1 ? "s" : "") + " avant un blocage temporaire.";
+    }
+    trembler($("ver-code").closest(".champ"));
+  } finally {
+    bouton.removeAttribute("aria-busy");
+  }
+}
+
 /* ---------- Identité affichée partout (en-tête, tiroir, accueil, profil) ---------- */
 
 function prenom(nom) {
@@ -1460,7 +1740,8 @@ function afficherImage(img, donnees) {
 
 function afficherCompte(compte) {
   const nom = compte ? compte.nom : "";
-  document.querySelectorAll("[data-nom]").forEach((el) => { el.textContent = nom; });
+  /* Nom composé (« Ouédraogo-Kaboré ») jamais coupé au trait d'union, même dans la carte étroite du verrou. */
+  document.querySelectorAll("[data-nom]").forEach((el) => { ecrireInsecable(el, nom); });
   document.querySelectorAll("[data-initiales]").forEach((el) => { el.textContent = compte ? initiales(nom) : ""; });
   document.querySelectorAll("[data-photo]").forEach((img) => afficherImage(img, compte ? compte.photo : ""));
   document.querySelectorAll("[data-formule]").forEach((el) => { el.textContent = libelleFormule(etat.abonnement); });
@@ -2396,11 +2677,15 @@ async function surAdmin(evenement) {
    (src/scripts/valider-moteur.mjs). Toute entrée est bornée : le résultat ne contient
    jamais NaN, Infinity ni valeur négative, même avec des données falsifiées. */
 
+/* Texte saisi → nombre. Refusés (NaN) : signe, exposant, « Infinity », lettres et plus de
+   REGLES_SAISIE.decimalesMax décimales. Espaces de milliers et virgule française acceptés ;
+   « 12, » (saisie en cours) vaut 12. Un nombre déjà typé passe : l'appelant le borne. */
 function lireNombre(valeur) {
   if (typeof valeur === "number") return valeur;
   if (typeof valeur !== "string") return NaN;
   const texte = valeur.replace(/[\s\u00A0\u202F]/g, "").replace(",", ".");
-  if (!/^-?\d+(\.\d+)?$/.test(texte) && !/^-?\.\d+$/.test(texte)) return NaN;
+  if (!/^(\d+(\.\d*)?|\.\d+)$/.test(texte)) return NaN;
+  if ((texte.split(".")[1] || "").length > REGLES_SAISIE.decimalesMax) return NaN;
   return Number(texte);
 }
 
@@ -2634,7 +2919,8 @@ function calculerMainOeuvre(saisie, quantitesAuto, codeDevise, habituels) {
   const dec = decimalesDevise(codeDevise);
   const lignes = Object.keys(MAIN_OEUVRE_POINTS).map((id) => {
     const reglage = points[id] && typeof points[id] === "object" ? points[id] : {};
-    const auto = quantitesAuto[id] || 0;
+    /* Quantité calculée elle aussi plafonnée à la règle « quantité » : le devis reprend le même nombre. */
+    const auto = Math.min(quantitesAuto[id] || 0, BORNES_CHANTIER.quantiteMax);
     const quantite = saisieManuelle(reglage.quantite) ? entierBorne(reglage.quantite, 0, BORNES_CHANTIER.quantiteMax, auto) : auto;
     const prix = saisieManuelle(reglage.prix) ? montantBorne(reglage.prix, dec, 0) : prixMainOeuvreHabituel(id, codeDevise, habituels);
     return { id, libelle: MAIN_OEUVRE_POINTS[id].libelle, auto, quantite, prix, montant: arrondi(quantite * prix, dec) };
@@ -2792,9 +3078,10 @@ function chiffrerChantier(chantier, catalogue, codeDevise, habituels) {
     const prixCatalogue = article ? montantBorne(article.prix, dec, 0) : 0;
     const designation = article ? texteBorne(article.designation, BORNES_CATALOGUE.designationMax) || ligne.designation : ligne.designation;
     const fournisseur = article ? texteBorne(article.fournisseur, BORNES_CATALOGUE.fournisseurMax) : "";
-    const quantite = saisieManuelle(reglage.quantite) ? entierBorne(reglage.quantite, 0, BORNES_CHANTIER.quantiteMax, ligne.quantite) : ligne.quantite;
+    const auto = Math.min(ligne.quantite, BORNES_CHANTIER.quantiteMax);
+    const quantite = saisieManuelle(reglage.quantite) ? entierBorne(reglage.quantite, 0, BORNES_CHANTIER.quantiteMax, auto) : auto;
     const prix = saisieManuelle(reglage.prix) ? montantBorne(reglage.prix, dec, prixCatalogue) : prixCatalogue;
-    return { ...ligne, designation, fournisseur, auto: ligne.quantite, quantite, prixCatalogue, prix, montant: arrondi(quantite * prix, dec), aCompleter: prix === 0 };
+    return { ...ligne, designation, fournisseur, auto, quantite, prixCatalogue, prix, montant: arrondi(quantite * prix, dec), aCompleter: prix === 0 };
   });
   const totalMateriel = arrondi(materiel.reduce((s, l) => s + l.montant, 0), dec);
   return {
@@ -4055,7 +4342,7 @@ function construireAssistant() {
     detail.textContent = formaterSection(appareil.section) + " mm² · " + appareil.calibre + " A";
     texte.appendChild(detail);
     label.append(coche, texte);
-    li.append(label, creerCompteurSaisie("appareil-nombre-" + id, appareil.libelle, BORNES_CHANTIER.appareilsMax, { appareilNombre: id }));
+    li.append(label, creerCompteurSaisie("appareil-nombre-" + id, appareil.libelle, BORNES_CHANTIER.appareilsMax, { appareilNombre: id, regle: "appareils" }));
     return li;
   }));
   $("liste-mo-points").replaceChildren(...Object.entries(MAIN_OEUVRE_POINTS).map(([id, ligne]) => {
@@ -4079,8 +4366,8 @@ function construireAssistant() {
     montant.append(etiquette, valeur);
     li.append(
       titre,
-      creerChamp("mo-qte-" + id, "Quantité", creerEntreeTexte("mo-qte-" + id, "numeric", 4, { moQuantite: id })),
-      creerChamp("mo-prix-" + id, "Prix unitaire", creerEntreeTexte("mo-prix-" + id, "numeric", 12, { moPrix: id })),
+      creerChamp("mo-qte-" + id, "Quantité", creerEntreeTexte("mo-qte-" + id, "numeric", 6, { moQuantite: id, regle: "quantite" })),
+      creerChamp("mo-prix-" + id, "Prix unitaire", creerEntreeTexte("mo-prix-" + id, "numeric", 12, { moPrix: id, regle: "prix" })),
       montant
     );
     return li;
@@ -4226,7 +4513,7 @@ function lireEtape(numero, strict) {
     }
   } else if (numero === 3) {
     Object.keys(APPAREILS).forEach((id) => {
-      const nombre = $("appareil-coche-" + id).checked ? entierBorne($("appareil-nombre-" + id).value, 1, BORNES_CHANTIER.appareilsMax, 1) : 0;
+      const nombre = $("appareil-coche-" + id).checked ? entierBorne(valeurSaisie($("appareil-nombre-" + id)), 1, BORNES_CHANTIER.appareilsMax, 1) : 0;
       if (nombre > 0) c.appareils[id] = nombre;
       else delete c.appareils[id];
     });
@@ -4320,7 +4607,7 @@ function creerCartePiece(piece, nom, proposition) {
   tete.append(titre, propose);
   const champs = document.createElement("div");
   champs.className = "piece-champs";
-  const surface = creerEntreeTexte("surface-" + piece.id, "decimal", 8, { champPiece: "surface" });
+  const surface = creerEntreeTexte("surface-" + piece.id, "decimal", 8, { champPiece: "surface", regle: "surface" });
   surface.value = formaterDecimal(piece.surface);
   surface.setAttribute("aria-describedby", "err-surface-" + piece.id);
   const champSurface = creerChamp(surface.id, "Surface (m²)", surface);
@@ -4328,8 +4615,8 @@ function creerCartePiece(piece, nom, proposition) {
   erreur.className = "champ-erreur";
   erreur.id = "err-surface-" + piece.id;
   champSurface.appendChild(erreur);
-  const prises = creerCompteurSaisie("prises-" + piece.id, "prises de " + nom, BORNES_CHANTIER.prisesMax, { champPiece: "prises" });
-  const points = creerCompteurSaisie("points-" + piece.id, "points lumineux de " + nom, BORNES_CHANTIER.pointsMax, { champPiece: "points" });
+  const prises = creerCompteurSaisie("prises-" + piece.id, "prises de " + nom, BORNES_CHANTIER.prisesMax, { champPiece: "prises", regle: "prises" });
+  const points = creerCompteurSaisie("points-" + piece.id, "points lumineux de " + nom, BORNES_CHANTIER.pointsMax, { champPiece: "points", regle: "points" });
   champs.append(champSurface, creerChamp("prises-" + piece.id, "Prises", prises), creerChamp("points-" + piece.id, "Points lumineux", points));
   const actions = document.createElement("div");
   actions.className = "piece-actions";
@@ -4540,8 +4827,8 @@ function lireMainOeuvre() {
   const etude = etudierChantier(assistant.chantier, etat.compte.devise, assistant.habituels);
   Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => {
     const ligne = etude.mainOeuvre.lignes.find((l) => l.id === id);
-    const quantite = quantiteFacultative($("mo-qte-" + id).value.trim(), BORNES_CHANTIER.quantiteMax);
-    const prix = montantFacultatif($("mo-prix-" + id).value.trim());
+    const quantite = quantiteFacultative(valeurSaisie($("mo-qte-" + id)), BORNES_CHANTIER.quantiteMax);
+    const prix = montantFacultatif(valeurSaisie($("mo-prix-" + id)));
     const reglage = {
       quantite: quantite === null || quantite === ligne.auto ? null : quantite,
       prix: prix === null || prix === prixMainOeuvreHabituel(id, etat.compte.devise, assistant.habituels) ? null : prix
@@ -4549,14 +4836,14 @@ function lireMainOeuvre() {
     if (reglage.quantite === null && reglage.prix === null) delete mo.points[id];
     else mo.points[id] = reglage;
   });
-  mo.forfait = montantSaisi($("mo-forfait").value.trim());
-  mo.journees.ouvriers = entierBorne($("mo-ouvriers").value.trim(), 0, BORNES_CHANTIER.ouvriersMax, 0);
-  mo.journees.jours = arrondi(borner($("mo-jours").value.trim(), 0, BORNES_CHANTIER.joursMax, 0), 1);
-  const tarif = montantFacultatif($("mo-tarif").value.trim());
+  mo.forfait = montantSaisi(valeurSaisie($("mo-forfait")));
+  mo.journees.ouvriers = entierBorne(valeurSaisie($("mo-ouvriers")), 0, BORNES_CHANTIER.ouvriersMax, 0);
+  mo.journees.jours = arrondi(borner(valeurSaisie($("mo-jours")), 0, BORNES_CHANTIER.joursMax, 0), 1);
+  const tarif = montantFacultatif(valeurSaisie($("mo-tarif")));
   mo.journees.tarif = tarif === null || tarif === tarifJourneeHabituel(etat.compte.devise, assistant.habituels) ? null : tarif;
   mo.libres = [...$("liste-lignes-libres").children].map((li) => ({
     libelle: texteBorne(li.querySelector("[data-libre=\"libelle\"]").value, 120),
-    montant: montantSaisi(li.querySelector("[data-libre=\"montant\"]").value.trim())
+    montant: montantSaisi(valeurSaisie(li.querySelector("[data-libre=\"montant\"]")))
   }));
 }
 
@@ -4566,7 +4853,7 @@ function creerLigneLibre(ligne, index) {
   const libelle = creerEntreeTexte("libre-libelle-" + index, "text", 120, { libre: "libelle" });
   libelle.value = ligne.libelle;
   libelle.placeholder = "Ex. : Saignées dans le béton";
-  const montant = creerEntreeTexte("libre-montant-" + index, "numeric", 12, { libre: "montant" });
+  const montant = creerEntreeTexte("libre-montant-" + index, "numeric", 12, { libre: "montant", regle: "prix" });
   montant.value = ligne.montant ? String(ligne.montant) : "";
   montant.placeholder = "0";
   const supprimer = document.createElement("button");
@@ -5085,9 +5372,9 @@ function creerLigneModifiable(options) {
   aide.className = "aide";
   ecrireInsecable(aide, options.aide);
   titre.append(libelle, aide);
-  const quantite = creerEntreeTexte(options.id + "-qte", "numeric", 4, options.donneesQuantite);
+  const quantite = creerEntreeTexte(options.id + "-qte", "numeric", 6, { ...options.donneesQuantite, regle: "quantite" });
   quantite.value = String(options.quantite);
-  const prix = creerEntreeTexte(options.id + "-prix", "decimal", 12, options.donneesPrix);
+  const prix = creerEntreeTexte(options.id + "-prix", "decimal", 12, { ...options.donneesPrix, regle: "prix" });
   prix.value = formaterDecimal(options.prix);
   const montant = document.createElement("div");
   montant.className = "ligne-mo-montant";
@@ -5169,7 +5456,7 @@ function afficherLibresResultat() {
     li.className = "ligne-libre";
     const libelle = creerEntreeTexte("res-libre-libelle-" + index, "text", 120, { resLibre: "libelle", index: String(index) });
     libelle.value = ligne.libelle;
-    const montant = creerEntreeTexte("res-libre-montant-" + index, "decimal", 12, { resLibre: "montant", index: String(index) });
+    const montant = creerEntreeTexte("res-libre-montant-" + index, "decimal", 12, { resLibre: "montant", index: String(index), regle: "prix" });
     montant.value = ligne.montant ? formaterDecimal(ligne.montant) : "";
     const supprimer = document.createElement("button");
     supprimer.type = "button";
@@ -5252,6 +5539,7 @@ function actualiserResultat() {
   $("tot-materiel").textContent = montantTexte(total.materiel);
   $("tot-mo").textContent = montantTexte(total.mainOeuvre);
   $("tot-sous-total").textContent = montantTexte(total.sousTotal);
+  $("res-remise").dataset.regle = total.typeRemise === "pourcent" ? "pourcentage" : "prix";
   $("res-remise-libelle").textContent = total.typeRemise === "pourcent" ? "Remise (%)" : "Remise (" + (DEVISES[deviseCompte()] || DEVISES.XOF).libelle + ")";
   $("tot-remise").textContent = (total.remise ? "−\u00A0" : "") + montantTexte(total.remise);
   $("bloc-taux-tva").hidden = !total.tvaActive;
@@ -5603,7 +5891,7 @@ function construireMesPrix() {
     .map(([id, libelle]) => {
       const li = document.createElement("li");
       li.className = "ligne-prix-mo";
-      const entree = creerEntreeTexte("prix-mo-" + id, "decimal", 12, { prixMo: id });
+      const entree = creerEntreeTexte("prix-mo-" + id, "decimal", 12, { prixMo: id, regle: "prix" });
       li.appendChild(creerChamp(entree.id, libelle, entree));
       return li;
     }));
@@ -5647,7 +5935,7 @@ function creerLigneFournisseur(article, fournisseur, index) {
   const nom = creerEntreeTexte("art-" + cle + "-f" + index + "-nom", "text", BORNES_CATALOGUE.fournisseurMax, { article: article.ref, fournisseurChamp: "nom", index: String(index) });
   nom.value = fournisseur.nom;
   nom.placeholder = "Ex. : Quincaillerie du marché";
-  const prix = creerEntreeTexte("art-" + cle + "-f" + index + "-prix", "decimal", 12, { article: article.ref, fournisseurChamp: "prix", index: String(index) });
+  const prix = creerEntreeTexte("art-" + cle + "-f" + index + "-prix", "decimal", 12, { article: article.ref, fournisseurChamp: "prix", index: String(index), regle: "prix" });
   prix.value = fournisseur.prix ? formaterDecimal(fournisseur.prix) : "";
   prix.placeholder = "0";
   const choix = document.createElement("label");
@@ -6094,9 +6382,9 @@ function creerLigneMaterielDevis(ligne) {
   infos.className = "aide ligne-devis-infos";
   ecrireInsecable(infos, texteInfosLigne(ligne));
   infos.hidden = !infos.textContent;
-  const quantite = creerEntreeTexte("devis-" + ligne.id + "-qte", "numeric", 6, { ligne: ligne.id, ligneChamp: "quantite" });
+  const quantite = creerEntreeTexte("devis-" + ligne.id + "-qte", "numeric", 6, { ligne: ligne.id, ligneChamp: "quantite", regle: "quantite" });
   quantite.value = String(ligne.quantite);
-  const prix = creerEntreeTexte("devis-" + ligne.id + "-prix", "decimal", 12, { ligne: ligne.id, ligneChamp: "prix" });
+  const prix = creerEntreeTexte("devis-" + ligne.id + "-prix", "decimal", 12, { ligne: ligne.id, ligneChamp: "prix", regle: "prix" });
   prix.value = ligne.prix ? formaterDecimal(ligne.prix) : "";
   prix.placeholder = "0";
   const montant = document.createElement("div");
@@ -6218,7 +6506,7 @@ function afficherLibresDevis() {
     const libelle = creerEntreeTexte("devis-libre-libelle-" + index, "text", 120, { devisLibre: "libelle", index: String(index) });
     libelle.value = ligne.libelle;
     libelle.placeholder = "Ex. : Saignées dans le béton";
-    const montant = creerEntreeTexte("devis-libre-montant-" + index, "decimal", 12, { devisLibre: "montant", index: String(index) });
+    const montant = creerEntreeTexte("devis-libre-montant-" + index, "decimal", 12, { devisLibre: "montant", index: String(index), regle: "prix" });
     montant.value = ligne.montant ? formaterDecimal(ligne.montant) : "";
     montant.placeholder = "0";
     const supprimer = document.createElement("button");
@@ -6262,6 +6550,7 @@ function actualiserDevis() {
   $("devis-tot-materiel").textContent = montantTexte(total.materiel);
   $("devis-tot-mo").textContent = montantTexte(total.mainOeuvre);
   $("devis-tot-sous-total").textContent = montantTexte(total.sousTotal);
+  $("devis-remise").dataset.regle = total.typeRemise === "pourcent" ? "pourcentage" : "prix";
   $("devis-remise-libelle").textContent = total.typeRemise === "pourcent" ? "Remise (%)" : "Remise (" + (DEVISES[deviseCompte()] || DEVISES.XOF).libelle + ")";
   $("devis-tot-remise").textContent = (total.remise ? "−\u00A0" : "") + montantTexte(total.remise);
   $("devis-bloc-taux-tva").hidden = !total.tvaActive;
@@ -7716,6 +8005,12 @@ function masquerSplashNatif() {
 
 function brancherEvenements() {
   document.addEventListener("click", surClicNavigation);
+  /* Capture : la règle de saisie passe AVANT les écouteurs des écrans. */
+  document.addEventListener("focusin", surFocusNumerique, true);
+  document.addEventListener("input", surSaisieNumerique, true);
+  document.addEventListener("change", surSaisieNumerique, true);
+  $("form-verrou").addEventListener("submit", surDeverrouillage);
+  $("bouton-verrou-changer-compte").addEventListener("click", surChangerCompte);
   $("bouton-menu").addEventListener("click", ouvrirTiroir);
   $("bouton-fermer-tiroir").addEventListener("click", fermerTiroir);
   $("voile").addEventListener("click", fermerTiroir);
@@ -7897,10 +8192,12 @@ function preparerInterface() {
   remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);
   creerClavier("clavier-inscription");
   creerClavier("clavier-connexion");
+  creerClavier("clavier-verrou");
   creerClavier("clavier-profil");
   Object.keys(codes).forEach(afficherCode);
   activerCode("ins-code");
   activerCode("cnx-code");
+  activerCode("ver-code");
   activerCode("pro-ancien");
   construirePoints();
   allerDiapo(0);
@@ -7925,18 +8222,53 @@ async function choisirPremierEcran() {
     etat.compte = compte;
     etat.abonnement = abonnementCourant();
     afficherCompte(compte);
+    reprendreActivite(session);
   }
   if (!presentationVue) return "presentation";
   return compte ? ECRAN_DEPART : "connexion";
 }
 
+/* Anti-encadrement. La directive CSP frame-ancestors est ignorée dans une balise meta :
+   elle sera envoyée en en-tête HTTP avec l'API et le site (étape 14, partie 3). D'ici là,
+   une page chargée dans le cadre d'un autre site n'affiche jamais l'application
+   (aucun clic piégé possible) mais propose de l'ouvrir dans sa propre fenêtre. */
+function pageEncadree() {
+  try {
+    return window.top !== window.self;
+  } catch (erreur) {
+    return true;
+  }
+}
+
+function afficherHorsCadre() {
+  const bloc = document.createElement("main");
+  bloc.className = "hors-cadre";
+  const titre = document.createElement("h1");
+  titre.textContent = "BâtiPlus s'ouvre dans sa propre fenêtre";
+  const texte = document.createElement("p");
+  texte.textContent = "Pour votre sécurité, l'application ne s'affiche pas à l'intérieur d'une autre page.";
+  const lien = document.createElement("a");
+  lien.className = "bouton bouton-principal";
+  lien.href = location.origin + location.pathname;
+  lien.target = "_blank";
+  lien.rel = "noopener noreferrer";
+  lien.textContent = "Ouvrir BâtiPlus";
+  bloc.append(titre, texte, lien);
+  document.body.replaceChildren(bloc);
+}
+
 async function demarrer() {
+  if (pageEncadree()) {
+    afficherHorsCadre();
+    return;
+  }
   masquerSplashNatif();
   preparerInterface();
   montrer("demarrage");
   initialiserToile();
   const [, premierEcran] = await Promise.all([attendre(DUREE_DEMARRAGE), choisirPremierEcran()]);
   montrer(premierEcran);
+  surveillerInactivite();
   await surveillerReseau();
   journal("démarrage terminé");
 }

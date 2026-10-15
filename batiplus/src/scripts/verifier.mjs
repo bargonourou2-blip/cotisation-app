@@ -17,6 +17,7 @@ import vm from "node:vm";
 import {
   ATTENDUS, CHANTIERS_TYPES, aleatoire, chantierAleatoire, chargerMoteur, egalAuCentime, invariants, moteurLivre, nombresInvalides, resumer, sectionMoteur
 } from "./chantiers-types.mjs";
+import { codeGele, lireRegles } from "./regles.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const WWW = join(RACINE, "www");
@@ -29,6 +30,9 @@ const etape6 = { fait: false, svg: [], contenu: [], total: [] };
 const etape7 = { fait: false, catalogue: [], deux: [], recalcul: [] };
 const etape9 = { fait: false, supprimer: [], recherche: [], fournisseurs: [], clients: [], stats: [] };
 const etape8 = { fait: false, a4: [], filigrane: [], whatsapp: [], octetsPdf: 0 };
+/* Constats de l'étape 10 (sécurité du front) relevés dans jsdom. */
+const etape10 = { fait: false, verrou: [], saisie: [], dom: [], codes: [], champsVus: 0, pagesVues: 0, cas: [] };
+const REGLES = lireRegles();
 
 /* Lecture d'un PDF produit par l'application : en-tête, table xref (chaque position
    pointe bien sur son objet), nombre de pages déclaré = pages présentes, fin %%EOF. */
@@ -160,7 +164,10 @@ async function controlesExecution() {
   process.on("uncaughtException", surRejet);
   const fenetres = [];
 
-  function ouvrirPage(stockage, capacitor) {
+  /* options.activiteFigee : garder la date d'activité de la session telle quelle (test du verrouillage) ;
+     sinon une session reprise vient d'être utilisée. options.decalage : objet { ms } ajouté à Date.now(). */
+  function ouvrirPage(stockage, capacitor, options) {
+    const reglages = options || {};
     const consoleVirtuelle = new VirtualConsole();
     consoleVirtuelle.on("error", (m) => erreurs.push(String(m)));
     consoleVirtuelle.on("warn", (m) => erreurs.push("warn: " + String(m)));
@@ -188,7 +195,15 @@ async function controlesExecution() {
         if (!window.Element.prototype.scrollIntoView) window.Element.prototype.scrollIntoView = function () {};
         if (capacitor) window.Capacitor = capacitor;
         window.localStorage.clear();
-        for (const [cle, valeur] of Object.entries(stockage || {})) window.localStorage.setItem(cle, valeur);
+        for (const [cle, valeur] of Object.entries(stockage || {})) {
+          let ecrite = valeur;
+          if (cle === "bp_v1_session" && !reglages.activiteFigee && valeur) { const sess = JSON.parse(valeur); sess.derniereActivite = Date.now(); ecrite = JSON.stringify(sess); }
+          window.localStorage.setItem(cle, ecrite);
+        }
+        if (reglages.decalage) {
+          const maintenantReel = window.Date.now.bind(window.Date);
+          window.Date.now = () => maintenantReel() + reglages.decalage.ms;
+        }
       }
     });
     fenetres.push(dom.window);
@@ -202,7 +217,9 @@ async function controlesExecution() {
       taper(id, touches) {
         for (const key of touches) $(id).dispatchEvent(new w.KeyboardEvent("keydown", { key, bubbles: true }));
       },
+      /* Comme au doigt : le champ prend le focus (focusin), puis la valeur change (input). */
       remplir(id, valeur) {
+        $(id).dispatchEvent(new w.FocusEvent("focusin", { bubbles: true }));
         $(id).value = valeur;
         $(id).dispatchEvent(new w.Event("input", { bubbles: true }));
       },
@@ -216,6 +233,40 @@ async function controlesExecution() {
       },
       stockage: () => ({ ...w.localStorage })
     };
+  }
+
+  /* ㊸ ㊹ ㊻ sur la page telle qu'elle est rendue (données piégées comprises) : aucun attribut on*,
+     une seule balise <script>, aucun cadre, liens et images sur des schémas sûrs ; chaque champ
+     numérique porte une règle connue, chaque champ texte une longueur maximale bornée. */
+  function inspecterPage(page, ou) {
+    const d = page.doc;
+    etape10.pagesVues += 1;
+    for (const el of d.querySelectorAll("*")) {
+      for (const attr of el.attributes) if (/^on/i.test(attr.name)) etape10.dom.push(ou + " : attribut " + attr.name + " sur <" + el.tagName.toLowerCase() + ">");
+    }
+    if (d.querySelectorAll("script").length !== 1) etape10.dom.push(ou + " : " + d.querySelectorAll("script").length + " balises <script>");
+    if (d.querySelector("iframe, frame, object, embed, base, meta[http-equiv='refresh']")) etape10.dom.push(ou + " : cadre, objet ou redirection inséré");
+    for (const a of d.querySelectorAll("a[href]")) {
+      const href = a.getAttribute("href");
+      if (!/^(https:\/\/[^\s]+|tel:\+?\d+|blob:https:\/\/[^\s]+|#[\w-]*)$/.test(href)) etape10.dom.push(ou + " : lien « " + href.slice(0, 40) + " »");
+      if (a.target === "_blank" && a.rel !== "noopener noreferrer") etape10.dom.push(ou + " : lien sortant sans rel=noopener noreferrer");
+    }
+    for (const img of d.querySelectorAll("img[src]")) {
+      const src = img.getAttribute("src");
+      if (!/^(images\/[\w./-]+\.webp|data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/]+=*|blob:https:\/\/\S+)$/.test(src)) etape10.dom.push(ou + " : image « " + src.slice(0, 40) + " »");
+    }
+    for (const champ of d.querySelectorAll("input")) {
+      const mode = champ.getAttribute("inputmode");
+      if (mode === "decimal" || mode === "numeric") {
+        etape10.champsVus += 1;
+        if (!champ.dataset.regle || !Object.prototype.hasOwnProperty.call(REGLES.nombres, champ.dataset.regle)) etape10.saisie.push(ou + " : " + champ.id + " sans règle de saisie");
+      } else if (["text", "tel", "search", "password"].includes(champ.type) && !(champ.maxLength > 0 && champ.maxLength <= REGLES.textes.court.max)) {
+        etape10.saisie.push(ou + " : " + champ.id + " maxlength " + champ.maxLength);
+      }
+    }
+    for (const zone of d.querySelectorAll("textarea")) {
+      if (!(zone.maxLength > 0 && zone.maxLength <= REGLES.textes.long.max)) etape10.saisie.push(ou + " : " + zone.id + " maxlength " + zone.maxLength);
+    }
   }
 
   try {
@@ -484,7 +535,7 @@ async function controlesExecution() {
     if ([...a.doc.querySelectorAll("[data-initiales]")].some((el) => el.textContent !== "AT")) profil.push("initiales : " + a.doc.querySelector("[data-initiales]").textContent);
     if (apresProfil.empreinte !== compte.empreinte) profil.push("le profil a modifié l'empreinte du code");
     a.remplir("pro-conditions", "Acompte de 50 % à la commande.\n\n\n\n<b>Solde</b> à la réception.");
-    if (!/\d+ \/ 1000/.test(a.texte("compteur-conditions").replace(/\s/g, " "))) profil.push("compteur des conditions : " + a.texte("compteur-conditions"));
+    if (!/\d+ \/ 2000/.test(a.texte("compteur-conditions").replace(/\s/g, " "))) profil.push("compteur des conditions : " + a.texte("compteur-conditions"));
     await a.soumettre("carte-conditions", 200);
     const conditions = JSON.parse(a.stockage()[K.comptes])[0].conditions;
     if (conditions !== "Acompte de 50 % à la commande.\n\n<b>Solde</b> à la réception.") profil.push("conditions : " + JSON.stringify(conditions));
@@ -502,7 +553,7 @@ async function controlesExecution() {
     if (!a.texte("msg-code").startsWith("Code secret changé") || apresCode.empreinte === compte.empreinte || apresCode.sel === compte.sel) profil.push("code non changé : " + a.texte("msg-code") + a.texte("err-pro-ancien") + a.texte("err-pro-nouveau"));
     if (JSON.stringify(a.stockage()).includes("369247")) profil.push("nouveau code en clair");
     controle("P", "profil : infos, conditions, code secret, statistiques", profil.length === 0,
-      profil.join(" ; ") || "nom vide refusé, pays/devise détectés (CI), nom et initiales propagés, conditions nettoyées (texte brut, 1000 max), ancien code faux refusé, nouveau code dérivé avec un nouveau sel, jamais en clair");
+      profil.join(" ; ") || "nom vide refusé, pays/devise détectés (CI), nom et initiales propagés, conditions nettoyées (texte brut, 2000 max), ancien code faux refusé, nouveau code dérivé avec un nouveau sel, jamais en clair");
 
     /* Export et import de sauvegarde */
     const sauvegarde = [];
@@ -536,6 +587,15 @@ async function controlesExecution() {
     const refusImport = [
       ["formule à la racine", JSON.stringify({ ...valide, formule: "vie" })],
       ["abonnement dans le profil", JSON.stringify({ ...valide, profil: { ...valide.profil, abonnement: { formule: "vie" } } })],
+      /* Étape 10 (H.4 n° 9) : sauvegarde retouchée à la main pour s'offrir le Pro ou changer d'identité. */
+      ["abonnement à la racine", JSON.stringify({ ...valide, abonnement: { formule: "vie", fin: "2099-12-31" } })],
+      ["fin d'abonnement", JSON.stringify({ ...valide, fin: "2099-12-31" })],
+      ["compteur de devis", JSON.stringify({ ...valide, devisUtilises: 0 })],
+      ["formule dans le profil", JSON.stringify({ ...valide, profil: { ...valide.profil, formule: "annuel" } })],
+      ["téléphone dans le profil", JSON.stringify({ ...valide, profil: { ...valide.profil, telephone: "+22670000000" } })],
+      ["empreinte du code", JSON.stringify({ ...valide, profil: { ...valide.profil, empreinte: "AAAA", sel: "AAAA" } })],
+      ["version 2 inventée", JSON.stringify({ ...valide, version: 2 })],
+      ["conditions de 2 001 caractères", JSON.stringify({ ...valide, profil: { ...valide.profil, conditions: "x".repeat(2001) } })],
       ["prototype", "{\"format\":\"batiplus-sauvegarde\",\"version\":1,\"exporteLe\":\"2026-01-01\",\"profil\":{\"nom\":\"A\",\"ville\":\"B\",\"pays\":\"BF\",\"devise\":\"XOF\",\"__proto__\":{\"x\":1}}}"],
       ["JSON invalide", "{pas du json"],
       ["autre format", JSON.stringify({ ...valide, format: "autre" })],
@@ -551,7 +611,7 @@ async function controlesExecution() {
     if (JSON.parse(a.stockage()[K.comptes])[0].nom !== "Issa Ouédraogo") sauvegarde.push("un import refusé a modifié le compte");
     if ([...a.doc.querySelectorAll("[data-formule]")].some((el) => el.textContent !== "Gratuit")) sauvegarde.push("formule modifiée par un import");
     controle("S⑥", "sauvegarde : export sans secret, import validé champ par champ", sauvegarde.length === 0,
-      sauvegarde.join(" ; ") || "export JSON (profil seul, ni code ni téléphone ni abonnement) ; import valide confirmé ; " + refusImport.length + " fichiers refusés (formule, abonnement, __proto__, JSON invalide, format, pays, SVG, > 2 Mo)");
+      sauvegarde.join(" ; ") || "export JSON (profil seul, ni code ni téléphone ni abonnement) ; import valide confirmé ; " + refusImport.length + " fichiers refusés (formule, abonnement à la racine et dans le profil, fin, devisUtilises, téléphone, empreinte, version inventée, __proto__, JSON invalide, format, pays, SVG, conditions > 2 000, > 2 Mo) ; formule toujours « Gratuit »");
 
     /* Accès admin caché : appui long 3 s, code vérifié par l'API uniquement */
     const admin = [];
@@ -687,14 +747,19 @@ async function controlesExecution() {
       if (nb(c2.texte("total-mo")) !== fcfa(53500)) etape5.cas.push("main-d'œuvre studio : « " + c2.texte("total-mo") + " » au lieu de 53 500 FCFA");
 
       /* ㉘ Saisies piégées dans la main-d'œuvre : jamais de NaN, d'Infinity ni de négatif. */
-      c2.remplir("mo-forfait", "-5000");
-      c2.remplir("mo-jours", "Infinity");
-      c2.remplir("mo-ouvriers", "abc");
-      c2.remplir("mo-qte-prise", "1e400");
-      c2.remplir("mo-prix-point", "-2500");
+      /* Étape 10 (㊻) : chaque saisie piégée est refusée à la frappe, avec un message, et n'atteint pas le modèle. */
+      const pieges5 = [["mo-forfait", "-5000"], ["mo-jours", "Infinity"], ["mo-ouvriers", "abc"], ["mo-qte-prise", "1e400"], ["mo-prix-point", "-2500"], ["mo-jours", "2,25"], ["mo-ouvriers", "51"]];
+      for (const [id, valeur] of pieges5) {
+        c2.remplir(id, valeur);
+        if (c2.$(id).getAttribute("aria-invalid") !== "true" || !c2.texte("err-" + id).startsWith("Saisie refusée")) etape5.nombres.push("« " + valeur + " » dans " + id + " : pas de refus affiché (« " + c2.texte("err-" + id) + " »)");
+        /* En quittant le champ, la dernière valeur valide revient. */
+        c2.$(id).dispatchEvent(new c2.w.Event("change", { bubbles: true }));
+        if (c2.$(id).value === valeur || !/rétablie|vidé/.test(c2.texte("err-" + id))) etape5.nombres.push("« " + valeur + " » dans " + id + " : resté affiché en quittant le champ");
+      }
       nombresEcran(c2, "étape 5 après saisies piégées");
-      if (nb(c2.texte("total-mo")) !== fcfa(53500 - 3 * 2500)) etape5.nombres.push("total après pièges : « " + c2.texte("total-mo") + " »");
+      if (nb(c2.texte("total-mo")) !== fcfa(53500)) etape5.nombres.push("total après pièges refusés : « " + c2.texte("total-mo") + " » au lieu de 53 500 FCFA");
       c2.remplir("mo-prix-point", "2500");
+      if (c2.$("mo-prix-point").hasAttribute("aria-invalid") || c2.texte("err-mo-prix-point")) etape5.nombres.push("refus resté affiché après une saisie valide");
       c2.remplir("mo-forfait", "20000");
       if (nb(c2.texte("total-mo")) !== fcfa(73500)) etape5.cas.push("forfait non ajouté : « " + c2.texte("total-mo") + " »");
       c2.$("bouton-ajouter-ligne").click();
@@ -702,6 +767,7 @@ async function controlesExecution() {
       c2.remplir("libre-montant-0", "5000");
       if (nb(c2.texte("total-mo")) !== fcfa(78500)) etape5.cas.push("ligne libre non ajoutée : « " + c2.texte("total-mo") + " »");
 
+      inspecterPage(c2, "assistant chantier");
       await suivant(c2, 500);
       let enregistres = [];
       try { enregistres = JSON.parse(c2.stockage()[KC.chantiers] || "[]"); } catch { enregistres = []; }
@@ -853,8 +919,11 @@ async function controlesExecution() {
         ligneMat("cable-1.5", "qte", "120");
         comparer("120 m de câble 1,5 mm²");
         ligneMat("prise", "prix", "-5");
-        ch.materiel.prise.prix = 0;
-        comparer("prix négatif");
+        ch.materiel.prise.prix = 2000;
+        comparer("prix négatif refusé");
+        if (r1.$("mat-prise-prix").value !== "2000" || !r1.texte("err-mat-prise-prix").includes("La valeur précédente est rétablie")) etape6.total.push("prix négatif : valeur précédente non rétablie (« " + r1.$("mat-prise-prix").value + " », « " + r1.texte("err-mat-prise-prix") + " »)");
+        ligneMat("prise", "prix", "0");
+        comparer("prix à 0");
         const alerte = r1.$("liste-materiel").querySelector(".ligne-modifiable .prix-a-completer:not([hidden])");
         if (!alerte || !nb(alerte.closest("li").textContent).includes("Prise 2P+T 16 A")) etape6.total.push("« Prix à compléter » absent pour un prix à 0");
         ligneMat("prise", "prix", "");
@@ -887,7 +956,7 @@ async function controlesExecution() {
         ch.totaux.remise = 0;
         comparer("remise en montant (remise remise à zéro)");
         if (r1.$("res-remise").value !== "" || !r1.texte("res-remise-libelle").includes("FCFA")) etape6.total.push("passage en montant : champ ou libellé non mis à jour");
-        for (const [valeur, retenu] of [["-5", 0], ["abc", 0], ["1e400", 0], ["Infinity", 0], ["999999999", 1e8]]) {
+        for (const [valeur, retenu] of [["-5", 0], ["abc", 0], ["1e400", 0], ["Infinity", 0], ["999999999", 999999999], ["1000000001", 999999999]]) {
           saisir("res-remise", valeur);
           ch.totaux.remise = retenu;
           comparer("remise « " + valeur + " »");
@@ -896,12 +965,12 @@ async function controlesExecution() {
         saisir("res-remise", "15000");
         ch.totaux.remise = 15000;
         comparer("remise 15 000");
-        for (const [valeur, retenu] of [["abc", 18], ["-3", 0], ["99", 30], ["20", 20]]) {
+        for (const [valeur, retenu] of [["abc", 20], ["-3", 20], ["99", 20], ["30,5", 20], ["25", 25], ["20", 20]]) {
           saisir("res-taux-tva", valeur);
           ch.totaux.tauxTva = retenu;
           comparer("taux de TVA « " + valeur + " »");
         }
-        for (const [valeur, retenu] of [["120", 100], ["abc", 40], ["50", 50]]) {
+        for (const [valeur, retenu] of [["120", 50], ["abc", 50], ["12,345", 50], ["50", 50]]) {
           saisir("res-acompte", valeur);
           ch.totaux.acompte = retenu;
           comparer("acompte « " + valeur + " »");
@@ -918,6 +987,7 @@ async function controlesExecution() {
         if (moteur.chiffrerChantier(stocke, cat, "XOF").total.totalGeneral !== attendu.total.totalGeneral) etape6.total.push("total enregistré ≠ total affiché");
         const totalFinal = montantUI(r1, "tot-general");
         const r2 = ouvrirPage(r1.stockage());
+        inspecterPage(r1, "résultat");
         r1.w.close();
         await pause(1800);
         const ligne2 = r2.doc.querySelector("#accueil-etudes [data-chantier]");
@@ -943,7 +1013,7 @@ async function controlesExecution() {
         const ligne3 = r3.doc.querySelector("#accueil-etudes [data-chantier]");
         if (ligne3) ligne3.click();
         await pause(400);
-        if (r3.actif() !== "ecran-resultat" || r3.doc.querySelector("img[src='x']") || r3.$("res-taux-tva").value !== "30" || r3.$("res-acompte").value !== "40" || r3.$("res-tva").checked || r3.$("mat-prise-qte").value !== "9999") etape6.total.push("chantier falsifié mal nettoyé");
+        if (r3.actif() !== "ecran-resultat" || r3.doc.querySelector("img[src='x']") || r3.$("res-taux-tva").value !== "30" || r3.$("res-acompte").value !== "40" || r3.$("res-tva").checked || r3.$("mat-prise-qte").value !== "100000") etape6.total.push("chantier falsifié mal nettoyé");
         nombresResultat(r3, "chantier falsifié");
         r3.w.close();
         etape6.fait = true;
@@ -1094,7 +1164,7 @@ async function controlesExecution() {
           p7.remplir("devis-" + cable + "-qte", "120");
           ligneM(cable).quantite = 120;
           comparer("120 m de câble, pendant la frappe");
-          for (const [valeur, retenu] of [["-5", 0], ["abc", 0], ["1e400", 0], ["99999999", 999999], ["37", 37]]) {
+          for (const [valeur, retenu] of [["-5", 120], ["abc", 120], ["1e400", 120], ["12,5", 120], ["100001", 120], ["100000", 100000], ["37", 37]]) {
             p7.remplir("devis-" + cable + "-qte", valeur);
             p7.$("devis-" + cable + "-qte").dispatchEvent(new p7.w.Event("change", { bubbles: true }));
             ligneM(cable).quantite = retenu;
@@ -1169,7 +1239,7 @@ async function controlesExecution() {
             miroir.totaux.tva = true;
             comparer("TVA activée");
           }
-          for (const [valeur, retenu] of [["20", 20], ["abc", 18], ["99", 30]]) {
+          for (const [valeur, retenu] of [["20", 20], ["abc", 20], ["99", 20], ["30", 30]]) {
             p7.remplir("devis-taux-tva", valeur);
             miroir.totaux.tauxTva = retenu;
             comparer("TVA « " + valeur + " »");
@@ -1191,6 +1261,7 @@ async function controlesExecution() {
 
           /* Réouverture : tout est retrouvé ; la ligne de l'accueil ouvre le devis. */
           const p8 = ouvrirPage(p7.stockage());
+          inspecterPage(p7, "fiche devis");
           p7.w.close();
           await pause(1800);
           const ligneAccueil = p8.doc.querySelector("#accueil-devis [data-devis]");
@@ -1459,6 +1530,7 @@ async function controlesExecution() {
             if (!bilan.texte.includes("(TOTAL G\\311N\\311RAL)") || !bilan.texte.includes("/GS1 gs") || !bilan.texte.includes("BRG")) etape8.filigrane.push("PDF gratuit : total ou pied en filigrane absent");
             etape8.octetsPdf = octets.length;
           }
+          inspecterPage(g, "feuille A4");
           g.w.close();
           etape8.fait = true;
           etape7.fait = true;
@@ -1727,11 +1799,158 @@ async function controlesExecution() {
         await pause(1200);
         const catalogue = stocke("bp_v1_catalogue");
         const prise = catalogue && catalogue[compte.id] && catalogue[compte.id].articles.find((a) => a.ref === "prise");
-        if (!prise || prise.fournisseurs.map((f) => f.prix).join(",") !== "0,0,900" || prise.choisi !== null) etape9.fournisseurs.push("catalogue enregistré : " + JSON.stringify(prise && prise.fournisseurs));
+        if (!prise || prise.fournisseurs.map((f) => f.prix).join(",") !== "0,1200,900" || prise.choisi !== null) etape9.fournisseurs.push("catalogue enregistré : " + JSON.stringify(prise && prise.fournisseurs));
         if (!nb9(details.querySelector("summary").textContent).includes("900")) etape9.fournisseurs.push("le résumé de l'article n'affiche pas le prix retenu (900) : " + nb9(details.querySelector("summary").textContent));
       }
+      inspecterPage(e, "listes et Mes prix");
       e.w.close();
       etape9.fait = true;
+    }
+
+    /* ---------- Étape 10 : sécurité du front (verrouillage, codes, saisies) ---------- */
+    {
+      const sessionA = JSON.parse(sessionActive);
+      const base10 = { [K.pres]: "1", [K.comptes]: stockageInscrit[K.comptes], [K.session]: sessionActive };
+      const sessionDatee = (ms) => JSON.stringify({ ...sessionA, derniereActivite: ms });
+      const effacer = Array(6).fill("Backspace");
+      const deverrouiller = async (page, code, parClavier) => {
+        if (parClavier) for (const c of code) page.$("clavier-verrou").querySelector("[data-touche='" + c + "']").click();
+        else page.taper("ver-code", [...effacer, ...code]);
+        await page.soumettre("form-verrou", 900);
+      };
+
+      /* A. Relance de l'application : la session n'est reprise que si la dernière activité est récente et vraisemblable. */
+      const relances = [
+        ["activité il y a 16 min", sessionDatee(Date.now() - 16 * 60000), "ecran-verrou"],
+        ["activité il y a 5 min", sessionDatee(Date.now() - 5 * 60000), "ecran-accueil"],
+        ["session sans date d'activité (ancienne version)", JSON.stringify({ compteId: sessionA.compteId, ouverte: sessionA.ouverte }), "ecran-verrou"],
+        ["date d'activité dans le futur (horloge reculée)", sessionDatee(Date.now() + 24 * 3600000), "ecran-verrou"],
+        ["date d'activité non numérique", sessionDatee("demain"), "ecran-verrou"]
+      ];
+      for (const [nom, valeur, attendu] of relances) {
+        const f = ouvrirPage({ ...base10, [K.session]: valeur }, null, { activiteFigee: true });
+        await pause(1800);
+        if (f.actif() !== attendu) etape10.verrou.push("relance, " + nom + " : " + f.actif() + " au lieu de " + attendu);
+        f.w.close();
+      }
+
+      /* B. En cours d'utilisation : 15 min sans geste → verrou ; le bon code rend l'écran et la saisie en cours. */
+      const decalage = { ms: 0 };
+      const v = ouvrirPage(base10, null, { decalage });
+      await pause(1800);
+      v.$("bouton-nouveau-chantier").click();
+      await pause(250);
+      v.remplir("chantier-nom", "Villa du verrou");
+      decalage.ms = 14 * 60000;
+      v.doc.body.dispatchEvent(new v.w.Event("pointerdown", { bubbles: true }));
+      v.doc.dispatchEvent(new v.w.Event("visibilitychange"));
+      await pause(100);
+      if (v.actif() !== "ecran-nouveau-chantier") etape10.verrou.push("verrouillé avant 15 min d'inactivité (" + v.actif() + ")");
+      decalage.ms = 14 * 60000 + 15 * 60000 + 1000;
+      v.doc.dispatchEvent(new v.w.Event("visibilitychange"));
+      await pause(250);
+      if (v.actif() !== "ecran-verrou") etape10.verrou.push("retour dans l'application après 15 min sans activité : pas de verrou (" + v.actif() + ")");
+      if (v.texte("verrou-telephone") !== "+226 70 11 22 33" || (v.$("ecran-verrou").querySelector("[data-nom]") || {}).textContent !== nomPiege) etape10.verrou.push("compte non rappelé sur l'écran verrouillé");
+      if (v.doc.querySelector("img[src='x']")) etape10.verrou.push("XSS : nom piégé interprété sur l'écran verrouillé");
+      if (!JSON.stringify(JSON.parse(v.stockage()["bp_v1_brouillon_chantier"] || "{}")[compte.id] || {}).includes("Villa du verrou")) etape10.verrou.push("saisie en cours non enregistrée au verrouillage");
+      for (const cible of ["accueil", "devis", "profil", "nouveau-chantier"]) {
+        const lien = v.doc.querySelector("[data-ecran='" + cible + "']");
+        if (lien) lien.click();
+        await pause(60);
+        if (v.actif() !== "ecran-verrou") { etape10.verrou.push("verrou contourné par un lien vers « " + cible + " »"); break; }
+      }
+      inspecterPage(v, "écran verrouillé");
+      await deverrouiller(v, "999990", true);
+      if (!v.texte("msg-verrou").startsWith("Code incorrect. Encore 4 essais")) etape10.verrou.push("mauvais code : « " + v.texte("msg-verrou") + " »");
+      if ((JSON.parse(v.stockage()[K.verrou] || "{}").echecs || 0) !== 1) etape10.verrou.push("échec non compté au verrou");
+      if (v.doc.querySelectorAll("#ver-code .code-case.pleine, #ver-code .code-case.chiffre").length || !/^0 chiffre/.test(v.$("ver-code").textContent)) etape10.verrou.push("code non effacé après un échec");
+      await deverrouiller(v, "258071", false);
+      if (v.actif() !== "ecran-nouveau-chantier" || v.$("chantier-nom").value !== "Villa du verrou") etape10.verrou.push("déverrouillage : " + v.actif() + ", saisie « " + v.$("chantier-nom").value + " »");
+      if (v.stockage()[K.verrou]) etape10.verrou.push("compteur d'échecs non remis à zéro après le bon code");
+      const sessionV = JSON.parse(v.stockage()[K.session] || "{}");
+      if (!(sessionV.derniereActivite >= Date.now() + decalage.ms - 10000)) etape10.verrou.push("activité non datée dans la session");
+      if (JSON.stringify(v.stockage()).includes("258071") || v.doc.documentElement.outerHTML.includes("258071")) etape10.verrou.push("code en clair après déverrouillage");
+
+      /* ㊻ Saisie refusée sur un prix en FCFA (champ de « Mes prix ») : message sans écho, valeur jamais retenue. */
+      v.doc.querySelector("[data-ecran='prix']").click();
+      await pause(250);
+      const prixAvant = v.$("prix-mo-journee").value;
+      const refusPrix = [["12,5", /pas de centimes en FCFA/], ["1000000001", /1[\s\u202f\u00a0]000[\s\u202f\u00a0]000[\s\u202f\u00a0]000/], ["-1", /négatifs/], ["1e9", /chiffres et virgule/], ["<b>9</b>", /chiffres et virgule/]];
+      for (const [valeur, attendu] of refusPrix) {
+        v.remplir("prix-mo-journee", valeur);
+        const message = v.texte("err-prix-mo-journee");
+        if (!message.startsWith("Saisie refusée") || !attendu.test(message) || v.$("prix-mo-journee").getAttribute("aria-invalid") !== "true") etape10.saisie.push("prix « " + valeur + " » : « " + message + " »");
+        if (message.includes(valeur)) etape10.saisie.push("saisie refusée recopiée dans le message : " + valeur);
+        v.$("prix-mo-journee").dispatchEvent(new v.w.Event("change", { bubbles: true }));
+        if (v.$("prix-mo-journee").value !== prixAvant) etape10.saisie.push("prix « " + valeur + " » : valeur précédente non rétablie (" + v.$("prix-mo-journee").value + ")");
+      }
+      v.remplir("prix-mo-journee", "15 000");
+      if (v.texte("err-prix-mo-journee") || v.$("prix-mo-journee").hasAttribute("aria-invalid")) etape10.saisie.push("prix valide « 15 000 » refusé");
+      etape10.cas.push(refusPrix.length + " prix refusés");
+
+      /* Un geste après 15 min d'inactivité verrouille au lieu de prolonger ; « Changer de compte » ferme la session. */
+      decalage.ms += 15 * 60000 + 1000;
+      v.doc.body.dispatchEvent(new v.w.Event("pointerdown", { bubbles: true }));
+      await pause(250);
+      if (v.actif() !== "ecran-verrou") etape10.verrou.push("un geste après 15 min a prolongé la session (" + v.actif() + ")");
+      v.$("bouton-verrou-changer-compte").click();
+      await pause(400);
+      if (v.actif() !== "ecran-connexion" || v.stockage()[K.session]) etape10.verrou.push("« Changer de compte » depuis le verrou : " + v.actif());
+      v.w.close();
+
+      /* C. 5 mauvais codes sur l'écran verrouillé → même blocage progressif qu'à la connexion. */
+      const b = ouvrirPage({ ...base10, [K.session]: sessionDatee(Date.now() - 20 * 60000) }, null, { activiteFigee: true });
+      await pause(1800);
+      for (let i = 0; i < 5; i += 1) await deverrouiller(b, "999990", false);
+      if (b.$("msg-blocage-verrou").hidden || !b.$("bouton-deverrouiller").disabled || !/\d+:\d\d/.test(b.texte("texte-blocage-verrou"))) etape10.verrou.push("5 échecs au verrou : pas de blocage (" + b.texte("msg-verrou") + ")");
+      await deverrouiller(b, "258071", false);
+      if (b.actif() !== "ecran-verrou") etape10.verrou.push("bon code accepté pendant le blocage");
+      b.w.close();
+
+      /* Bouton retour Android sur l'écran verrouillé : quitte l'application, n'ouvre rien d'autre. */
+      let sorties = 0;
+      const ecouteurs10 = {};
+      const prefs10 = new Map(Object.entries({ ...base10, [K.session]: sessionDatee(Date.now() - 20 * 60000) }));
+      const natif10 = {
+        isNativePlatform: () => true,
+        getPlatform: () => "android",
+        Plugins: {
+          App: { addListener: (nom, fn) => { ecouteurs10[nom] = fn; return Promise.resolve({ remove() {} }); }, exitApp: () => { sorties += 1; } },
+          Preferences: {
+            get: async ({ key }) => ({ value: prefs10.has(key) ? prefs10.get(key) : null }),
+            set: async ({ key, value }) => { prefs10.set(key, value); },
+            remove: async ({ key }) => { prefs10.delete(key); }
+          }
+        }
+      };
+      const r10 = ouvrirPage({}, natif10);
+      await pause(1800);
+      if (r10.actif() !== "ecran-verrou") etape10.verrou.push("application native, session ancienne : " + r10.actif());
+      if (ecouteurs10.backButton) { await ecouteurs10.backButton(); await pause(100); }
+      if (sorties !== 1 || r10.actif() !== "ecran-verrou" || !r10.$("modale").hidden) etape10.verrou.push("retour Android sur le verrou : " + sorties + " sortie(s), " + r10.actif());
+      r10.w.close();
+
+      /* D. Codes trop simples refusés à la création. */
+      const triviaux = ["0000", "1111", "4545", "1212", "121212", "123123", "1234", "123456", "654321", "9876", "7890", "0123", "1990", "2026"];
+      const t = ouvrirPage({ [K.pres]: "1" });
+      await pause(1800);
+      t.remplir("ins-nom", "Test Code");
+      t.remplir("ins-ville", "Ouagadougou");
+      t.remplir("ins-telephone", "+226 70 99 88 77");
+      t.$("ins-conditions").checked = true;
+      for (const code of triviaux) {
+        t.taper("ins-code", [...effacer, ...code]);
+        t.taper("ins-confirmation", [...effacer, ...code]);
+        await t.soumettre("panneau-inscription", 150);
+        if (!t.texte("err-ins-code").includes("trop simple") || t.actif() !== "ecran-connexion") etape10.codes.push(code + " accepté");
+      }
+      t.taper("ins-code", [...effacer, ..."2580"]);
+      t.taper("ins-confirmation", [...effacer, ..."2580"]);
+      await t.soumettre("panneau-inscription", 1200);
+      if (t.actif() !== "ecran-accueil") etape10.codes.push("code correct 2580 refusé : " + t.texte("err-ins-code"));
+      etape10.cas.push(triviaux.length + " codes triviaux");
+      t.w.close();
+      etape10.fait = true;
     }
 
     /* ㉑ bouton retour Android : modale → recherche → tiroir → historique → accueil → quitter */
@@ -1884,6 +2103,130 @@ function controlesSecurite() {
   controle("S+", "aucune ressource externe (polices, CDN)", externes.length === 0 && liensFautifs.length === 0,
     externes.join(", ") || (liensFautifs.length ? "liens non conformes : " + liensFautifs.join(", ")
       : "polices et images locales ; " + liensSortants.length + " lien sortant wa.me avec rel=noopener noreferrer"));
+}
+
+/* ---------- Étape 10 : sécurité du front (㊸ ㊹ ㊺ ㊻ VR CO SW AN CS) ---------- */
+
+function fichiersTexte(dossier) {
+  return readdirSync(dossier, { withFileTypes: true }).flatMap((entree) => {
+    const chemin = join(dossier, entree.name);
+    if (entree.isDirectory()) return fichiersTexte(chemin);
+    return /\.(html|js|mjs|css|json|webmanifest|svg|txt|xml)$/.test(entree.name) ? [chemin] : [];
+  });
+}
+
+function controlesEtape10() {
+  const domOn = etape10.dom.filter((t) => / : attribut on/.test(t));
+  const domAutres = etape10.dom.filter((t) => !/ : attribut on/.test(t));
+
+  /* ㊸ Aucune donnée interprétée comme du HTML. */
+  const puits = [
+    [/\.(innerHTML|outerHTML)\s*=|insertAdjacentHTML|document\.write/g, "innerHTML/outerHTML/insertAdjacentHTML/document.write"],
+    [/\bsrcdoc\b/g, "srcdoc"], [/\bDOMParser\b/g, "DOMParser"], [/createContextualFragment/g, "createContextualFragment"],
+    [/javascript:/gi, "javascript:"], [/\.setAttribute\(\s*["'](href|src)["']\s*,\s*(?!"#"\s*\+)[^"')\s]/g, "setAttribute(href|src, donnée)"]
+  ].map(([re, nom]) => [compter(js, re) + compter(corpsSansScript, re), nom]).filter(([n]) => n > 0);
+  controle("㊸", "aucune injection HTML (sources et rendu)", puits.length === 0 && domAutres.length === 0 && etape10.pagesVues >= 6,
+    puits.map(([n, nom]) => n + " × " + nom).concat(domAutres.slice(0, 4)).join(" ; ")
+      || "0 innerHTML, srcdoc, DOMParser, createContextualFragment, javascript: ; " + etape10.pagesVues + " pages rendues avec données piégées inspectées : une seule balise <script>, aucun cadre ni objet, liens https/tel/# seulement, images locales ou data:image webp/jpeg/png");
+
+  /* ㊹ Aucun code exécuté depuis une chaîne ni gestionnaire en attribut. */
+  const evalues = [/\beval\s*\(/, /\bFunction\s*\(/, /setTimeout\(\s*["'`]/, /setInterval\(\s*["'`]/, /\.setAttribute\(\s*["']on/i, /\.on(click|load|error|input|change|submit|key\w+|focus\w*|blur|mouse\w+|pointer\w+|touch\w+|message|animation\w+|transition\w+)\s*=\s*["'`]/, /import\(\s*[^"'`]/]
+    .filter((re) => re.test(js)).map(String);
+  const attributsOn = /\son[a-z]+\s*=/i.test(corpsSansScript);
+  controle("㊹", "aucun eval, Function, minuterie en chaîne ni attribut on*", evalues.length === 0 && !attributsOn && domOn.length === 0,
+    evalues.concat(attributsOn ? ["attribut on* dans le HTML"] : [], domOn.slice(0, 3)).join(" ; ")
+      || "sources sans eval/Function/setTimeout(\"…\")/setAttribute(\"on…\") ; aucun attribut on* dans le HTML livré ni dans le DOM après rendu des noms piégés « <img onerror> »");
+
+  /* ㊺ Aucun secret dans ce qui part sur le téléphone. */
+  const motifs = /(AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|gh[pousr]_[A-Za-z0-9]{30,}|xox[abprs]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}|sk_(live|test)_[A-Za-z0-9]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY|(api[_-]?key|secret|password|token)\s*[:=]\s*["'][A-Za-z0-9_\-]{12,}["'])/i;
+  const fichiers = fichiersTexte(WWW);
+  const fuites = fichiers.filter((f) => motifs.test(readFileSync(f, "utf8"))).map((f) => f.slice(WWW.length + 1));
+  const envDansWww = readdirSync(WWW).some((f) => f.startsWith(".env"));
+  const ignore = readFileSync(join(RACINE, ".gitignore"), "utf8");
+  const envIgnore = /^\.env$/m.test(ignore) && /^\*\.keystore$/m.test(ignore) && /^keystore\.properties$/m.test(ignore);
+  const apiHttps = /const API_URL = "https:\/\/[^"]+";/.test(js);
+  controle("㊺", "aucun secret dans l'application livrée", fuites.length === 0 && !envDansWww && envIgnore && apiHttps,
+    fuites.join(", ") || (envDansWww ? ".env copié dans www/" : !envIgnore ? ".env ou keystore non ignoré par git" : !apiHttps ? "API_URL non https"
+      : fichiers.length + " fichiers texte de www/ scannés (clés AWS/Google/GitHub/Slack, JWT, clés privées, mots de passe) : rien ; seule configuration = API_URL https ; .env et keystores ignorés par git"));
+
+  /* ㊻ Saisies : un seul fichier de règles, le même au téléphone et (étape 14) en ligne. */
+  const regles = [];
+  if (!js.includes(codeGele(REGLES))) regles.push("règles injectées ≠ src/regles-saisie.json");
+  let unitaires = 0;
+  try {
+    const m = chargerMoteur();
+    if (JSON.stringify(m.REGLES_SAISIE) !== JSON.stringify(REGLES)) regles.push("REGLES_SAISIE du moteur ≠ fichier");
+    if (!Object.isFrozen(m.REGLES_SAISIE.nombres.prix)) regles.push("règles non gelées");
+    const cas = [["-5", NaN], ["1,234", NaN], ["Infinity", NaN], ["1e3", NaN], ["0x10", NaN], ["1.5.2", NaN], ["abc", NaN], ["", NaN],
+      ["1 500,5", 1500.5], ["12,", 12], [",5", 0.5], ["1\u202f000\u00a0000", 1000000], ["  42  ", 42], ["0", 0]];
+    for (const [entree, attendu] of cas) {
+      const lu = m.lireNombre(entree);
+      unitaires += 1;
+      if (!Object.is(lu, attendu)) regles.push("lireNombre(« " + entree + " ») = " + lu);
+    }
+  } catch (erreur) { regles.push("moteur : " + erreur.message); }
+  const utilisees = [...corpsSansScript.matchAll(/data-regle="([^"]*)"/g), ...js.matchAll(/regle\s*=\s*"([^"]*)"/g)].map((m) => m[1]);
+  const inconnues = [...new Set(utilisees.filter((nom) => !Object.prototype.hasOwnProperty.call(REGLES.nombres, nom)))];
+  if (inconnues.length) regles.push("règles inconnues : " + inconnues.join(", "));
+  const champsStatiques = [...corpsSansScript.matchAll(/<input\b[^>]*>/g)].map((m) => m[0]);
+  const sansRegle = champsStatiques.filter((c) => /inputmode="(decimal|numeric)"/.test(c) && !/data-regle="/.test(c)).map((c) => (c.match(/id="([^"]+)"/) || [])[1]);
+  if (sansRegle.length) regles.push("champs numériques sans règle : " + sansRegle.join(", "));
+  const sansMax = champsStatiques.filter((c) => /type="(text|tel|search|password)"/.test(c) && !/inputmode="(decimal|numeric)"/.test(c)
+    && !(Number((c.match(/maxlength="(\d+)"/) || [])[1]) <= REGLES.textes.court.max)).map((c) => (c.match(/id="([^"]+)"/) || [])[1]);
+  if (sansMax.length) regles.push("champs texte sans maxlength borné : " + sansMax.join(", "));
+  const zones = [...corpsSansScript.matchAll(/<textarea\b[^>]*>/g)].filter((m) => !(Number((m[0].match(/maxlength="(\d+)"/) || [])[1]) <= REGLES.textes.long.max));
+  if (zones.length) regles.push(zones.length + " zone(s) de texte sans maxlength");
+  regles.push(...etape10.saisie.slice(0, 6));
+  if (!etape10.fait || etape10.champsVus < 40) regles.push("contrôle à l'exécution incomplet (" + etape10.champsVus + " champs vus)");
+  controle("㊻", "saisies bornées par un fichier de règles unique", regles.length === 0,
+    regles.join(" ; ") || Object.keys(REGLES.nombres).length + " règles numériques (src/regles-saisie.json, gelées, reprises par l'API à l'étape 14) ; "
+      + utilisees.length + " champs liés à une règle connue ; " + etape10.champsVus + " champs numériques vus à l'exécution, tous avec règle ; textes ≤ "
+      + REGLES.textes.court.max + " car., zones ≤ " + REGLES.textes.long.max + " ; lireNombre : " + unitaires + " cas (négatif, 1e3, Infinity, 3 décimales refusés) ; "
+      + etape10.cas.join(", ") + " avec message « Saisie refusée : … » sans écho et valeur précédente rétablie");
+
+  /* VR Verrouillage automatique. */
+  controle("VR", "verrouillage après 15 min d'inactivité, retour au même écran", etape10.fait && etape10.verrou.length === 0,
+    etape10.verrou.join(" ; ") || (etape10.fait
+      ? "relance : session > 15 min, sans date, datée dans le futur ou illisible → verrou ; < 15 min → accueil ; en cours : 14 min → rien, 15 min + retour dans l'app → verrou ; liens vers accueil/devis/profil inopérants, retour Android = quitter ; saisie en cours enregistrée ; mauvais code compté (4 essais restants), bon code → même écran, saisie intacte ; 5 échecs → blocage (bon code refusé pendant le blocage) ; « Changer de compte » ferme la session"
+      : "contrôle non exécuté"));
+
+  /* CO Codes secrets trop simples. */
+  const triviaux = /if \(\/\^\(\\d\{1,3\}\)\\1\+\$\/\.test\(code\)\) return true;/.test(js);
+  controle("CO", "codes secrets trop simples refusés", etape10.fait && etape10.codes.length === 0 && triviaux,
+    etape10.codes.join(" ; ") || (triviaux ? "0000, 1111, 4545, 1212, 121212, 123123, 1234, 123456, 654321, 9876, 7890, 0123, 1990, 2026 refusés ; 2580 accepté ; empreinte PBKDF2-SHA-256 " + "150 000 itérations, sel de 16 octets" : "règle des motifs répétés absente"));
+
+  /* SW Pas de service worker (rien d'API mis en cache). */
+  const sw = /serviceWorker/.test(js) || readdirSync(WWW).some((f) => /(^sw|worker)\.js$/i.test(f));
+  controle("SW", "aucun service worker, donc aucune réponse d'API en cache", !sw,
+    sw ? "service worker présent : exclure /api/ du cache" : "ni serviceWorker.register ni sw.js : l'application est embarquée dans l'APK, aucune réponse d'API n'est mise en cache");
+
+  /* AN Réglages Android. */
+  const manifeste = readFileSync(join(RACINE, "android", "app", "src", "main", "AndroidManifest.xml"), "utf8");
+  const extraction = readFileSync(join(RACINE, "android", "app", "src", "main", "res", "xml", "regles_extraction.xml"), "utf8");
+  const config = JSON.parse(readFileSync(join(RACINE, "capacitor.config.json"), "utf8"));
+  const android = [];
+  if (!/android:allowBackup="false"/.test(manifeste) || !/android:fullBackupContent="false"/.test(manifeste)) android.push("sauvegarde Android active");
+  if (!/android:dataExtractionRules="@xml\/regles_extraction"/.test(manifeste)) android.push("dataExtractionRules absent");
+  for (const bloc of ["cloud-backup", "device-transfer"]) {
+    const contenu = (extraction.match(new RegExp("<" + bloc + ">([\\s\\S]*?)</" + bloc + ">")) || [])[1] || "";
+    for (const domaine of ["root", "file", "database", "sharedpref", "external"]) if (!contenu.includes('domain="' + domaine + '" path="."')) android.push(bloc + " : " + domaine + " non exclu");
+  }
+  if (!/android:usesCleartextTraffic="false"/.test(manifeste)) android.push("trafic en clair autorisé");
+  if (config.android?.webContentsDebuggingEnabled !== false || config.android?.allowMixedContent !== false || config.server?.cleartext) android.push("capacitor.config.json permissif");
+  if (/android:exported="true"[^>]*FileProvider|FileProvider[^>]*android:exported="true"/.test(manifeste)) android.push("FileProvider exporté");
+  controle("AN", "Android : aucune sauvegarde système, aucun trafic en clair, débogage coupé", android.length === 0,
+    android.join(" ; ") || "allowBackup/fullBackupContent false, cloud-backup et device-transfer excluent tout, usesCleartextTraffic false, WebView non débogable, contenu mixte refusé, FileProvider non exporté");
+
+  /* CS CSP durcie et garde anti-encadrement. */
+  const cspMeta = (html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/) || [])[1] || "";
+  const directives = ["default-src 'self'", "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'", "media-src 'none'", "upgrade-insecure-requests"];
+  const manquantes = directives.filter((d) => !cspMeta.includes(d));
+  const connect = ((cspMeta.match(/connect-src ([^;]+)/) || [])[1] || "").trim().split(/\s+/);
+  const connectOk = connect[0] === "'self'" && connect.slice(1).every((s) => /^https:\/\/[a-z0-9.-]+$/.test(s));
+  const garde = /function pageEncadree\(/.test(js) && /window\.top !== window\.self|window\.self !== window\.top/.test(js);
+  controle("CS", "CSP durcie, connexions https seulement, garde anti-encadrement", manquantes.length === 0 && connectOk && garde && !/frame-ancestors/.test(cspMeta),
+    manquantes.length ? "manquant : " + manquantes.join(", ") : !connectOk ? "connect-src : " + connect.join(" ") : !garde ? "garde anti-encadrement absente"
+      : directives.join(", ") + " ; connect-src " + connect.join(" ") + " ; dans un cadre, l'application ne s'affiche pas (frame-ancestors ira dans les en-têtes HTTP à l'étape 14)");
 }
 
 /* ---------- Étape 4 : identités visuelles ---------- */
@@ -2224,9 +2567,10 @@ controlesListes();
 controleCapacitor();
 controleGitignore();
 controlesSecurite();
+controlesEtape10();
 controlesIdentite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+", "㊸", "㊹", "㊺", "㊻", "VR", "CO", "SW", "AN", "CS"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);

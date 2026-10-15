@@ -137,7 +137,7 @@ for (let i = 0; i < 1000; i += 1) {
     if (majore.mainOeuvre.total < calcul.mainOeuvre.total || minore.mainOeuvre.total > calcul.mainOeuvre.total) ec.push("± 10 % dans le mauvais sens");
     if (inv.length) { invalidesFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " " + inv[0]); }
     if (ec.length) { ecartsFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " " + ec[0]); }
-    if (etude.surfaceTotale > 60 * 2000 || etude.pieces.some((p) => p.surface < 0.5 || p.surface > 2000)) { ecartsFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " surface hors bornes"); }
+    if (etude.pieces.length > moteur.BORNES_CHANTIER.piecesMax || etude.surfaceTotale > moteur.BORNES_CHANTIER.piecesMax * moteur.BORNES_CHANTIER.surfaceMax || etude.pieces.some((p) => p.surface < moteur.BORNES_CHANTIER.surfaceMin || p.surface > moteur.BORNES_CHANTIER.surfaceMax)) { ecartsFuzz += 1; if (premiers.length < 3) premiers.push("#" + i + " surface hors bornes"); }
   } catch (erreur) {
     exceptions += 1;
     if (premiers.length < 3) premiers.push("#" + i + " exception " + erreur.message);
@@ -146,11 +146,14 @@ for (let i = 0; i < 1000; i += 1) {
 const fuzzOk = !exceptions && !invalidesFuzz && !ecartsFuzz;
 if (!fuzzOk) echecs += 1;
 lignes.push("## Robustesse : 1 000 chantiers aléatoires", "");
-lignes.push("Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé, et des prix habituels de main-d'œuvre piégés ; le schéma du tableau et la liste de conformité sont contrôlés aussi. Chaque chiffrage est ensuite transformé en devis (étape 7) : le total du devis doit être identique au centime, « + 10 % » et « − 10 % » doivent aller dans le bon sens, et un devis piégé (lignes, main-d'œuvre, remise, TVA, acompte) ne doit produire ni exception, ni NaN, ni négatif.", "");
+lignes.push("Graine fixe 20261015, jusqu'à 70 pièces (520, au-delà du plafond de 500, dans 2 % des cas), quantités et prix jusqu'au double des plafonds, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé, et des prix habituels de main-d'œuvre piégés ; le schéma du tableau et la liste de conformité sont contrôlés aussi. Chaque chiffrage est ensuite transformé en devis (étape 7) : le total du devis doit être identique au centime, « + 10 % » et « − 10 % » doivent aller dans le bon sens, et un devis piégé (lignes, main-d'œuvre, remise, TVA, acompte) ne doit produire ni exception, ni NaN, ni négatif.", "");
 lignes.push("| Mesure | Résultat |", "|---|---:|");
 lignes.push("| Exceptions | " + exceptions + " |", "| Résultats avec NaN, Infinity ou négatif | " + invalidesFuzz + " |", "| Règles non tenues | " + ecartsFuzz + " |", "");
 if (premiers.length) lignes.push("Premiers écarts : " + premiers.join(" ; "), "");
-lignes.push("Bornes : surface 0,5 à 2 000 m² par pièce (refus à la saisie, ramenée dans les bornes par le moteur), 60 pièces, 50 prises et 50 points par pièce, 20 appareils de chaque type, distance 0 à 500 m, hauteur 2 à 6 m.", "");
+const B = moteur.BORNES_CHANTIER;
+lignes.push("Bornes (src/regles-saisie.json, partagées avec l'API) : surface " + sec(B.surfaceMin) + " à " + nf(B.surfaceMax) + " m² par pièce (refus à la saisie, ramenée dans les bornes par le moteur), "
+  + nf(B.piecesMax) + " pièces, " + B.prisesMax + " prises et " + B.pointsMax + " points par pièce, " + B.appareilsMax + " appareils de chaque type, distance 0 à " + B.distanceMax
+  + " m, hauteur " + B.hauteurMin + " à " + B.hauteurMax + " m, quantité 0 à " + nf(B.quantiteMax) + ", prix 0 à " + nf(B.prixMax) + ".", "");
 lignes.push("> Étude indicative établie selon les règles usuelles de la NF C 15-100. L'électricien reste responsable de la conformité de l'installation.", "");
 
 mkdirSync(dirname(SORTIE), { recursive: true });

@@ -8,12 +8,14 @@
      src/donnees.js + src/moteur.js → l'unique <script> en fin de <body>
      www/icons/*.svg   → le sprite d'icônes (<symbol id="i-nom">) au début du <body>
      www/images/paiement/*.webp → liste des logos de paiement fournis (LOGOS_PAIEMENT_FOURNIS)
+     src/regles-saisie.json → REGLES_SAISIE (bornes partagées avec l'API, gelées en profondeur)
    Calcule les empreintes SHA-256 du style et du script et les inscrit dans la
    Content-Security-Policy (pas de 'unsafe-inline', pas de 'unsafe-eval').
    Usage : npm run assembler
    ========================================================================== */
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { injecterRegles } from "./regles.mjs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -107,7 +109,8 @@ function politique(hashStyle, hashScript, api) {
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'none'",
-    "form-action 'none'"
+    "form-action 'none'",
+    "upgrade-insecure-requests"
   ].join("; ");
 }
 
@@ -129,7 +132,13 @@ function assembler() {
   const donnees = lire("donnees.js");
   if (!donnees.includes('const API_URL = "@@API_URL@@";')) arreter("donnees.js doit déclarer API_URL = \"@@API_URL@@\"");
   if (!donnees.includes('const LOGOS_PAIEMENT_FOURNIS = Object.freeze("@@LOGOS_PAIEMENT@@");')) arreter("donnees.js doit déclarer LOGOS_PAIEMENT_FOURNIS");
-  const donneesFinales = donnees
+  let avecRegles = "";
+  try {
+    avecRegles = injecterRegles(donnees);
+  } catch (erreur) {
+    arreter(erreur.message);
+  }
+  const donneesFinales = avecRegles
     .replace('"@@API_URL@@"', () => JSON.stringify(api))
     .replace('"@@LOGOS_PAIEMENT@@"', () => JSON.stringify(logosPaiement()));
   const js = '(() => {\n"use strict";\n\n' + donneesFinales + "\n\n" + lire("moteur.js") + "\n})();";

@@ -269,6 +269,60 @@
       </div>
     </section>
 
+    <!-- Verrouillage : après 15 min sans activité, le code du compte ouvert est redemandé -->
+    <section class="ecran ecran-connexion ecran-verrou" id="ecran-verrou" aria-labelledby="titre-verrou">
+      <div class="connexion">
+        <div class="connexion-tete">
+          <span class="logo" data-logo>
+            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="609" decoding="async">
+            <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
+            <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+          </span>
+          <h1 class="connexion-titre" id="titre-verrou">BâtiPlus est verrouillé</h1>
+          <p class="connexion-sous-titre">Après 15 minutes sans activité, votre code est redemandé. Votre travail en cours est conservé.</p>
+        </div>
+
+        <form class="carte connexion-carte formulaire" id="form-verrou" novalidate autocomplete="off">
+          <div class="verrou-compte">
+            <span class="avatar avatar-verrou"><span class="avatar-initiales" data-initiales aria-hidden="true"></span><img class="avatar-photo" data-photo alt="" hidden></span>
+            <p class="verrou-identite"><strong data-nom></strong><span id="verrou-telephone"></span></p>
+          </div>
+          <div class="champ">
+            <span class="etiquette-champ" id="lbl-ver-code">Votre code secret</span>
+            <div class="code" data-code="ver-code">
+              <div class="code-cases" id="ver-code" role="textbox" tabindex="0" aria-labelledby="lbl-ver-code" aria-describedby="err-ver-code" aria-readonly="true" data-clavier="clavier-verrou"></div>
+              <button type="button" class="bouton-icone code-oeil" data-oeil="ver-code" aria-label="Afficher le code" aria-pressed="false">
+                <svg class="icone i-voir" aria-hidden="true"><use href="#i-oeil"/></svg>
+                <svg class="icone i-cacher" aria-hidden="true"><use href="#i-oeil-barre"/></svg>
+              </button>
+            </div>
+            <p class="champ-erreur" id="err-ver-code"></p>
+          </div>
+          <div class="clavier" id="clavier-verrou" aria-label="Clavier du code secret"></div>
+          <p class="message-formulaire" id="msg-verrou" role="alert"></p>
+          <p class="message-blocage" id="msg-blocage-verrou" role="status" aria-live="polite" hidden>
+            <svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg><span id="texte-blocage-verrou"></span>
+          </p>
+          <button type="submit" class="bouton bouton-principal" id="bouton-deverrouiller">
+            <svg class="icone" aria-hidden="true"><use href="#i-cadenas-ouvert"/></svg>
+            <span class="bouton-libelle">Déverrouiller</span>
+          </button>
+          <button type="button" class="bouton bouton-secondaire" id="bouton-verrou-changer-compte">
+            <svg class="icone" aria-hidden="true"><use href="#i-echange"/></svg>
+            <span class="bouton-libelle">Changer de compte</span>
+          </button>
+          <a class="lien-texte lien-oubli" id="lien-code-oublie-verrou" href="https://wa.me/22605608608" target="_blank" rel="noopener noreferrer">
+            <svg class="icone" aria-hidden="true"><use href="#i-message"/></svg>Code oublié ? Écrire à BRG Électro+ sur WhatsApp
+          </a>
+        </form>
+
+        <p class="mention">
+          <strong>BâtiPlus est une application conçue et développée par BRG Électro+</strong>
+          <small>© 2026 BRG Électro+ — Tous droits réservés</small>
+        </p>
+      </div>
+    </section>
+
     <!-- Accueil : tableau de bord -->
     <section class="ecran" id="ecran-accueil" aria-labelledby="titre-accueil">
       <div class="tableau">
@@ -407,7 +461,7 @@
             </div>
             <div class="champ">
               <label for="piece-surface">Surface (m²)</label>
-              <input id="piece-surface" type="text" inputmode="decimal" autocomplete="off" maxlength="8" placeholder="Ex. : 12,5" aria-describedby="err-piece-surface">
+              <input id="piece-surface" type="text" inputmode="decimal" autocomplete="off" maxlength="8" placeholder="Ex. : 12,5" aria-describedby="err-piece-surface" data-regle="surface">
             </div>
             <button type="button" class="bouton bouton-secondaire" id="bouton-ajouter-piece"><svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg><span class="bouton-libelle">Ajouter</span></button>
             <p class="champ-erreur ajout-erreur" id="err-piece-surface"></p>
@@ -429,13 +483,13 @@
           <h2 class="bloc-titre" id="titre-etape-4" tabindex="-1">Options</h2>
           <div class="champ">
             <label for="option-distance">Distance compteur – tableau (m)</label>
-            <input id="option-distance" type="text" inputmode="decimal" autocomplete="off" maxlength="6" aria-describedby="aide-option-distance err-option-distance">
+            <input id="option-distance" type="text" inputmode="decimal" autocomplete="off" maxlength="6" aria-describedby="aide-option-distance err-option-distance" data-regle="distance">
             <p class="aide" id="aide-option-distance">De 0 à 500 m. Sert au câble d'alimentation.</p>
             <p class="champ-erreur" id="err-option-distance"></p>
           </div>
           <div class="champ">
             <label for="option-hauteur">Hauteur sous plafond (m)</label>
-            <input id="option-hauteur" type="text" inputmode="decimal" autocomplete="off" maxlength="5" aria-describedby="aide-option-hauteur err-option-hauteur">
+            <input id="option-hauteur" type="text" inputmode="decimal" autocomplete="off" maxlength="5" aria-describedby="aide-option-hauteur err-option-hauteur" data-regle="hauteur">
             <p class="aide" id="aide-option-hauteur">De 2 à 6 m, 2,8 m par défaut.</p>
             <p class="champ-erreur" id="err-option-hauteur"></p>
           </div>
@@ -466,21 +520,21 @@
             <h3 class="sous-titre">Au forfait</h3>
             <div class="champ">
               <label for="mo-forfait">Montant du forfait <span class="facultatif" id="devise-forfait"></span></label>
-              <input id="mo-forfait" type="text" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="0">
+              <input id="mo-forfait" type="text" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="0" data-regle="prix">
             </div>
             <h3 class="sous-titre">À la journée</h3>
             <div class="trio">
               <div class="champ">
                 <label for="mo-ouvriers">Ouvriers</label>
-                <input id="mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="0">
+                <input id="mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="0" data-regle="ouvriers">
               </div>
               <div class="champ">
                 <label for="mo-jours">Jours</label>
-                <input id="mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" placeholder="0">
+                <input id="mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" placeholder="0" data-regle="jours">
               </div>
               <div class="champ">
                 <label for="mo-tarif">Tarif / jour</label>
-                <input id="mo-tarif" type="text" inputmode="numeric" autocomplete="off" maxlength="12">
+                <input id="mo-tarif" type="text" inputmode="numeric" autocomplete="off" maxlength="12" data-regle="prix">
               </div>
             </div>
             <h3 class="sous-titre">Lignes libres</h3>
@@ -574,13 +628,13 @@
           <h3 class="sous-titre">Forfait</h3>
           <div class="champ">
             <label for="res-mo-forfait">Montant du forfait <span class="facultatif" id="res-devise-forfait"></span></label>
-            <input id="res-mo-forfait" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-res="forfait">
+            <input id="res-mo-forfait" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-res="forfait" data-regle="prix">
           </div>
           <h3 class="sous-titre">À la journée</h3>
           <div class="trio">
-            <div class="champ"><label for="res-mo-ouvriers">Ouvriers</label><input id="res-mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" data-res="ouvriers"></div>
-            <div class="champ"><label for="res-mo-jours">Jours</label><input id="res-mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-res="jours"></div>
-            <div class="champ"><label for="res-mo-tarif">Tarif par jour</label><input id="res-mo-tarif" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-res="tarif"></div>
+            <div class="champ"><label for="res-mo-ouvriers">Ouvriers</label><input id="res-mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" data-res="ouvriers" data-regle="ouvriers"></div>
+            <div class="champ"><label for="res-mo-jours">Jours</label><input id="res-mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-res="jours" data-regle="jours"></div>
+            <div class="champ"><label for="res-mo-tarif">Tarif par jour</label><input id="res-mo-tarif" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-res="tarif" data-regle="prix"></div>
           </div>
           <p class="total-ligne total-partiel"><span>Journées</span><strong class="montant" id="res-mo-journees">0</strong></p>
           <h3 class="sous-titre">Lignes libres</h3>
@@ -618,7 +672,7 @@
             </div>
             <div class="champ">
               <label for="res-remise" id="res-remise-libelle">Remise (%)</label>
-              <input id="res-remise" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-res="remise">
+              <input id="res-remise" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-res="remise" data-regle="pourcentage">
             </div>
             <p class="ligne-calcul"><span>Remise</span><strong class="montant" id="tot-remise">0</strong></p>
           </fieldset>
@@ -627,7 +681,7 @@
             <label class="case"><input type="checkbox" id="res-tva" data-res="tva"><span>Appliquer la TVA</span></label>
             <div class="champ" id="bloc-taux-tva">
               <label for="res-taux-tva">Taux de TVA (%)</label>
-              <input id="res-taux-tva" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-res="tauxTva">
+              <input id="res-taux-tva" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-res="tauxTva" data-regle="tva">
             </div>
             <p class="ligne-calcul"><span>TVA</span><strong class="montant" id="tot-tva">0</strong></p>
           </fieldset>
@@ -639,7 +693,7 @@
             <legend class="etiquette-champ">Acompte à la commande</legend>
             <div class="champ">
               <label for="res-acompte">Acompte (%)</label>
-              <input id="res-acompte" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-res="acompte">
+              <input id="res-acompte" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-res="acompte" data-regle="pourcentage">
             </div>
             <p class="ligne-calcul"><span>Acompte</span><strong class="montant" id="tot-acompte">0</strong></p>
             <p class="ligne-calcul"><span>Reste à payer à la fin</span><strong class="montant" id="tot-reste">0</strong></p>
@@ -740,13 +794,13 @@
           <h3 class="sous-titre">Forfait</h3>
           <div class="champ">
             <label for="devis-mo-forfait">Montant du forfait <span class="facultatif" id="devis-devise-forfait"></span></label>
-            <input id="devis-mo-forfait" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-devis-mo="forfait">
+            <input id="devis-mo-forfait" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-devis-mo="forfait" data-regle="prix">
           </div>
           <h3 class="sous-titre">À la journée</h3>
           <div class="trio">
-            <div class="champ"><label for="devis-mo-ouvriers">Ouvriers</label><input id="devis-mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" data-devis-mo="ouvriers"></div>
-            <div class="champ"><label for="devis-mo-jours">Jours</label><input id="devis-mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-devis-mo="jours"></div>
-            <div class="champ"><label for="devis-mo-tarif">Tarif par jour</label><input id="devis-mo-tarif" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-devis-mo="tarif"></div>
+            <div class="champ"><label for="devis-mo-ouvriers">Ouvriers</label><input id="devis-mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" data-devis-mo="ouvriers" data-regle="ouvriers"></div>
+            <div class="champ"><label for="devis-mo-jours">Jours</label><input id="devis-mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-devis-mo="jours" data-regle="jours"></div>
+            <div class="champ"><label for="devis-mo-tarif">Tarif par jour</label><input id="devis-mo-tarif" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-devis-mo="tarif" data-regle="prix"></div>
           </div>
           <p class="total-ligne total-partiel"><span>Journées</span><strong class="montant" id="devis-mo-journees">0</strong></p>
           <h3 class="sous-titre">Lignes libres</h3>
@@ -777,7 +831,7 @@
             </div>
             <div class="champ">
               <label for="devis-remise" id="devis-remise-libelle">Remise (%)</label>
-              <input id="devis-remise" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-devis-total="remise">
+              <input id="devis-remise" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-devis-total="remise" data-regle="pourcentage">
             </div>
             <p class="ligne-calcul"><span>Remise</span><strong class="montant" id="devis-tot-remise">0</strong></p>
           </fieldset>
@@ -786,7 +840,7 @@
             <label class="case"><input type="checkbox" id="devis-tva" data-devis-total="tva"><span>Appliquer la TVA</span></label>
             <div class="champ" id="devis-bloc-taux-tva">
               <label for="devis-taux-tva">Taux de TVA (%)</label>
-              <input id="devis-taux-tva" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-devis-total="tauxTva">
+              <input id="devis-taux-tva" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-devis-total="tauxTva" data-regle="tva">
             </div>
             <p class="ligne-calcul"><span>TVA</span><strong class="montant" id="devis-tot-tva">0</strong></p>
           </fieldset>
@@ -798,7 +852,7 @@
             <legend class="etiquette-champ">Acompte à la commande</legend>
             <div class="champ">
               <label for="devis-acompte">Acompte (%)</label>
-              <input id="devis-acompte" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-devis-total="acompte">
+              <input id="devis-acompte" type="text" inputmode="decimal" autocomplete="off" maxlength="5" data-devis-total="acompte" data-regle="pourcentage">
             </div>
             <p class="ligne-calcul"><span>Acompte</span><strong class="montant" id="devis-tot-acompte">0</strong></p>
             <p class="ligne-calcul"><span>Reste à payer à la fin</span><strong class="montant" id="devis-tot-reste">0</strong></p>
@@ -809,11 +863,11 @@
           <h2 class="bloc-titre" id="titre-devis-textes">Conditions et note</h2>
           <div class="champ">
             <label for="devis-conditions">Conditions</label>
-            <textarea id="devis-conditions" rows="5" maxlength="1000" data-devis-champ="conditions"></textarea>
+            <textarea id="devis-conditions" rows="5" maxlength="2000" data-devis-champ="conditions"></textarea>
           </div>
           <div class="champ">
             <label for="devis-note">Note pour le client <span class="facultatif">(facultatif)</span></label>
-            <textarea id="devis-note" rows="3" maxlength="1000" data-devis-champ="note" placeholder="Ex. : Le matériel est garanti un an. Travaux possibles dès réception de l'acompte."></textarea>
+            <textarea id="devis-note" rows="3" maxlength="2000" data-devis-champ="note" placeholder="Ex. : Le matériel est garanti un an. Travaux possibles dès réception de l'acompte."></textarea>
           </div>
         </section>
 
@@ -1048,7 +1102,7 @@
             </div>
             <div class="champ">
               <label for="article-prix">Prix <span class="facultatif" id="article-devise"></span></label>
-              <input id="article-prix" type="text" inputmode="decimal" autocomplete="off" maxlength="12" placeholder="0" aria-describedby="err-article-prix">
+              <input id="article-prix" type="text" inputmode="decimal" autocomplete="off" maxlength="12" placeholder="0" aria-describedby="err-article-prix" data-regle="prix">
               <p class="champ-erreur" id="err-article-prix"></p>
             </div>
           </div>
@@ -1065,7 +1119,7 @@
           <ul class="lignes-prix-mo" id="prix-mo-liste"></ul>
           <div class="champ">
             <label for="prix-mo-journee">Tarif d'une journée (par ouvrier)</label>
-            <input id="prix-mo-journee" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-prix-mo="journee">
+            <input id="prix-mo-journee" type="text" inputmode="decimal" autocomplete="off" maxlength="12" data-prix-mo="journee" data-regle="prix">
           </div>
         </section>
 
@@ -1157,7 +1211,7 @@
           <h2 class="bloc-titre">Conditions par défaut</h2>
           <div class="champ">
             <label for="pro-conditions">Texte repris en bas de chaque nouveau devis</label>
-            <textarea id="pro-conditions" rows="4" maxlength="1000" aria-describedby="compteur-conditions err-pro-conditions"></textarea>
+            <textarea id="pro-conditions" rows="4" maxlength="2000" aria-describedby="compteur-conditions err-pro-conditions"></textarea>
             <p class="aide aide-droite" id="compteur-conditions"></p>
             <p class="champ-erreur" id="err-pro-conditions"></p>
           </div>

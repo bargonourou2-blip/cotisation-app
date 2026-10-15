@@ -26,7 +26,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 7 | Le devis : catalogue lié, lignes modifiables, main-d'œuvre 4 modes | ✔ livrée |
 | 8 | Feuille A4 imprimable, PDF natif, partage WhatsApp | ✔ livrée |
 | 9 | Clients, chantiers, historique des devis, statistiques | ✔ livrée |
-| 10 | Sécurité du front (XSS, CSP, chiffrement, verrouillage) | à venir |
+| 10 | Sécurité du front (XSS, CSP, chiffrement, verrouillage) | ✔ livrée |
 | 11 | Abonnement : 5 formules, limite de 5 devis, relances | à venir |
 | 12 | Paiement automatique : adaptateurs d'agrégateur, webhook, idempotence | à venir |
 | 13 | Build Android, signature, Play Store, IOS.md | à venir |
@@ -75,6 +75,7 @@ On modifie les sources, puis on réassemble :
 | `src/corps.html` | la structure : toile, halos, tiroir, écrans, onglets, modale |
 | `src/donnees.js` | constantes et données (aucune fonction, aucun secret) |
 | `src/moteur.js` | les fonctions, puis l'initialisation |
+| `src/regles-saisie.json` | les bornes de toutes les saisies, injectées dans `donnees.js` (et reprises par l'API à l'étape 14) |
 
 `npm run assembler` (`src/scripts/assembler.mjs`) :
 - place le CSS dans une seule balise `<style>`, le JS dans une seule balise `<script>` en fin de `<body>` ;
@@ -297,6 +298,37 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   filtre, tri), ㊷ (badge « Le moins cher »), CL, ST dans `npm run verifier` ; LI dans
   `npm run verifier:navigateur` (4 écrans, 360 et 1440 px, clair et sombre).
 
+### Sécurité du front (étape 10)
+
+- **Règles de saisie uniques** : `src/regles-saisie.json` (13 règles numériques, longueurs des textes,
+  téléphone, fichiers). L'assembleur l'injecte gelé dans `REGLES_SAISIE` ; `BORNES*`, `IMAGES` et
+  `SAUVEGARDE` en sont dérivées. L'API de l'étape 14 lira **ce même fichier** : mêmes bornes au
+  téléphone et en ligne.
+- **Chaque champ numérique** porte `data-regle="…"`. Une saisie hors règle (négatif, `1e3`, trop de
+  décimales, centimes en FCFA, hors bornes, lettres) est refusée tout de suite : le champ passe en
+  `aria-invalid`, le message « Saisie refusée : … » explique la règle **sans recopier la saisie**, et
+  en quittant le champ la dernière valeur valide revient. `lireNombre` n'accepte que chiffres,
+  espaces et une virgule.
+- **Verrouillage automatique** : après **15 min** sans geste, au retour dans l'application ou au premier
+  geste, l'écran « Verrouillé » demande le code secret (clavier intégré, même blocage progressif
+  qu'à la connexion : 5 essais puis 30 s, 1 min, 5 min, 15 min). Le travail en cours est enregistré
+  avant de verrouiller ; le bon code ramène **au même écran**. Une session dont la date d'activité
+  est absente, illisible ou dans le futur s'ouvre verrouillée. Le bouton retour Android ferme
+  l'application depuis le verrou.
+- **Codes trop simples refusés** : motifs répétés (0000, 4545, 121212, 123123), suites (1234, 9876,
+  7890) et années 1940–2039 à 4 chiffres. Empreinte PBKDF2-SHA-256, 150 000 itérations, sel de 16 octets.
+- **Android** : `allowBackup="false"`, `fullBackupContent="false"`, `dataExtractionRules`
+  (`res/xml/regles_extraction.xml` exclut tout du cloud et du transfert d'appareil),
+  `usesCleartextTraffic="false"`, WebView non débogable.
+- **CSP** : `default-src 'self'`, empreintes SHA-256 pour l'unique script et l'unique style,
+  `connect-src 'self'` + l'API en https, `frame-src`/`object-src`/`media-src 'none'`, `base-uri` et
+  `form-action 'none'`, `upgrade-insecure-requests`. `frame-ancestors` est ignoré dans une balise
+  meta : il sera posé dans les en-têtes HTTP du site à l'étape 14. En attendant, **dans le cadre
+  d'une autre page l'application ne s'affiche pas** et propose « Ouvrir BâtiPlus » (nouvel onglet).
+  ⚠ C'est aussi le cas dans un aperçu intégré : ouvrez l'aperçu dans son propre onglet.
+- **Contrôles** : ㊸ ㊹ ㊺ ㊻ VR CO SW AN CS dans `npm run verifier` (sources + pages rendues avec
+  données piégées), VE (écran verrouillé) et CA (anti-encadrement) dans `npm run verifier:navigateur`.
+
 ## Structure
 
 ```
@@ -328,5 +360,8 @@ batiplus/
 - Aucune donnée saisie n'entre dans la page par `innerHTML`.
 - Aucun secret dans le front. Le front ne connaît que l'adresse publique de l'API.
 - `webContentsDebuggingEnabled` reste à `false` dans la version publiée.
+- Toute nouvelle saisie numérique reçoit une règle dans `src/regles-saisie.json` et un `data-regle`.
+- Aucune sauvegarde Android des données : la durabilité passe par l'export du profil et la
+  synchronisation (étape 14).
 - Le fichier `.env` et les keystores (`*.keystore`, `*.jks`) ne sont **jamais** versionnés.
   Sauvegardez le keystore ailleurs : sans lui, plus aucune mise à jour possible sur le Play Store.

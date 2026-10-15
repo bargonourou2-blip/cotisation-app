@@ -81,7 +81,10 @@ const ONGLETS = Object.freeze([
 const ECRAN_DEPART = "accueil";
 
 /* Écrans d'entrée : plein écran, sans en-tête, tiroir ni onglets. */
-const ECRANS_ENTREE = Object.freeze(["demarrage", "presentation", "connexion"]);
+const ECRANS_ENTREE = Object.freeze(["demarrage", "presentation", "connexion", "verrou"]);
+/* Verrouillage automatique (partie 1, étape 10, règle 4) : code redemandé après 15 min
+   sans activité. La dernière activité est recopiée dans la session au plus toutes les 30 s. */
+const VERROUILLAGE = Object.freeze({ inactiviteMs: 15 * 60 * 1000, controleMs: 15000, ecritureMs: 30000, avanceToleree: 60000 });
 const DUREE_DEMARRAGE = 1500;
 
 /* ---------- Sécurité du code secret ---------- */
@@ -98,13 +101,20 @@ const BLOCAGE = Object.freeze({
   durees: Object.freeze([30000, 60000, 300000, 900000])
 });
 
-/* ---------- Bornes de saisie (partie B.6) ---------- */
+/* ---------- Règles de saisie (partie B.6, contrôle ㊻) ----------
+   Source unique : src/regles-saisie.json, injecté ici par l'assembleur et repris
+   par l'API (étape 14). Toutes les bornes ci-dessous en sont dérivées.
+   nombres.NOM : { libelle, min, max, decimales, unite?, devise? } ; un champ
+   numérique porte l'attribut data-regle avec ce NOM, et toute valeur hors règle est refusée à la saisie. */
+const REGLES_SAISIE = "@@REGLES_SAISIE@@";
+const REGLE = REGLES_SAISIE.nombres;
+
 const BORNES = Object.freeze({
-  texteMin: 1,
-  texteMax: 120,
-  conditionsMax: 1000,
-  telephoneMin: 8,
-  telephoneMax: 15
+  texteMin: REGLES_SAISIE.textes.court.min,
+  texteMax: REGLES_SAISIE.textes.court.max,
+  conditionsMax: REGLES_SAISIE.textes.long.max,
+  telephoneMin: REGLES_SAISIE.telephone.chiffresMin,
+  telephoneMax: REGLES_SAISIE.telephone.chiffresMax
 });
 
 /* ---------- Devises ---------- */
@@ -273,9 +283,11 @@ const ALIMENTATIONS = Object.freeze({ mono: "Monophasé", tri: "Triphasé" });
 
 /* Bornes de saisie : toute valeur hors bornes est refusée à la saisie et ramenée dans les bornes par le moteur. */
 const BORNES_CHANTIER = Object.freeze({
-  surfaceMin: 0.5, surfaceMax: 2000, piecesMax: 60, prisesMax: 50, pointsMax: 50,
-  appareilsMax: 20, distanceMax: 500, hauteurMin: 2, hauteurMax: 6, hauteurDefaut: 2.8,
-  quantiteMax: 9999, prixMax: 100000000, ouvriersMax: 50, joursMax: 365, lignesLibresMax: 20
+  surfaceMin: REGLE.surface.min, surfaceMax: REGLE.surface.max, piecesMax: REGLE.pieces.max,
+  prisesMax: REGLE.prises.max, pointsMax: REGLE.points.max, appareilsMax: REGLE.appareils.max,
+  distanceMax: REGLE.distance.max, hauteurMin: REGLE.hauteur.min, hauteurMax: REGLE.hauteur.max, hauteurDefaut: 2.8,
+  quantiteMax: REGLE.quantite.max, prixMax: REGLE.prix.max, ouvriersMax: REGLE.ouvriers.max, joursMax: REGLE.jours.max,
+  lignesLibresMax: 20
 });
 
 /* Pièces : prises proposées = max(minimum, arrondi supérieur de surface / m² par prise) ;
@@ -397,8 +409,12 @@ const CATALOGUE_DEFAUT = Object.freeze(Object.fromEntries([
    Mes prix et devis (étape 7)
    ========================================================================== */
 const UNITES = Object.freeze({ u: "unité", m: "mètre", lot: "lot", forfait: "forfait" });
-const BORNES_CATALOGUE = Object.freeze({ articlesMax: 300, fournisseursMax: 5, fournisseurMax: 60, designationMax: 120 });
-const BORNES_DEVIS = Object.freeze({ lignesMax: 150, noteMax: 1000, titreMax: 120, quantiteMax: 999999 });
+const BORNES_CATALOGUE = Object.freeze({
+  articlesMax: 300, fournisseursMax: 5, fournisseurMax: REGLES_SAISIE.textes.fournisseur.max, designationMax: REGLES_SAISIE.textes.court.max
+});
+const BORNES_DEVIS = Object.freeze({
+  lignesMax: 150, noteMax: REGLES_SAISIE.textes.long.max, titreMax: REGLES_SAISIE.textes.court.max, quantiteMax: REGLE.quantite.max
+});
 /* −10 % / +10 % sur toute la main-d'œuvre (prix au point, tarif journée, forfait, lignes libres). */
 const AJUSTEMENT_MAIN_OEUVRE = 0.1;
 const PREFIXE_NUMERO_DEVIS = "BP";
@@ -425,7 +441,7 @@ const LARGEUR_A4_PX = 794;
    ========================================================================== */
 /* clientsMax : borne de sécurité du stockage local. Les plafonds par formule
    (200 en gratuit, 5 000 en Pro) sont appliqués en ligne, à la synchronisation (étapes 11 et 14). */
-const BORNES_LISTES = Object.freeze({ clientsMax: 5000, rechercheMax: 60, clientsGraphique: 8 });
+const BORNES_LISTES = Object.freeze({ clientsMax: 5000, rechercheMax: REGLES_SAISIE.textes.recherche.max, clientsGraphique: 8 });
 /* Délai pendant lequel une suppression peut être annulée (ms). */
 const DUREE_ANNULATION = 5000;
 const TRIS_DEVIS = Object.freeze({
@@ -473,7 +489,7 @@ const LOGOS_PAIEMENT_FOURNIS = Object.freeze("@@LOGOS_PAIEMENT@@");
 
 const IMAGES = Object.freeze({
   types: Object.freeze(["image/jpeg", "image/png", "image/webp"]),
-  octetsMax: 5 * 1024 * 1024,
+  octetsMax: REGLES_SAISIE.fichiers.imageOctets,
   pixelsMax: 40000000,
   photo: Object.freeze({ cote: 320 }),
   logo: Object.freeze({ largeur: 600, hauteur: 300 }),
@@ -485,7 +501,7 @@ const IMAGES = Object.freeze({
 const SAUVEGARDE = Object.freeze({
   format: "batiplus-sauvegarde",
   version: 1,
-  octetsMax: 2 * 1024 * 1024
+  octetsMax: REGLES_SAISIE.fichiers.sauvegardeOctets
 });
 
 /* ---------- Administration : le code est vérifié par l'API, jamais ici ---------- */

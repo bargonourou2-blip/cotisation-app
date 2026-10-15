@@ -201,7 +201,7 @@ async function main() {
   const erreurs = [];
   if (CAPTURES) mkdirSync(CAPTURES, { recursive: true });
 
-  async function nouvellePage(largeur, hauteur, sombre, reduit, stockage) {
+  async function nouvellePage(largeur, hauteur, sombre, reduit, stockage, activiteFigee) {
     /* Une page par mesure, stockage vidé avant le vrai chargement (1re ouverture). */
     const page = await navigateur.newPage();
     const contexte = { close: () => page.close() };
@@ -216,10 +216,15 @@ async function main() {
     ]);
     await page.setViewport({ width: largeur, height: hauteur, deviceScaleFactor: 1, isMobile: largeur < 768, hasTouch: largeur < 1024 });
     await page.goto(ADRESSE + "manifest.webmanifest", { waitUntil: "load" });
-    await page.evaluate((valeurs) => {
+    /* Une session reprise vient d'être utilisée (sinon le verrouillage des 15 min s'appliquerait). */
+    await page.evaluate((valeurs, figee) => {
       window.localStorage.clear();
-      for (const [cle, valeur] of Object.entries(valeurs || {})) window.localStorage.setItem(cle, valeur);
-    }, stockage || {});
+      for (const [cle, valeur] of Object.entries(valeurs || {})) {
+        let ecrite = valeur;
+        if (cle === "bp_v1_session" && !figee) { const s = JSON.parse(valeur); s.derniereActivite = Date.now(); ecrite = JSON.stringify(s); }
+        window.localStorage.setItem(cle, ecrite);
+      }
+    }, stockage || {}, Boolean(activiteFigee));
     await page.goto(ADRESSE, { waitUntil: "load" });
     return { page, contexte, nom };
   }
@@ -910,6 +915,78 @@ async function main() {
     await page.close();
     controle("㉓", "les icônes maskables ne sont pas rognées", fautes23.length === 0,
       fautes23.length ? fautes23.join(" | ") : "distance maximale du pictogramme au centre : " + mesures23.join(" ; "));
+  }
+
+  /* VE écran verrouillé (étape 10) : lisible, clavier utilisable, menu et onglets absents */
+  {
+    const fautesVE = [];
+    const sessionAncienne = { ...base, bp_v1_session: JSON.stringify({ ...JSON.parse(base.bp_v1_session || "{}"), derniereActivite: Date.now() - 20 * 60000 }) };
+    for (const [largeur, hauteur, sombre] of [[360, 640, false], [390, 844, true], [1280, 800, false]]) {
+      const { page, contexte, nom } = await nouvellePage(largeur, hauteur, sombre, true, sessionAncienne, true);
+      await pause(1800);
+      const etat = await page.evaluate(() => {
+        const vis = (el) => el && !el.closest("[hidden]") && el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== "hidden";
+        const touches = [...document.querySelectorAll("#clavier-verrou .touche:not(.touche-vide)")].map((t) => t.getBoundingClientRect());
+        return {
+          actif: (document.querySelector(".ecran.actif") || {}).id,
+          menu: vis(document.getElementById("tiroir")) || vis(document.querySelector(".onglets")) || vis(document.getElementById("bouton-menu")),
+          touches: touches.length, petites: touches.filter((r) => r.width < 44 || r.height < 44).length,
+          bouton: vis(document.getElementById("bouton-deverrouiller")), compte: (document.getElementById("verrou-telephone") || {}).textContent
+        };
+      });
+      if (etat.actif !== "ecran-verrou") { fautesVE.push(nom + " : " + etat.actif); await contexte.close(); continue; }
+      if (etat.menu) fautesVE.push(nom + " : menu ou onglets visibles sous le verrou");
+      if (etat.touches !== 11 || etat.petites) fautesVE.push(nom + " : clavier " + etat.touches + " touches, " + etat.petites + " < 44 px");
+      if (!etat.bouton || !etat.compte) fautesVE.push(nom + " : bouton ou compte absent");
+      const t = await page.evaluate(mesurerTextes, ["#ecran-verrou"]);
+      if (t.motsCoupes.length || t.rognes.length || t.deborde.length || t.defileX) fautesVE.push(nom + " " + JSON.stringify(t));
+      await capturer(page, nom + "-verrou");
+      for (const c of "999990") await page.click("#clavier-verrou [data-touche='" + c + "']");
+      await page.click("#bouton-deverrouiller");
+      await pause(1500);
+      const message = await page.evaluate(() => document.getElementById("msg-verrou").textContent);
+      if (!message.startsWith("Code incorrect")) fautesVE.push(nom + " : mauvais code → « " + message + " »");
+      await contexte.close();
+    }
+    controle("VE", "écran verrouillé : lisible, clavier ≥ 44 px, rien d'autre accessible", fautesVE.length === 0,
+      fautesVE.join(" | ") || "360×640, 390×844 sombre, 1280×800 : session de 20 min → verrou, ni menu ni onglets, 11 touches ≥ 44 px, aucun texte coupé, mauvais code signalé");
+  }
+
+  /* CA garde anti-encadrement (étape 10) : chargée dans le cadre d'une page tierce, l'application
+     ne montre ni écran ni champ, seulement un lien qui l'ouvre dans sa propre fenêtre. */
+  {
+    const page = await navigateur.newPage();
+    await page.setViewport({ width: 900, height: 760 });
+    const fautesCA = [];
+    page.on("pageerror", (e) => fautesCA.push("erreur : " + e.message));
+    await page.setContent("<!doctype html><html><head><title>Page tierce</title></head><body style=\"margin:0\"><iframe src=\"" + ADRESSE + "\" width=\"420\" height=\"720\" style=\"border:0\"></iframe></body></html>");
+    await new Promise((r) => setTimeout(r, 2500));
+    const cadre = page.frames().find((f) => f.url().startsWith(ADRESSE));
+    let etat = null;
+    if (!cadre) fautesCA.push("cadre non chargé");
+    else {
+      etat = await cadre.evaluate(() => {
+        const lien = document.querySelector(".hors-cadre a");
+        const titre = document.querySelector(".hors-cadre h1");
+        const boite = lien ? lien.getBoundingClientRect() : { width: 0, height: 0 };
+        return {
+          horsCadre: !!document.querySelector(".hors-cadre"),
+          ecrans: document.querySelectorAll(".ecran, input, textarea, button, form").length,
+          href: lien ? lien.href : "", target: lien ? lien.target : "", rel: lien ? lien.rel : "",
+          visible: boite.width > 0 && boite.height >= 44,
+          titre: titre ? titre.textContent : "",
+          debordement: document.documentElement.scrollWidth > window.innerWidth
+        };
+      });
+      if (!etat.horsCadre) fautesCA.push("l'application s'affiche dans le cadre");
+      if (etat.ecrans) fautesCA.push(etat.ecrans + " écrans ou champs présents dans le cadre");
+      if (etat.href !== ADRESSE || etat.target !== "_blank" || etat.rel !== "noopener noreferrer") fautesCA.push("lien « Ouvrir BâtiPlus » : " + JSON.stringify(etat));
+      if (!etat.visible || etat.debordement) fautesCA.push("lien invisible ou page qui déborde");
+      if (CAPTURES) await page.screenshot({ path: join(CAPTURES, "hors-cadre.png") });
+    }
+    await page.close();
+    controle("CA", "dans le cadre d'une autre page, l'application ne s'affiche pas", fautesCA.length === 0,
+      fautesCA.join(" | ") || "cadre tiers → « " + etat.titre + " », aucun écran ni champ, lien Ouvrir BâtiPlus (nouvel onglet, noopener noreferrer, cible ≥ 44 px)");
   }
 
   controle("N", "aucune erreur console, CSP ou requête en échec (Chromium)", erreurs.length === 0,

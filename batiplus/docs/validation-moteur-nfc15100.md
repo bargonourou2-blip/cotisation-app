@@ -144,7 +144,7 @@ Contrôle : reproductible ✔ · valeurs de référence ✔ · règles ✔ · no
 
 ## Robustesse : 1 000 chantiers aléatoires
 
-Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé, et des prix habituels de main-d'œuvre piégés ; le schéma du tableau et la liste de conformité sont contrôlés aussi. Chaque chiffrage est ensuite transformé en devis (étape 7) : le total du devis doit être identique au centime, « + 10 % » et « − 10 % » doivent aller dans le bon sens, et un devis piégé (lignes, main-d'œuvre, remise, TVA, acompte) ne doit produire ni exception, ni NaN, ni négatif.
+Graine fixe 20261015, jusqu'à 70 pièces (520, au-delà du plafond de 500, dans 2 % des cas), quantités et prix jusqu'au double des plafonds, 20 % de valeurs piégées (NaN, Infinity, négatifs, 1e308, textes, objets, types inconnus, `__proto__`). Chaque chantier est chiffré en entier (matériel, main-d'œuvre, remise, TVA, acompte), en FCFA et en euro, avec le catalogue de départ, un catalogue vide ou un catalogue piégé, et des prix habituels de main-d'œuvre piégés ; le schéma du tableau et la liste de conformité sont contrôlés aussi. Chaque chiffrage est ensuite transformé en devis (étape 7) : le total du devis doit être identique au centime, « + 10 % » et « − 10 % » doivent aller dans le bon sens, et un devis piégé (lignes, main-d'œuvre, remise, TVA, acompte) ne doit produire ni exception, ni NaN, ni négatif.
 
 | Mesure | Résultat |
 |---|---:|
@@ -152,6 +152,6 @@ Graine fixe 20261015, jusqu'à 70 pièces, 20 % de valeurs piégées (NaN, Infin
 | Résultats avec NaN, Infinity ou négatif | 0 |
 | Règles non tenues | 0 |
 
-Bornes : surface 0,5 à 2 000 m² par pièce (refus à la saisie, ramenée dans les bornes par le moteur), 60 pièces, 50 prises et 50 points par pièce, 20 appareils de chaque type, distance 0 à 500 m, hauteur 2 à 6 m.
+Bornes (src/regles-saisie.json, partagées avec l'API) : surface 0,5 à 2 000 m² par pièce (refus à la saisie, ramenée dans les bornes par le moteur), 500 pièces, 50 prises et 50 points par pièce, 20 appareils de chaque type, distance 0 à 500 m, hauteur 2 à 6 m, quantité 0 à 100 000, prix 0 à 1 000 000 000.
 
 > Étude indicative établie selon les règles usuelles de la NF C 15-100. L'électricien reste responsable de la conformité de l'installation.

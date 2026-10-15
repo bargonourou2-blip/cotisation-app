@@ -1405,6 +1405,19 @@ button.element-corps:focus-visible { outline: 3px solid var(--violet-2); outline
   .annulation-barre.decompte { animation: none; }
 }
 
+/* ---------- 7i. Sécurité du front (étape 10) : verrouillage, saisies refusées ---------- */
+.ecran-verrou .connexion-carte { padding-top: 18px; }
+.verrou-compte { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.avatar-verrou { width: 56px; height: 56px; font-size: 20px; }
+.verrou-identite { display: grid; gap: 2px; min-width: 0; }
+.verrou-identite strong { font-size: 17px; overflow-wrap: anywhere; }
+.verrou-identite > span { color: var(--texte-2); font-size: 14px; white-space: nowrap; }
+input[aria-invalid="true"] { border-color: var(--erreur); }
+.hors-cadre { max-width: 460px; margin: 0 auto; padding: 48px 20px; display: grid; gap: 16px; justify-items: center; text-align: center; }
+.hors-cadre h1 { font-size: 22px; font-weight: 800; }
+.hors-cadre p { color: var(--texte-2); }
+.erreur-saisie { flex-basis: 100%; grid-column: 1 / -1; margin-top: 4px; font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
+
 /* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */
 @media (min-width: 1025px) {
   #tiroir { transform: none; box-shadow: none; width: var(--largeur-tiroir); }

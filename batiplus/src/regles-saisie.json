@@ -1,0 +1,28 @@
+{
+  "format": "batiplus-regles-saisie",
+  "version": 1,
+  "decimalesMax": 2,
+  "nombres": {
+    "surface": { "libelle": "La surface", "min": 0.5, "max": 2000, "decimales": 2, "unite": "m²" },
+    "distance": { "libelle": "La distance", "min": 0, "max": 500, "decimales": 2, "unite": "m" },
+    "hauteur": { "libelle": "La hauteur", "min": 2, "max": 6, "decimales": 2, "unite": "m" },
+    "pieces": { "libelle": "Le nombre de pièces", "min": 1, "max": 500, "decimales": 0 },
+    "prises": { "libelle": "Le nombre de prises", "min": 0, "max": 50, "decimales": 0 },
+    "points": { "libelle": "Le nombre de points lumineux", "min": 0, "max": 50, "decimales": 0 },
+    "appareils": { "libelle": "Le nombre d'appareils", "min": 0, "max": 20, "decimales": 0 },
+    "quantite": { "libelle": "La quantité", "min": 0, "max": 100000, "decimales": 0 },
+    "ouvriers": { "libelle": "Le nombre d'ouvriers", "min": 0, "max": 50, "decimales": 0 },
+    "jours": { "libelle": "Le nombre de jours", "min": 0, "max": 365, "decimales": 1 },
+    "prix": { "libelle": "Le montant", "min": 0, "max": 1000000000, "decimales": 2, "devise": true },
+    "pourcentage": { "libelle": "Le pourcentage", "min": 0, "max": 100, "decimales": 2, "unite": "%" },
+    "tva": { "libelle": "Le taux de TVA", "min": 0, "max": 30, "decimales": 2, "unite": "%" }
+  },
+  "textes": {
+    "court": { "min": 1, "max": 120 },
+    "fournisseur": { "min": 1, "max": 60 },
+    "recherche": { "min": 0, "max": 60 },
+    "long": { "min": 0, "max": 2000 }
+  },
+  "telephone": { "chiffresMin": 8, "chiffresMax": 15, "saisieMax": 22 },
+  "fichiers": { "sauvegardeOctets": 2097152, "imageOctets": 5242880 }
+}

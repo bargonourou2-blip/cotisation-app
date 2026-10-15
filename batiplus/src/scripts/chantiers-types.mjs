@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { injecterRegles } from "./regles.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DEBUT = "/* ==== MOTEUR NF C 15-100 ==== */";
@@ -40,10 +41,10 @@ export function sectionListes() {
 }
 
 export function chargerMoteur() {
-  const donnees = readFileSync(join(RACINE, "src", "donnees.js"), "utf8");
+  const donnees = injecterRegles(readFileSync(join(RACINE, "src", "donnees.js"), "utf8"));
   const section = sectionMoteur() + "\n" + sectionDocument() + "\n" + sectionListes();
   const contexte = vm.createContext({});
-  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { etudierChantier, chiffrerChantier, calculerTotal, calculerDevis, devisDepuisChiffrage, ajusterMainOeuvre, calculerMainOeuvre, verifierConformite, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS, CATALOGUE_DEFAUT, TVA_MAX, montantEnLettres, nombreEnLettres, modeleFeuille, chainePdf, messageWhatsApp, lienWhatsApp, nomFichierDevis, creerPdfDevis, resumeDevis, formulePayante, couperPdf, largeurPdf, FORMULES, PIED_DEVIS, OPACITE_FILIGRANE, cleTexte, correspondRecherche, filtrerDevis, comptesParStatut, carnetClients, filtrerClients, statistiquesDetaillees, TRIS_DEVIS, STATUTS_DEVIS };", contexte, { filename: "moteur-nfc15100.js" });
+  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { lireNombre, REGLES_SAISIE, BORNES, BORNES_DEVIS, etudierChantier, chiffrerChantier, calculerTotal, calculerDevis, devisDepuisChiffrage, ajusterMainOeuvre, calculerMainOeuvre, verifierConformite, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS, CATALOGUE_DEFAUT, TVA_MAX, montantEnLettres, nombreEnLettres, modeleFeuille, chainePdf, messageWhatsApp, lienWhatsApp, nomFichierDevis, creerPdfDevis, resumeDevis, formulePayante, couperPdf, largeurPdf, FORMULES, PIED_DEVIS, OPACITE_FILIGRANE, cleTexte, correspondRecherche, filtrerDevis, comptesParStatut, carnetClients, filtrerClients, statistiquesDetaillees, TRIS_DEVIS, STATUTS_DEVIS };", contexte, { filename: "moteur-nfc15100.js" });
   return contexte.__moteur;
 }
 
@@ -192,8 +193,11 @@ export function invariants(moteur, etude) {
 }
 
 /* Parcourt tout le résultat : aucun NaN, Infinity ni nombre négatif. */
+/* Égalité au centime. Au-delà de quelques milliers de milliards (prix plafond × quantité
+   plafond, B.6), un nombre flottant n'a plus de précision au centime : on tolère alors
+   quelques ulp, jamais plus d'un millionième de franc par milliard. */
 export function egalAuCentime(a, b) {
-  return Math.round(a * 100) === Math.round(b * 100);
+  return Math.round(a * 100) === Math.round(b * 100) || Math.abs(a - b) <= Math.abs(b) * Number.EPSILON * 8;
 }
 
 /* Chiffrage : chaque montant = quantité × prix, totaux cohérents, remise et acompte jamais au-delà du total. */
@@ -247,7 +251,7 @@ export function chantierAleatoire(moteur, alea) {
   const pioche = (liste) => liste[Math.floor(alea() * liste.length)];
   const nombre = (min, max) => (alea() < 0.2 ? pioche(VALEURS_PIEGES) : min + alea() * (max - min));
   const types = [...Object.keys(moteur.TYPES_PIECES), "<img src=x>", "__proto__", "inconnu"];
-  const pieces = Array.from({ length: Math.floor(alea() * 70) }, () => ({
+  const pieces = Array.from({ length: alea() < 0.02 ? 520 : Math.floor(alea() * 70) }, () => ({
     type: pioche(types), surface: nombre(0, 2500),
     prises: alea() < 0.5 ? null : nombre(0, 60), points: alea() < 0.5 ? null : nombre(0, 60)
   }));
@@ -256,7 +260,7 @@ export function chantierAleatoire(moteur, alea) {
   if (alea() < 0.1) appareils.__proto__ = { pirate: 1 };
   const points = {};
   Object.keys(moteur.MAIN_OEUVRE_POINTS).forEach((id) => {
-    if (alea() < 0.3) points[id] = { quantite: nombre(0, 12000), prix: nombre(0, 2e8) };
+    if (alea() < 0.3) points[id] = { quantite: nombre(0, 120000), prix: nombre(0, 2e9) };
   });
   return {
     alimentation: pioche(["mono", "tri", "x", null]),
@@ -268,16 +272,16 @@ export function chantierAleatoire(moteur, alea) {
     },
     mainOeuvre: alea() < 0.05 ? pioche(VALEURS_PIEGES) : {
       points,
-      forfait: nombre(0, 2e8),
-      journees: { ouvriers: nombre(0, 60), jours: nombre(0, 400), tarif: nombre(0, 2e8) },
-      libres: Array.from({ length: Math.floor(alea() * 25) }, () => ({ libelle: pioche(["Saignées", 42, null, "<b>x</b>"]), montant: nombre(0, 2e8) }))
+      forfait: nombre(0, 2e9),
+      journees: { ouvriers: nombre(0, 60), jours: nombre(0, 400), tarif: nombre(0, 2e9) },
+      libres: Array.from({ length: Math.floor(alea() * 25) }, () => ({ libelle: pioche(["Saignées", 42, null, "<b>x</b>"]), montant: nombre(0, 2e9) }))
     },
     materiel: alea() < 0.05 ? pioche(VALEURS_PIEGES) : Object.fromEntries(
       ["cable-1.5", "prise", "coffret-2r", "disjoncteur-16", "__proto__", "inconnu"].filter(() => alea() < 0.4)
-        .map((ref) => [ref, { quantite: alea() < 0.5 ? null : nombre(0, 12000), prix: alea() < 0.5 ? null : nombre(0, 2e8) }])
+        .map((ref) => [ref, { quantite: alea() < 0.5 ? null : nombre(0, 120000), prix: alea() < 0.5 ? null : nombre(0, 2e9) }])
     ),
     totaux: alea() < 0.05 ? pioche(VALEURS_PIEGES) : {
-      remiseType: pioche(["pourcent", "montant", "x", null]), remise: nombre(0, 2e8),
+      remiseType: pioche(["pourcent", "montant", "x", null]), remise: nombre(0, 2e9),
       tva: pioche([true, false, "oui", 1]), tauxTva: nombre(0, 40), acompte: nombre(0, 120)
     }
   };
