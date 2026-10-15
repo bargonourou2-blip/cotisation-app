@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-UasIu7gtmhf7Ajjq7ccG8miZkqaku/5DC2sO/XTBT6A='; style-src 'self' 'sha256-GRATAhkimjxipq5TPVA8HtboQuNx6++tvqnsMv+I0z4='; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.batiplus.bf; media-src 'none'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-M9YVzqaogSFuT2CvVr+Gt0L7+pjyrsFDMqMGwtE56g8='; style-src 'self' 'sha256-c+jtZj6pSaHlyQDeNoQDZuClC4dKAf0f6/OV1s8F24g='; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.batiplus.bf; media-src 'none'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#6A0DAD">
 <meta name="color-scheme" content="light dark">
@@ -763,6 +763,185 @@ a.bouton { text-decoration: none; }
 @keyframes monte { from { opacity: 0; transform: translateY(24px); } }
 #feuille-devis { display: none; }
 
+/* ---------- 7d. Nouveau chantier : assistant en 5 étapes ---------- */
+.assistant { display: grid; gap: 14px; max-width: 920px; }
+.assistant-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bouton-compact { width: auto; min-height: 44px; padding: 0 16px; font-size: 14px; }
+
+/* Progression : 5 pastilles reliées ; le libellé de l'étape courante est toujours visible. */
+.progression { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); counter-reset: none; }
+.progression li { position: relative; display: grid; justify-items: center; min-width: 0; }
+.progression li + li::before {
+  content: ""; position: absolute; top: 19px; right: 50%; width: 100%; height: 3px; border-radius: 3px;
+  background: var(--ligne); transition: background-color 0.3s ease;
+}
+.progression li.faite::before, .progression li.courante::before { background: var(--violet-2); }
+.progression-pas {
+  position: relative; z-index: 1; display: grid; justify-items: center; gap: 6px; min-width: 0; width: 100%;
+  padding: 0 2px; border: 0; background: none; color: var(--texte-2); cursor: pointer; font: inherit;
+}
+.progression-pas:disabled { cursor: default; }
+.progression-numero {
+  width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%;
+  border: 2px solid var(--ligne); background: var(--carte); color: var(--texte-2);
+  font-family: var(--police-titre); font-weight: 800; font-size: 16px;
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.3s var(--courbe);
+}
+.faite .progression-numero { background: var(--violet-doux); border-color: var(--violet-2); color: var(--accent-texte); }
+.courante .progression-numero {
+  background: linear-gradient(135deg, var(--violet-2), var(--violet-3)); border-color: transparent; color: #fff;
+  transform: scale(1.08); box-shadow: 0 6px 16px rgba(106, 13, 173, 0.32);
+}
+.progression-libelle { font-size: 12px; font-weight: 700; line-height: 1.25; text-align: center; overflow-wrap: normal; }
+.courante .progression-libelle { color: var(--accent-texte); }
+/* Petit écran : seul le libellé de l'étape courante s'affiche, sur toute la largeur, sans coupure. */
+@media (max-width: 639px) {
+  .progression li:not(.courante) .progression-libelle { display: none; }
+  .progression { padding-bottom: 22px; }
+  .progression li.courante .progression-libelle {
+    position: absolute; top: 48px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+  }
+  .progression li:first-child.courante .progression-libelle { left: 0; transform: none; text-align: left; }
+  .progression li:last-child.courante .progression-libelle { left: auto; right: 0; transform: none; text-align: right; }
+}
+.brouillon-etat { font-size: 13px; color: var(--texte-2); min-height: 18px; }
+.brouillon-etat:empty { display: none; }
+
+.choix-groupe { border: 0; margin: 0; padding: 0; min-width: 0; }
+.choix-groupe legend { padding: 0; margin-bottom: 8px; }
+.puces { display: flex; flex-wrap: wrap; gap: 8px; }
+.puce { position: relative; display: inline-flex; cursor: pointer; }
+.puce input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.puce span {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 999px;
+  border: 1.5px solid var(--ligne); background: var(--carte-2); color: var(--texte); font-size: 15px; font-weight: 600;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.puce input:checked + span { background: var(--violet); border-color: var(--violet); color: #fff; }
+.puce input:focus-visible + span { box-shadow: 0 0 0 4px rgba(139, 47, 214, 0.3); }
+
+.ajout-piece { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: end; }
+.ajout-piece .bouton { min-height: 50px; }
+.ajout-erreur { grid-column: 1 / -1; }
+.resume-ligne { font-weight: 700; color: var(--texte); font-size: 15px; }
+.liste-pieces, .liste-appareils, .lignes-mo, .lignes-libres, .liste-simple { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.piece {
+  display: grid; gap: 12px; padding: 14px; border-radius: var(--rayon-petit);
+  border: 1px solid var(--ligne); background: var(--carte-2); animation: cascade-entree 360ms var(--courbe) both;
+}
+.piece-tete { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.piece-nom { font-family: var(--police-titre); font-size: 16px; }
+.piece-champs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.piece-champs > .champ:first-child { grid-column: 1 / -1; }
+.piece-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.piece-actions .lien-texte { min-height: 44px; }
+.piece-outils { display: flex; gap: 6px; margin-left: auto; }
+.bouton-outil { width: 44px; height: 44px; color: var(--texte-2); }
+.bouton-outil .icone { width: 20px; height: 20px; }
+.bouton-outil:disabled { opacity: 0.4; cursor: not-allowed; }
+.outil-danger { color: var(--erreur); }
+
+.compteur-saisie {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; min-height: 50px;
+  border: 1.5px solid var(--ligne); border-radius: 14px; background: var(--carte); overflow: hidden;
+}
+.champ.invalide .compteur-saisie { border-color: var(--erreur); }
+.compteur-saisie input {
+  width: 100%; min-width: 0; height: 46px; border: 0; background: transparent; color: var(--texte);
+  text-align: center; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+/* Plus précis que « .champ input[type="text"] » : le champ central n'a ni marge ni bordure propre. */
+.champ .compteur-saisie input[type="text"], .compteur-saisie input[type="text"] {
+  min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+.champ .compteur-saisie input[type="text"]:focus, .compteur-saisie input:focus { outline: none; border: 0; box-shadow: none; }
+.compteur-saisie:focus-within { border-color: var(--violet-2); box-shadow: 0 0 0 4px rgba(139, 47, 214, 0.18); }
+.bouton-pas { height: 100%; min-height: 46px; display: grid; place-items: center; border: 0; background: var(--violet-doux); color: var(--accent-texte); cursor: pointer; }
+.bouton-pas .icone { width: 18px; height: 18px; }
+.bouton-pas:active { background: var(--violet-2); color: #fff; }
+
+.appareil {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2);
+}
+.appareil .case { flex: 1 1 150px; min-width: 0; align-items: center; color: var(--texte); font-weight: 600; font-size: 15px; }
+.appareil .case > span { display: grid; gap: 2px; min-width: 0; }
+.appareil .case small { color: var(--texte-2); font-weight: 500; font-size: 12px; }
+.appareil .compteur-saisie { flex: 0 0 140px; margin-left: auto; min-height: 44px; }
+.appareil .compteur-saisie input, .appareil .bouton-pas { height: 40px; min-height: 40px; }
+
+.etape-finale { display: grid; gap: 14px; }
+.sous-titre { font-size: 15px; font-weight: 800; color: var(--accent-texte); margin-top: 6px; }
+.ligne-mo {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; padding: 12px;
+  border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2);
+}
+.ligne-mo-titre { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; }
+.ligne-mo-montant { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.montant { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.total-ligne {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;
+  padding: 14px 16px; border-radius: var(--rayon-petit); background: linear-gradient(135deg, var(--violet-2), var(--violet-3)); color: #fff;
+}
+.total-ligne strong { font-family: var(--police-titre); font-size: 20px; }
+.total-partiel { background: var(--violet-doux); color: var(--texte); padding: 10px 14px; }
+.total-partiel strong { font-size: 16px; color: var(--accent-texte); }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ligne-libre { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px 10px; align-items: end; padding: 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2); }
+.ligne-libre > .champ:first-child { grid-column: 1 / -1; }
+
+.synthese { display: grid; gap: 12px; align-content: start; }
+.chiffres { margin: 0; display: grid; gap: 8px; }
+.chiffres > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--rayon-petit); background: var(--violet-doux); }
+.chiffres dt { font-size: 12px; font-weight: 700; color: var(--texte-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.chiffres dd { margin: 0; font-weight: 700; color: var(--texte); }
+.tableau-defile { max-width: 100%; overflow-x: auto; }
+.tableau-circuits { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tableau-circuits th, .tableau-circuits td { padding: 9px 6px; border-bottom: 1px solid var(--ligne); text-align: left; vertical-align: top; }
+.tableau-circuits thead th { font-size: 12px; color: var(--texte-2); white-space: nowrap; }
+.tableau-circuits th:first-child { padding-left: 0; }
+.tableau-circuits td:last-child, .tableau-circuits th:last-child { padding-right: 0; text-align: right; }
+.tableau-circuits td { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tableau-circuits tbody th { font-weight: 700; }
+.tableau-circuits tbody th small { display: block; font-weight: 500; font-size: 12px; color: var(--texte-2); }
+.liste-simple li { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); }
+.liste-simple span { font-size: 13px; color: var(--texte-2); }
+
+/* Précédent / Suivant toujours à portée de pouce, au-dessus de la barre d'onglets. */
+.navigation-etapes {
+  position: sticky; bottom: calc(var(--hauteur-onglets) + var(--bas-sur) + 10px); z-index: 5;
+  display: flex; gap: 10px; padding: 10px; border-radius: var(--rayon);
+  background: var(--entete-fond); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--ligne); box-shadow: var(--ombre-1);
+}
+.navigation-etapes .bouton { flex: 1 1 0; min-width: 0; padding: 0 14px; }
+.navigation-etapes .bouton-discret { flex: 0 1 auto; }
+.navigation-etapes .bouton-principal { flex: 1 1 auto; }
+/* Titre d'étape : reçoit le focus par programme (lecteurs d'écran), sans cadre visible. */
+.etape-chantier .bloc-titre:focus { outline: none; }
+
+.toast {
+  position: fixed; z-index: 80; left: 16px; right: 16px; bottom: calc(var(--hauteur-onglets) + var(--bas-sur) + 16px);
+  margin: 0 auto; max-width: 480px; padding: 14px 18px; border-radius: 16px;
+  background: var(--texte); color: var(--fond); font-weight: 600; font-size: 15px; box-shadow: var(--ombre-2);
+  animation: monte 320ms var(--courbe) both;
+}
+.toast[hidden] { display: none; }
+
+@media (min-width: 640px) {
+  .ajout-piece { grid-template-columns: minmax(0, 1fr) 160px auto; }
+  .ajout-piece .bouton { width: auto; }
+  .piece-champs { grid-template-columns: 1fr 1fr 1fr; }
+  .piece-champs > .champ:first-child { grid-column: auto; }
+  .ligne-mo { grid-template-columns: minmax(0, 1.4fr) 110px 140px minmax(0, 1fr); align-items: end; }
+  .ligne-mo-titre { grid-column: auto; display: grid; align-self: center; }
+  .ligne-mo-montant { grid-column: auto; display: grid; justify-items: end; align-self: center; }
+  .ligne-libre { grid-template-columns: minmax(0, 1fr) 160px 44px; }
+  .ligne-libre > .champ:first-child { grid-column: auto; }
+  .chiffres { grid-template-columns: 1fr 1fr; }
+  .chiffres > .chiffre-large { grid-column: 1 / -1; }
+}
+
 /* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */
 @media (min-width: 1025px) {
   #tiroir { transform: none; box-shadow: none; width: var(--largeur-tiroir); }
@@ -784,6 +963,13 @@ a.bouton { text-decoration: none; }
   .colonne-etroite { grid-template-columns: 1fr; }
   body[data-mode="entree"] .page { margin-left: 0; }
   .connexion { padding-top: 40px; }
+  .navigation-etapes { bottom: 16px; }
+  .toast { bottom: 24px; left: calc(var(--largeur-tiroir) + 32px); right: 32px; }
+}
+@media (min-width: 1280px) {
+  .etape-finale { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
+  .etape-finale .ligne-mo { grid-template-columns: 1fr 1fr; }
+  .etape-finale .ligne-mo-titre, .etape-finale .ligne-mo-montant { grid-column: 1 / -1; display: flex; justify-items: initial; }
 }
 
 /* ---------- 10. Impression ---------- */
@@ -811,6 +997,7 @@ a.bouton { text-decoration: none; }
   <symbol id="i-abonnement" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/></symbol>
   <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></symbol>
   <symbol id="i-ampoule" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V17h5v-1.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></symbol>
+  <symbol id="i-bas" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
   <symbol id="i-bouclier" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
   <symbol id="i-cadenas-ouvert" viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10.5" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 7.7-1.5"/><path d="M12 15v2"/></symbol>
   <symbol id="i-cadenas" viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10.5" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></symbol>
@@ -818,6 +1005,7 @@ a.bouton { text-decoration: none; }
   <symbol id="i-chantier" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M10 21v-5h4v5"/></symbol>
   <symbol id="i-cle" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/></symbol>
   <symbol id="i-clients" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5A6.5 6.5 0 0 1 21.5 20"/></symbol>
+  <symbol id="i-copier" viewBox="0 0 24 24"><path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
   <symbol id="i-devis" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
   <symbol id="i-document" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
   <symbol id="i-echange" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
@@ -827,6 +1015,7 @@ a.bouton { text-decoration: none; }
   <symbol id="i-fermer" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-fleche" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-graphique" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-haut" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
   <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></symbol>
   <symbol id="i-importer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
   <symbol id="i-imprimer" viewBox="0 0 24 24"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/><path d="M17 12.5h.01"/></symbol>
@@ -837,6 +1026,7 @@ a.bouton { text-decoration: none; }
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
   <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.4A8.5 8.5 0 1 1 21 11.5z"/></symbol>
   <symbol id="i-mobile" viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M10 18.5h4"/></symbol>
+  <symbol id="i-moins" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
   <symbol id="i-norme" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 14l2 2 4-4"/></symbol>
   <symbol id="i-oeil-barre" viewBox="0 0 24 24"><path d="M10.6 5.1A10 10 0 0 1 12 4.5c6.5 0 10.5 7.5 10.5 7.5a17 17 0 0 1-2.6 3.4M6.3 6.3A17.3 17.3 0 0 0 1.5 12s4 7.5 10.5 7.5a10 10 0 0 0 5.7-1.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M2 2l20 20"/></symbol>
   <symbol id="i-oeil" viewBox="0 0 24 24"><path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
@@ -1194,6 +1384,160 @@ a.bouton { text-decoration: none; }
       </div>
     </section>
 
+    <!-- Nouveau chantier : assistant en 5 étapes (étape 5) -->
+    <section class="ecran" id="ecran-nouveau-chantier" aria-labelledby="titre-nouveau-chantier">
+      <div class="assistant">
+        <div class="assistant-tete">
+          <h1 class="titre-ecran" id="titre-nouveau-chantier">Nouveau chantier</h1>
+          <button type="button" class="bouton bouton-discret bouton-compact" id="bouton-recommencer-chantier">Recommencer</button>
+        </div>
+        <ol class="progression" id="progression-chantier" aria-label="Étapes du chantier"></ol>
+        <p class="brouillon-etat" id="etat-brouillon" role="status" aria-live="polite"></p>
+
+        <!-- 1. Client et chantier -->
+        <form class="carte formulaire etape-chantier" id="etape-chantier-1" data-etape="1" novalidate aria-labelledby="titre-etape-1">
+          <h2 class="bloc-titre" id="titre-etape-1" tabindex="-1">Client et chantier</h2>
+          <div class="champ">
+            <label for="chantier-client">Nom du client</label>
+            <input id="chantier-client" type="text" list="liste-clients-chantier" autocomplete="off" maxlength="120" required aria-describedby="err-chantier-client">
+            <datalist id="liste-clients-chantier"></datalist>
+            <p class="champ-erreur" id="err-chantier-client"></p>
+          </div>
+          <div class="champ">
+            <label for="chantier-telephone">Téléphone du client <span class="facultatif">(facultatif)</span></label>
+            <input id="chantier-telephone" type="tel" inputmode="tel" autocomplete="off" maxlength="22" aria-describedby="err-chantier-telephone">
+            <p class="champ-erreur" id="err-chantier-telephone"></p>
+          </div>
+          <div class="champ">
+            <label for="chantier-nom">Nom du chantier</label>
+            <input id="chantier-nom" type="text" autocomplete="off" maxlength="120" placeholder="Ex. : Villa Ouaga 2000" required aria-describedby="err-chantier-nom">
+            <p class="champ-erreur" id="err-chantier-nom"></p>
+          </div>
+          <div class="champ">
+            <label for="chantier-lieu">Lieu</label>
+            <input id="chantier-lieu" type="text" autocomplete="off" maxlength="120" placeholder="Quartier, ville" required aria-describedby="err-chantier-lieu">
+            <p class="champ-erreur" id="err-chantier-lieu"></p>
+          </div>
+          <fieldset class="champ choix-groupe">
+            <legend class="etiquette-champ">Type de chantier</legend>
+            <div class="puces" id="choix-type-chantier"></div>
+          </fieldset>
+          <fieldset class="champ choix-groupe">
+            <legend class="etiquette-champ">Alimentation</legend>
+            <div class="puces" id="choix-alimentation"></div>
+          </fieldset>
+        </form>
+
+        <!-- 2. Pièces -->
+        <form class="carte formulaire etape-chantier" id="etape-chantier-2" data-etape="2" novalidate aria-labelledby="titre-etape-2" hidden>
+          <h2 class="bloc-titre" id="titre-etape-2" tabindex="-1">Pièces</h2>
+          <p class="aide">Ajoutez chaque pièce avec sa surface. BâtiPlus propose les prises et les points lumineux selon la NF C 15-100 ; vous pouvez tout modifier.</p>
+          <div class="ajout-piece">
+            <div class="champ">
+              <label for="piece-type">Pièce</label>
+              <select id="piece-type"></select>
+            </div>
+            <div class="champ">
+              <label for="piece-surface">Surface (m²)</label>
+              <input id="piece-surface" type="text" inputmode="decimal" autocomplete="off" maxlength="8" placeholder="Ex. : 12,5" aria-describedby="err-piece-surface">
+            </div>
+            <button type="button" class="bouton bouton-secondaire" id="bouton-ajouter-piece"><svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg><span class="bouton-libelle">Ajouter</span></button>
+            <p class="champ-erreur ajout-erreur" id="err-piece-surface"></p>
+          </div>
+          <p class="resume-ligne" id="resume-pieces" aria-live="polite"></p>
+          <ul class="liste-pieces" id="liste-pieces" aria-label="Pièces du chantier"></ul>
+          <p class="message-formulaire" id="msg-etape-2" role="alert"></p>
+        </form>
+
+        <!-- 3. Appareils -->
+        <form class="carte formulaire etape-chantier" id="etape-chantier-3" data-etape="3" novalidate aria-labelledby="titre-etape-3" hidden>
+          <h2 class="bloc-titre" id="titre-etape-3" tabindex="-1">Appareils à circuit dédié</h2>
+          <p class="aide">Chaque appareil coché reçoit son propre circuit protégé. Laissez tout décoché s'il n'y en a pas.</p>
+          <ul class="liste-appareils" id="liste-appareils" aria-label="Appareils"></ul>
+        </form>
+
+        <!-- 4. Options -->
+        <form class="carte formulaire etape-chantier" id="etape-chantier-4" data-etape="4" novalidate aria-labelledby="titre-etape-4" hidden>
+          <h2 class="bloc-titre" id="titre-etape-4" tabindex="-1">Options</h2>
+          <div class="champ">
+            <label for="option-distance">Distance compteur – tableau (m)</label>
+            <input id="option-distance" type="text" inputmode="decimal" autocomplete="off" maxlength="6" aria-describedby="aide-option-distance err-option-distance">
+            <p class="aide" id="aide-option-distance">De 0 à 500 m. Sert au câble d'alimentation.</p>
+            <p class="champ-erreur" id="err-option-distance"></p>
+          </div>
+          <div class="champ">
+            <label for="option-hauteur">Hauteur sous plafond (m)</label>
+            <input id="option-hauteur" type="text" inputmode="decimal" autocomplete="off" maxlength="5" aria-describedby="aide-option-hauteur err-option-hauteur">
+            <p class="aide" id="aide-option-hauteur">De 2 à 6 m, 2,8 m par défaut.</p>
+            <p class="champ-erreur" id="err-option-hauteur"></p>
+          </div>
+          <div class="champ champ-case">
+            <label class="case"><input type="checkbox" id="option-parafoudre"><span>Parafoudre (fortement conseillé en zone orageuse)</span></label>
+          </div>
+          <div class="champ champ-case">
+            <label class="case"><input type="checkbox" id="option-terre"><span>Prise de terre neuve (piquet, câble 16 mm², barrette, regard)</span></label>
+          </div>
+          <div class="champ champ-case">
+            <label class="case"><input type="checkbox" id="option-remplacement"><span>Ancien tableau à remplacer (dépose comptée)</span></label>
+          </div>
+        </form>
+
+        <!-- 5. Main-d'œuvre et synthèse -->
+        <form class="etape-chantier etape-finale" id="etape-chantier-5" data-etape="5" novalidate aria-labelledby="titre-etape-5" hidden>
+          <div class="carte formulaire">
+            <h2 class="bloc-titre" id="titre-etape-5" tabindex="-1">Main-d'œuvre</h2>
+            <p class="aide">Les quatre façons de compter peuvent se cumuler. Les quantités au point sont calculées à partir de l'étude ; vous pouvez les corriger.</p>
+            <h3 class="sous-titre">Au point</h3>
+            <ul class="lignes-mo" id="liste-mo-points" aria-label="Main-d'œuvre au point"></ul>
+            <div class="total-ligne total-partiel"><span>Sous-total au point</span><strong class="montant" id="total-mo-points"></strong></div>
+            <h3 class="sous-titre">Au forfait</h3>
+            <div class="champ">
+              <label for="mo-forfait">Montant du forfait <span class="facultatif" id="devise-forfait"></span></label>
+              <input id="mo-forfait" type="text" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="0">
+            </div>
+            <h3 class="sous-titre">À la journée</h3>
+            <div class="trio">
+              <div class="champ">
+                <label for="mo-ouvriers">Ouvriers</label>
+                <input id="mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="0">
+              </div>
+              <div class="champ">
+                <label for="mo-jours">Jours</label>
+                <input id="mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" placeholder="0">
+              </div>
+              <div class="champ">
+                <label for="mo-tarif">Tarif / jour</label>
+                <input id="mo-tarif" type="text" inputmode="numeric" autocomplete="off" maxlength="12">
+              </div>
+            </div>
+            <h3 class="sous-titre">Lignes libres</h3>
+            <ul class="lignes-libres" id="liste-lignes-libres" aria-label="Lignes libres"></ul>
+            <button type="button" class="lien-texte" id="bouton-ajouter-ligne"><svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg>Ajouter une ligne</button>
+            <div class="total-ligne"><span>Total main-d'œuvre</span><strong class="montant" id="total-mo"></strong></div>
+          </div>
+          <section class="carte synthese" aria-labelledby="titre-synthese">
+            <h2 class="bloc-titre" id="titre-synthese">Synthèse de l'étude</h2>
+            <dl class="chiffres" id="synthese-chiffres"></dl>
+            <h3 class="sous-titre">Circuits</h3>
+            <div class="tableau-defile">
+              <table class="tableau-circuits">
+                <thead><tr><th scope="col">Circuit</th><th scope="col">Section</th><th scope="col">Calibre</th><th scope="col">Câble</th></tr></thead>
+                <tbody id="corps-circuits"></tbody>
+              </table>
+            </div>
+            <h3 class="sous-titre">Protections</h3>
+            <ul class="liste-simple" id="synthese-differentiels"></ul>
+            <p class="mention">Étude indicative établie selon les règles usuelles de la NF C 15-100. L'électricien reste responsable de la conformité de l'installation.</p>
+          </section>
+        </form>
+
+        <div class="navigation-etapes">
+          <button type="button" class="bouton bouton-discret" id="bouton-etape-precedente">Précédent</button>
+          <button type="button" class="bouton bouton-principal" id="bouton-etape-suivante"><span class="bouton-libelle">Suivant</span></button>
+        </div>
+      </div>
+    </section>
+
     <!-- Mon profil -->
     <section class="ecran" id="ecran-profil" aria-labelledby="titre-profil">
       <div class="colonnes">
@@ -1444,6 +1788,7 @@ a.bouton { text-decoration: none; }
 
 <nav class="onglets" id="onglets" aria-label="Navigation rapide"></nav>
 
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <div id="modale" hidden>
   <div class="modale-boite carte" role="dialog" aria-modal="true" aria-labelledby="modale-titre">
     <div class="modale-tete">
@@ -1515,7 +1860,9 @@ const CLES_STOCKAGE = Object.freeze({
   comptes: "bp_v1_comptes",
   session: "bp_v1_session",
   verrou: "bp_v1_verrou",
-  devis: "bp_v1_devis"
+  devis: "bp_v1_devis",
+  chantiers: "bp_v1_chantiers",
+  brouillonChantier: "bp_v1_brouillon_chantier"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -1678,6 +2025,8 @@ const STATUTS_DEVIS = Object.freeze({
 
 /* Animations des compteurs du tableau de bord (ms). */
 const DUREE_COMPTEUR = 700;
+const DELAI_BROUILLON = 600;
+const DUREE_TOAST = 3500;
 /* Appui long sur le logo de « À propos » pour ouvrir l'administration (ms). */
 const DUREE_APPUI_ADMIN = 3000;
 
@@ -1721,6 +2070,7 @@ const ASTUCES = Object.freeze([
    clients s'ajouteront quand leurs écrans existeront. */
 const RECHERCHE = Object.freeze([
   { libelle: "Accueil", detail: "Tableau de bord", ecran: "accueil", mots: "tableau bord compteurs astuce" },
+  { libelle: "Nouveau chantier", detail: "Étude NF C 15-100 en 5 étapes", ecran: "nouveau-chantier", mots: "chantier etude nouveau pieces prises circuits tableau norme calcul" },
   { libelle: "Mon profil", detail: "Nom, entreprise, téléphone, ville", ecran: "profil", cible: "carte-infos", mots: "profil nom entreprise telephone ville pays devise" },
   { libelle: "Photo de profil", detail: "Mon profil", ecran: "profil", cible: "carte-identite", mots: "photo image avatar" },
   { libelle: "Logo de l'entreprise", detail: "Mon profil", ecran: "profil", cible: "carte-logo", mots: "logo entreprise image devis" },
@@ -1738,6 +2088,80 @@ const RECHERCHE = Object.freeze([
 const CONDITIONS_DEFAUT = "Devis valable 30 jours. Acompte de 50 % à la commande, solde à la fin des travaux. Matériel garanti selon les conditions du fabricant.";
 
 /* ---------- Images importées (photo, logo) ---------- */
+/* ==========================================================================
+   Nouveau chantier et moteur de calcul NF C 15-100 (étape 5)
+   Les propositions sont des valeurs de départ : l'électricien peut tout modifier.
+   ========================================================================== */
+const ETAPES_CHANTIER = Object.freeze(["Client", "Pièces", "Appareils", "Options", "Main-d'œuvre"]);
+const TYPES_CHANTIER = Object.freeze({
+  villa: "Villa", appartement: "Appartement", boutique: "Boutique", bureau: "Bureau", renovation: "Rénovation"
+});
+const ALIMENTATIONS = Object.freeze({ mono: "Monophasé", tri: "Triphasé" });
+
+/* Bornes de saisie : toute valeur hors bornes est refusée à la saisie et ramenée dans les bornes par le moteur. */
+const BORNES_CHANTIER = Object.freeze({
+  surfaceMin: 0.5, surfaceMax: 2000, piecesMax: 60, prisesMax: 50, pointsMax: 50,
+  appareilsMax: 20, distanceMax: 500, hauteurMin: 2, hauteurMax: 6, hauteurDefaut: 2.8,
+  quantiteMax: 9999, prixMax: 100000000, ouvriersMax: 50, joursMax: 365, lignesLibresMax: 20
+});
+
+/* Pièces : prises proposées = max(minimum, arrondi supérieur de surface / m² par prise) ;
+   points lumineux = max(1, arrondi supérieur de surface / m² par point).
+   Séjour : 1 prise par 4 m², 5 minimum, 7 au-delà de 28 m². Chambre : 3. Cuisine : 6 dont 4 sur
+   plan de travail (circuit dédié 20 A). Salle d'eau, véranda : 1. WC : aucune. */
+const TYPES_PIECES = Object.freeze({
+  sejour: Object.freeze({ libelle: "Séjour", prisesMin: 5, m2ParPrise: 4, m2ParPoint: 20, commande: "simple" }),
+  chambre: Object.freeze({ libelle: "Chambre", prisesMin: 3, m2ParPrise: 0, m2ParPoint: 20, commande: "simple" }),
+  cuisine: Object.freeze({ libelle: "Cuisine", prisesMin: 6, m2ParPrise: 0, m2ParPoint: 15, commande: "simple", circuitCuisine: true }),
+  "salle-eau": Object.freeze({ libelle: "Salle d'eau", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 20, commande: "simple", etanche: true }),
+  wc: Object.freeze({ libelle: "WC", prisesMin: 0, m2ParPrise: 0, m2ParPoint: 20, commande: "simple" }),
+  couloir: Object.freeze({ libelle: "Couloir", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 10, commande: "va-et-vient" }),
+  veranda: Object.freeze({ libelle: "Véranda", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 20, commande: "simple", etanche: true }),
+  garage: Object.freeze({ libelle: "Garage", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 20, commande: "simple" }),
+  magasin: Object.freeze({ libelle: "Magasin", prisesMin: 2, m2ParPrise: 8, m2ParPoint: 8, commande: "simple" }),
+  bureau: Object.freeze({ libelle: "Bureau", prisesMin: 3, m2ParPrise: 4, m2ParPoint: 10, commande: "simple" }),
+  exterieur: Object.freeze({ libelle: "Extérieur", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 25, commande: "simple", etanche: true })
+});
+const SEJOUR_GRAND = Object.freeze({ surface: 28, prisesMin: 7 });
+
+/* Circuits : sections en mm², calibres en A. */
+const REGLES_CIRCUITS = Object.freeze({
+  prises: Object.freeze({ section: 1.5, calibre: 16, max: 8 }),
+  prisesCuisine: Object.freeze({ section: 2.5, calibre: 20, max: 12 }),
+  eclairage: Object.freeze({ section: 1.5, calibre: 10, max: 8 }),
+  differentiel: Object.freeze({ circuitsMax: 8, minimum: 2, sensibilite: 30 }),
+  margeCable: 0.12,
+  reserveModules: 0.2,
+  modulesParRangee: 13
+});
+/* Appareils à circuit dédié : un circuit par appareil. Type A : différentiel de type A (plaque, lave-linge). */
+const APPAREILS = Object.freeze({
+  climatiseur: Object.freeze({ libelle: "Climatiseur", section: 2.5, calibre: 20 }),
+  "chauffe-eau": Object.freeze({ libelle: "Chauffe-eau", section: 2.5, calibre: 20 }),
+  cuisiniere: Object.freeze({ libelle: "Cuisinière / plaque", section: 6, calibre: 32, typeA: true }),
+  four: Object.freeze({ libelle: "Four", section: 2.5, calibre: 20 }),
+  "lave-linge": Object.freeze({ libelle: "Lave-linge", section: 2.5, calibre: 20, typeA: true }),
+  "lave-vaisselle": Object.freeze({ libelle: "Lave-vaisselle", section: 2.5, calibre: 20 }),
+  pompe: Object.freeze({ libelle: "Pompe", section: 2.5, calibre: 20 }),
+  congelateur: Object.freeze({ libelle: "Congélateur", section: 2.5, calibre: 20 }),
+  portail: Object.freeze({ libelle: "Portail motorisé", section: 2.5, calibre: 20 })
+});
+
+/* Main-d'œuvre au point : prix de départ en FCFA (XOF/XAF), modifiables sur chaque chantier.
+   Dans une autre devise, les prix partent de 0 et l'électricien les saisit. */
+const MAIN_OEUVRE_POINTS = Object.freeze({
+  prise: Object.freeze({ libelle: "Prise de courant", prix: 2500 }),
+  interrupteur: Object.freeze({ libelle: "Interrupteur", prix: 2000 }),
+  "va-et-vient": Object.freeze({ libelle: "Va-et-vient (2 commandes)", prix: 3000 }),
+  point: Object.freeze({ libelle: "Point lumineux", prix: 2500 }),
+  dedie: Object.freeze({ libelle: "Circuit dédié", prix: 7500 }),
+  tableau: Object.freeze({ libelle: "Pose de tableau", prix: 25000 }),
+  depose: Object.freeze({ libelle: "Dépose de l'ancien tableau", prix: 10000 }),
+  terre: Object.freeze({ libelle: "Prise de terre", prix: 20000 })
+});
+const TARIF_JOURNEE_DEFAUT = 10000;
+const DEVISES_PRIX_DEFAUT = Object.freeze(["XOF", "XAF"]);
+
 /* ---------- Identité visuelle (étape 4) ---------- */
 /* Remplace toute photo d'électricien manquante : jamais de cadre vide. */
 const PHOTO_REPLI = "images/equipe/electricien-repli.svg";
@@ -2047,6 +2471,7 @@ function preparerEcran(id) {
   if (id === "accueil") afficherAccueil();
   else if (id === "profil") remplirProfil();
   else if (id === "admin") reinitialiserAdmin();
+  else if (id === "nouveau-chantier") ouvrirAssistant();
 }
 
 /* Un seul écouteur pour tous les éléments [data-ecran] (menu, onglets, raccourcis…). */
@@ -2908,6 +3333,8 @@ async function ouvrirSession(compte) {
 }
 
 async function fermerSession() {
+  if (assistant.minuterie) await enregistrerBrouillon();
+  assistant.chantier = null;
   await supprimerValeur(CLES_STOCKAGE.session);
   etat.compte = null;
   etat.abonnement = null;
@@ -4062,6 +4489,1328 @@ async function surAdmin(evenement) {
   }
 }
 
+/* ==== MOTEUR NF C 15-100 ==== */
+/* Fonctions pures : aucune lecture du DOM ni du stockage. Elles ne dépendent que des
+   constantes de donnees.js, ce qui permet de les tester hors de la page
+   (src/scripts/valider-moteur.mjs). Toute entrée est bornée : le résultat ne contient
+   jamais NaN, Infinity ni valeur négative, même avec des données falsifiées. */
+
+function lireNombre(valeur) {
+  if (typeof valeur === "number") return valeur;
+  if (typeof valeur !== "string") return NaN;
+  const texte = valeur.replace(/[\s\u00A0\u202F]/g, "").replace(",", ".");
+  if (!/^-?\d+(\.\d+)?$/.test(texte) && !/^-?\.\d+$/.test(texte)) return NaN;
+  return Number(texte);
+}
+
+function borner(valeur, min, max, defaut) {
+  const nombre = lireNombre(valeur);
+  if (!Number.isFinite(nombre)) return defaut;
+  return Math.min(max, Math.max(min, nombre));
+}
+
+function entierBorne(valeur, min, max, defaut) {
+  return Math.round(borner(valeur, min, max, defaut));
+}
+
+function arrondi(valeur, decimales) {
+  const facteur = Math.pow(10, decimales);
+  return Math.round(valeur * facteur) / facteur;
+}
+
+/* Arrondi supérieur protégé contre les erreurs de virgule flottante (28,000000001 → 28). */
+function plafond(valeur) {
+  return Math.ceil(arrondi(valeur, 6));
+}
+
+function texteBorne(valeur, max) {
+  if (typeof valeur !== "string") return "";
+  return valeur.replace(/[\u0000-\u001F\u007F]/g, "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function surfaceValide(valeur) {
+  const nombre = lireNombre(valeur);
+  return Number.isFinite(nombre) && nombre >= BORNES_CHANTIER.surfaceMin && nombre <= BORNES_CHANTIER.surfaceMax;
+}
+
+/* Prises et points lumineux proposés pour une pièce. */
+function propositionPiece(type, surface) {
+  const regle = TYPES_PIECES[type];
+  if (!regle) return { prises: 0, points: 0 };
+  const s = borner(surface, BORNES_CHANTIER.surfaceMin, BORNES_CHANTIER.surfaceMax, BORNES_CHANTIER.surfaceMin);
+  let prises = regle.prisesMin;
+  if (regle.m2ParPrise > 0) prises = Math.max(prises, plafond(s / regle.m2ParPrise));
+  if (type === "sejour" && s > SEJOUR_GRAND.surface) prises = Math.max(prises, SEJOUR_GRAND.prisesMin);
+  const points = Math.max(1, plafond(s / regle.m2ParPoint));
+  return {
+    prises: Math.min(prises, BORNES_CHANTIER.prisesMax),
+    points: Math.min(points, BORNES_CHANTIER.pointsMax)
+  };
+}
+
+/* Pièces nettoyées et numérotées (« Chambre 1 », « Chambre 2 »…). null = valeur proposée. */
+function normaliserPieces(pieces) {
+  const liste = (Array.isArray(pieces) ? pieces : [])
+    .filter((p) => p && typeof p === "object" && Object.prototype.hasOwnProperty.call(TYPES_PIECES, p.type))
+    .slice(0, BORNES_CHANTIER.piecesMax);
+  const totaux = {};
+  liste.forEach((p) => { totaux[p.type] = (totaux[p.type] || 0) + 1; });
+  const rangs = {};
+  return liste.map((p, index) => {
+    rangs[p.type] = (rangs[p.type] || 0) + 1;
+    const surface = arrondi(borner(p.surface, BORNES_CHANTIER.surfaceMin, BORNES_CHANTIER.surfaceMax, BORNES_CHANTIER.surfaceMin), 2);
+    const proposition = propositionPiece(p.type, surface);
+    const manuel = (valeur) => valeur !== null && valeur !== undefined && valeur !== "";
+    return {
+      id: typeof p.id === "string" && /^[a-z0-9-]{1,40}$/i.test(p.id) ? p.id : "piece-" + (index + 1),
+      type: p.type,
+      nom: TYPES_PIECES[p.type].libelle + (totaux[p.type] > 1 ? " " + rangs[p.type] : ""),
+      surface,
+      proposition,
+      prises: manuel(p.prises) ? entierBorne(p.prises, 0, BORNES_CHANTIER.prisesMax, proposition.prises) : proposition.prises,
+      points: manuel(p.points) ? entierBorne(p.points, 0, BORNES_CHANTIER.pointsMax, proposition.points) : proposition.points
+    };
+  });
+}
+
+function normaliserAppareils(appareils) {
+  const source = appareils && typeof appareils === "object" ? appareils : {};
+  const resultat = {};
+  Object.keys(APPAREILS).forEach((id) => {
+    const quantite = entierBorne(source[id], 0, BORNES_CHANTIER.appareilsMax, 0);
+    if (quantite > 0) resultat[id] = quantite;
+  });
+  return resultat;
+}
+
+function normaliserOptions(options) {
+  const o = options && typeof options === "object" ? options : {};
+  return {
+    distance: arrondi(borner(o.distance, 0, BORNES_CHANTIER.distanceMax, 0), 1),
+    hauteur: arrondi(borner(o.hauteur, BORNES_CHANTIER.hauteurMin, BORNES_CHANTIER.hauteurMax, BORNES_CHANTIER.hauteurDefaut), 2),
+    parafoudre: o.parafoudre === true,
+    terreNeuve: o.terreNeuve === true,
+    tableauARemplacer: o.tableauARemplacer === true
+  };
+}
+
+/* Remplit des circuits de « max » points au plus, pièce après pièce, dans l'ordre de saisie.
+   Une grande pièce peut être répartie sur deux circuits. */
+function remplirCircuits(pieces, champ, genre, regle, prefixe) {
+  const groupes = [];
+  let courant = null;
+  pieces.forEach((piece) => {
+    let reste = piece[champ];
+    while (reste > 0) {
+      if (!courant || courant.points >= regle.max) {
+        courant = { genre, section: regle.section, calibre: regle.calibre, points: 0, morceaux: [] };
+        groupes.push(courant);
+      }
+      const pris = Math.min(reste, regle.max - courant.points);
+      courant.points += pris;
+      courant.morceaux.push({ piece: piece.nom, surface: piece.surface * (pris / piece[champ]) });
+      reste -= pris;
+    }
+  });
+  groupes.forEach((groupe, index) => {
+    groupe.nom = prefixe + (groupes.length > 1 ? " " + (index + 1) : "");
+  });
+  return groupes;
+}
+
+/* Longueur d'un circuit : trajet horizontal estimé (4 × √surface par pièce desservie),
+   descentes (hauteur par point), trajet tableau → pièces (√ surface totale), +12 % de marge. */
+function longueurCircuit(morceaux, descentes, hauteur, depuisTableau) {
+  const horizontal = morceaux.reduce((somme, m) => somme + 4 * Math.sqrt(m.surface), 0);
+  return plafond((horizontal + hauteur * descentes + depuisTableau) * (1 + REGLES_CIRCUITS.margeCable));
+}
+
+const ORDRE_GENRES = Object.freeze({ eclairage: 0, prises: 1, cuisine: 2, dedie: 3 });
+
+/* Différentiels 30 mA : au plus 8 circuits chacun, 2 au minimum dès 2 circuits.
+   Type A pour la cuisinière et le lave-linge, type AC pour le reste.
+   Les circuits sont distribués à tour de rôle pour répartir l'éclairage. */
+function repartirDifferentiels(circuits, tri) {
+  const regle = REGLES_CIRCUITS.differentiel;
+  const typeA = circuits.filter((c) => c.typeA);
+  const typeAC = circuits.filter((c) => !c.typeA);
+  let nombreA = Math.ceil(typeA.length / regle.circuitsMax);
+  let nombreAC = Math.ceil(typeAC.length / regle.circuitsMax);
+  const minimum = Math.min(regle.minimum, circuits.length);
+  while (nombreA + nombreAC < minimum) {
+    if (typeAC.length > nombreAC) nombreAC += 1;
+    else if (typeA.length > nombreA) nombreA += 1;
+    else break;
+  }
+  const differentiels = [];
+  const distribuer = (liste, nombre, type) => {
+    const groupes = Array.from({ length: nombre }, () => []);
+    [...liste].sort((a, b) => ORDRE_GENRES[a.genre] - ORDRE_GENRES[b.genre])
+      .forEach((circuit, index) => groupes[index % nombre].push(circuit));
+    groupes.forEach((groupe) => {
+      const fort = groupe.some((c) => c.calibre >= 32) || groupe.filter((c) => c.genre === "dedie").length >= 2;
+      differentiels.push({
+        type,
+        calibre: fort ? 63 : 40,
+        sensibilite: regle.sensibilite,
+        poles: tri ? 4 : 2,
+        circuits: groupe.map((c) => c.nom)
+      });
+    });
+  };
+  distribuer(typeAC, nombreAC, "AC");
+  distribuer(typeA, nombreA, "A");
+  differentiels.forEach((d, index) => { d.nom = "Différentiel " + (index + 1); });
+  return differentiels;
+}
+
+function ajouterMateriel(liste, ref, designation, unite, quantite) {
+  if (quantite > 0) liste.push({ ref, designation, unite, quantite });
+}
+
+function formaterSection(section) {
+  return String(section).replace(".", ",");
+}
+
+function prixDefautMainOeuvre(id, codeDevise) {
+  return DEVISES_PRIX_DEFAUT.includes(codeDevise) ? MAIN_OEUVRE_POINTS[id].prix : 0;
+}
+
+/* Main-d'œuvre : 4 modes cumulables (au point, forfait, journées, lignes libres). */
+function calculerMainOeuvre(saisie, quantitesAuto, codeDevise) {
+  const mo = saisie && typeof saisie === "object" ? saisie : {};
+  const points = mo.points && typeof mo.points === "object" ? mo.points : {};
+  const prixMax = BORNES_CHANTIER.prixMax;
+  const lignes = Object.keys(MAIN_OEUVRE_POINTS).map((id) => {
+    const reglage = points[id] && typeof points[id] === "object" ? points[id] : {};
+    const auto = quantitesAuto[id] || 0;
+    const quantiteManuelle = reglage.quantite !== null && reglage.quantite !== undefined && reglage.quantite !== "";
+    const prixManuel = reglage.prix !== null && reglage.prix !== undefined && reglage.prix !== "";
+    const quantite = quantiteManuelle ? entierBorne(reglage.quantite, 0, BORNES_CHANTIER.quantiteMax, auto) : auto;
+    const prix = prixManuel ? entierBorne(reglage.prix, 0, prixMax, 0) : prixDefautMainOeuvre(id, codeDevise);
+    return { id, libelle: MAIN_OEUVRE_POINTS[id].libelle, auto, quantite, prix, montant: quantite * prix };
+  });
+  const journees = mo.journees && typeof mo.journees === "object" ? mo.journees : {};
+  const ouvriers = entierBorne(journees.ouvriers, 0, BORNES_CHANTIER.ouvriersMax, 0);
+  const jours = arrondi(borner(journees.jours, 0, BORNES_CHANTIER.joursMax, 0), 1);
+  const tarifSaisi = journees.tarif !== null && journees.tarif !== undefined && journees.tarif !== "";
+  const tarif = tarifSaisi ? entierBorne(journees.tarif, 0, prixMax, 0)
+    : (DEVISES_PRIX_DEFAUT.includes(codeDevise) ? TARIF_JOURNEE_DEFAUT : 0);
+  const libres = (Array.isArray(mo.libres) ? mo.libres : []).slice(0, BORNES_CHANTIER.lignesLibresMax)
+    .filter((l) => l && typeof l === "object")
+    .map((l) => ({ libelle: texteBorne(l.libelle, 120), montant: entierBorne(l.montant, 0, prixMax, 0) }));
+  const totalPoints = lignes.reduce((s, l) => s + l.montant, 0);
+  const forfait = entierBorne(mo.forfait, 0, prixMax, 0);
+  const totalJournees = Math.round(ouvriers * jours * tarif);
+  const totalLibres = libres.reduce((s, l) => s + l.montant, 0);
+  return {
+    lignes, totalPoints, forfait,
+    journees: { ouvriers, jours, tarif, total: totalJournees },
+    libres, totalLibres,
+    total: totalPoints + forfait + totalJournees + totalLibres
+  };
+}
+
+/* Étude complète d'un chantier : circuits, protections, coffret, câbles, matériel, main-d'œuvre. */
+function etudierChantier(chantier, codeDevise) {
+  const c = chantier && typeof chantier === "object" ? chantier : {};
+  const tri = c.alimentation === "tri";
+  const pieces = normaliserPieces(c.pieces);
+  const appareils = normaliserAppareils(c.appareils);
+  const options = normaliserOptions(c.options);
+  const surfaceTotale = arrondi(pieces.reduce((s, p) => s + p.surface, 0), 2);
+  const depuisTableau = Math.sqrt(surfaceTotale);
+
+  const eclairage = remplirCircuits(pieces, "points", "eclairage", REGLES_CIRCUITS.eclairage, "Éclairage");
+  const prises = remplirCircuits(pieces.filter((p) => !TYPES_PIECES[p.type].circuitCuisine), "prises", "prises", REGLES_CIRCUITS.prises, "Prises");
+  const cuisine = remplirCircuits(pieces.filter((p) => TYPES_PIECES[p.type].circuitCuisine), "prises", "cuisine", REGLES_CIRCUITS.prisesCuisine, "Prises cuisine");
+  const dedies = [];
+  Object.entries(appareils).forEach(([id, quantite]) => {
+    const appareil = APPAREILS[id];
+    for (let i = 1; i <= quantite; i += 1) {
+      dedies.push({
+        genre: "dedie", section: appareil.section, calibre: appareil.calibre, points: 1, morceaux: [],
+        typeA: appareil.typeA === true,
+        nom: appareil.libelle + (quantite > 1 ? " " + i : "")
+      });
+    }
+  });
+  const circuits = [...eclairage, ...prises, ...cuisine, ...dedies].map((circuit, index) => ({
+    numero: index + 1,
+    nom: circuit.nom,
+    genre: circuit.genre,
+    section: circuit.section,
+    calibre: circuit.calibre,
+    points: circuit.points,
+    typeA: circuit.typeA === true,
+    pieces: [...new Set(circuit.morceaux.map((m) => m.piece))],
+    longueur: longueurCircuit(circuit.morceaux, circuit.points, options.hauteur, depuisTableau)
+  }));
+
+  const differentiels = repartirDifferentiels(circuits, tri);
+  const modulesDifferentiel = tri ? 4 : 2;
+  const modules = circuits.length + differentiels.length * modulesDifferentiel + (options.parafoudre ? modulesDifferentiel : 0);
+  const modulesReserves = plafond(modules * (1 + REGLES_CIRCUITS.reserveModules));
+  const rangees = modules > 0 ? Math.max(1, plafond(modulesReserves / REGLES_CIRCUITS.modulesParRangee)) : 0;
+  const coffret = { modules, modulesReserves, rangees, capacite: rangees * REGLES_CIRCUITS.modulesParRangee };
+
+  const cables = {};
+  circuits.forEach((circuit) => {
+    cables[circuit.section] = (cables[circuit.section] || 0) + circuit.longueur;
+  });
+  const alimentation = options.distance > 0 ? plafond(options.distance * (1 + REGLES_CIRCUITS.margeCable)) : 0;
+
+  const prisesEtanches = pieces.filter((p) => TYPES_PIECES[p.type].etanche).reduce((s, p) => s + p.prises, 0);
+  const prisesTotal = pieces.reduce((s, p) => s + p.prises, 0);
+  const pointsTotal = pieces.reduce((s, p) => s + p.points, 0);
+  const avecPoints = pieces.filter((p) => p.points > 0);
+  const interrupteurs = avecPoints.filter((p) => TYPES_PIECES[p.type].commande === "simple").length;
+  const vaEtVient = avecPoints.filter((p) => TYPES_PIECES[p.type].commande === "va-et-vient").length;
+
+  const materiel = [];
+  if (rangees > 0) {
+    ajouterMateriel(materiel, "coffret", "Coffret " + rangees + (rangees > 1 ? " rangées" : " rangée") + " de " + REGLES_CIRCUITS.modulesParRangee + " modules", "u", 1);
+    ajouterMateriel(materiel, "peigne", "Peigne d'alimentation " + REGLES_CIRCUITS.modulesParRangee + " modules", "u", rangees);
+    ajouterMateriel(materiel, "bornier", "Bornier de terre et de neutre", "u", rangees);
+  }
+  const parCalibre = {};
+  circuits.forEach((circuit) => { parCalibre[circuit.calibre] = (parCalibre[circuit.calibre] || 0) + 1; });
+  Object.keys(parCalibre).map(Number).sort((a, b) => a - b).forEach((calibre) => {
+    ajouterMateriel(materiel, "disjoncteur-" + calibre, "Disjoncteur divisionnaire 1P+N " + calibre + " A", "u", parCalibre[calibre]);
+  });
+  const parDifferentiel = {};
+  differentiels.forEach((d) => {
+    const cle = d.calibre + "-" + d.type;
+    parDifferentiel[cle] = parDifferentiel[cle] || { d, quantite: 0 };
+    parDifferentiel[cle].quantite += 1;
+  });
+  Object.keys(parDifferentiel).sort().forEach((cle) => {
+    const { d, quantite } = parDifferentiel[cle];
+    ajouterMateriel(materiel, "differentiel-" + cle, "Interrupteur différentiel " + (tri ? "4P " : "2P ") + d.calibre + " A 30 mA type " + d.type, "u", quantite);
+  });
+  if (options.parafoudre && rangees > 0) {
+    ajouterMateriel(materiel, "parafoudre", "Parafoudre " + (tri ? "4P" : "2P") + " avec protection intégrée", "u", 1);
+  }
+  Object.keys(cables).map(Number).sort((a, b) => a - b).forEach((section) => {
+    ajouterMateriel(materiel, "cable-" + section, "Câble 3G" + formaterSection(section) + " mm²", "m", cables[section]);
+  });
+  const gaine20 = circuits.filter((ci) => ci.section < 6).reduce((s, ci) => s + ci.longueur, 0);
+  const gaine25 = circuits.filter((ci) => ci.section >= 6).reduce((s, ci) => s + ci.longueur, 0);
+  ajouterMateriel(materiel, "gaine-20", "Gaine ICTA 20", "m", gaine20);
+  ajouterMateriel(materiel, "gaine-25", "Gaine ICTA 25", "m", gaine25);
+  ajouterMateriel(materiel, "alimentation", "Câble d'alimentation " + (tri ? "5G10" : "3G10") + " mm²", "m", alimentation);
+  ajouterMateriel(materiel, "prise", "Prise 2P+T 16 A", "u", prisesTotal - prisesEtanches);
+  ajouterMateriel(materiel, "prise-etanche", "Prise 2P+T 16 A étanche IP44", "u", prisesEtanches);
+  ajouterMateriel(materiel, "interrupteur", "Interrupteur simple allumage", "u", interrupteurs);
+  ajouterMateriel(materiel, "va-et-vient", "Interrupteur va-et-vient", "u", vaEtVient * 2);
+  ajouterMateriel(materiel, "point", "Point lumineux (DCL et douille)", "u", pointsTotal);
+  ajouterMateriel(materiel, "boite", "Boîte d'encastrement", "u", prisesTotal + interrupteurs + vaEtVient * 2 + pointsTotal);
+  ajouterMateriel(materiel, "derivation", "Boîte de dérivation", "u", avecPoints.length);
+  if (options.terreNeuve) {
+    ajouterMateriel(materiel, "piquet", "Piquet de terre 1,5 m", "u", 1);
+    ajouterMateriel(materiel, "cable-terre", "Câble de terre vert-jaune 16 mm²", "m", 5);
+    ajouterMateriel(materiel, "barrette", "Barrette de mesure de terre", "u", 1);
+    ajouterMateriel(materiel, "regard", "Regard de visite", "u", 1);
+  }
+
+  const quantitesAuto = {
+    prise: prisesTotal,
+    interrupteur: interrupteurs,
+    "va-et-vient": vaEtVient,
+    point: pointsTotal,
+    dedie: dedies.length,
+    tableau: circuits.length > 0 ? 1 : 0,
+    depose: options.tableauARemplacer ? 1 : 0,
+    terre: options.terreNeuve ? 1 : 0
+  };
+
+  return {
+    pieces,
+    appareils,
+    options,
+    alimentation: tri ? "tri" : "mono",
+    surfaceTotale,
+    totaux: { prises: prisesTotal, prisesEtanches, points: pointsTotal, interrupteurs, vaEtVient },
+    circuits,
+    comptes: { eclairage: eclairage.length, prises: prises.length, cuisine: cuisine.length, dedies: dedies.length },
+    differentiels,
+    coffret,
+    cables,
+    cableTotal: circuits.reduce((s, ci) => s + ci.longueur, 0),
+    cableAlimentation: alimentation,
+    materiel,
+    mainOeuvre: calculerMainOeuvre(c.mainOeuvre, quantitesAuto, codeDevise)
+  };
+}
+/* ==== FIN DU MOTEUR ==== */
+
+/* ---------- Assistant Nouveau chantier (5 étapes, brouillon automatique) ---------- */
+
+const assistant = { chantier: null, minuterie: 0, toast: 0 };
+
+function identifiantCourt() {
+  return "p" + [...crypto.getRandomValues(new Uint8Array(5))].map((o) => o.toString(16).padStart(2, "0")).join("");
+}
+
+function quantiteFacultative(valeur, max) {
+  if (valeur === null || valeur === undefined || valeur === "") return null;
+  const nombre = lireNombre(valeur);
+  return Number.isFinite(nombre) ? Math.round(Math.min(max, Math.max(0, nombre))) : null;
+}
+
+function formaterDecimal(nombre) {
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2, useGrouping: false }).format(nombre);
+}
+
+/* Écrit un texte dont les mots composés (« Chauffe-eau », « Va-et-vient ») ne sont jamais
+   coupés au trait d'union : chacun est placé dans un span insécable. */
+function ecrireInsecable(element, texte) {
+  element.replaceChildren(...String(texte).split(/(\s+)/).filter(Boolean).map((morceau) => {
+    if (!morceau.includes("-") || /\s/.test(morceau)) return document.createTextNode(morceau);
+    const span = document.createElement("span");
+    span.className = "insecable";
+    span.textContent = morceau;
+    return span;
+  }));
+  return element;
+}
+
+function nouveauChantier() {
+  const maintenant = new Date().toISOString();
+  return {
+    id: identifiantAleatoire(), compteId: etat.compte.id, creeLe: maintenant, modifieLe: maintenant,
+    statut: "brouillon", etape: 1, etapeMax: 1,
+    client: { nom: "", telephone: "" }, nom: "", lieu: "", type: "villa", alimentation: "mono",
+    pieces: [], appareils: {},
+    options: { distance: 0, hauteur: BORNES_CHANTIER.hauteurDefaut, parafoudre: false, terreNeuve: false, tableauARemplacer: false },
+    mainOeuvre: { points: {}, forfait: 0, journees: { ouvriers: 0, jours: 0, tarif: null }, libres: [] }
+  };
+}
+
+/* Relit un chantier venu du stockage, champ par champ. Tout champ inconnu est ignoré,
+   toute valeur hors bornes est ramenée dans les bornes ; une pièce de surface invalide est écartée.
+   Retourne null si l'objet n'appartient pas au compte. */
+function chantierValide(objet, compteId) {
+  if (!objet || typeof objet !== "object" || Array.isArray(objet)) return null;
+  if (typeof objet.id !== "string" || !/^[a-z0-9-]{8,64}$/i.test(objet.id)) return null;
+  if (typeof compteId !== "string" || objet.compteId !== compteId) return null;
+  const date = (valeur) => (typeof valeur === "string" && valeur.length <= 40 && !Number.isNaN(Date.parse(valeur)) ? valeur : new Date().toISOString());
+  const client = objet.client && typeof objet.client === "object" ? objet.client : {};
+  const telephone = texteBorne(client.telephone, 22);
+  const pieces = (Array.isArray(objet.pieces) ? objet.pieces : [])
+    .filter((p) => p && typeof p === "object" && Object.prototype.hasOwnProperty.call(TYPES_PIECES, p.type) && surfaceValide(p.surface))
+    .slice(0, BORNES_CHANTIER.piecesMax)
+    .map((p) => ({
+      id: typeof p.id === "string" && /^[a-z0-9-]{1,40}$/i.test(p.id) ? p.id : identifiantCourt(),
+      type: p.type,
+      surface: arrondi(lireNombre(p.surface), 2),
+      prises: quantiteFacultative(p.prises, BORNES_CHANTIER.prisesMax),
+      points: quantiteFacultative(p.points, BORNES_CHANTIER.pointsMax)
+    }));
+  const vus = new Set();
+  pieces.forEach((p) => { if (vus.has(p.id)) p.id = identifiantCourt(); vus.add(p.id); });
+  const mo = objet.mainOeuvre && typeof objet.mainOeuvre === "object" ? objet.mainOeuvre : {};
+  const moPoints = mo.points && typeof mo.points === "object" ? mo.points : {};
+  const points = {};
+  Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => {
+    const reglage = moPoints[id] && typeof moPoints[id] === "object" ? moPoints[id] : {};
+    const quantite = quantiteFacultative(reglage.quantite, BORNES_CHANTIER.quantiteMax);
+    const prix = quantiteFacultative(reglage.prix, BORNES_CHANTIER.prixMax);
+    if (quantite !== null || prix !== null) points[id] = { quantite, prix };
+  });
+  const journees = mo.journees && typeof mo.journees === "object" ? mo.journees : {};
+  const options = normaliserOptions(objet.options);
+  const etapeMax = entierBorne(objet.etapeMax, 1, ETAPES_CHANTIER.length, 1);
+  return {
+    id: objet.id, compteId, creeLe: date(objet.creeLe), modifieLe: date(objet.modifieLe),
+    statut: objet.statut === "etudie" ? "etudie" : "brouillon",
+    etape: Math.min(entierBorne(objet.etape, 1, ETAPES_CHANTIER.length, 1), etapeMax),
+    etapeMax,
+    client: { nom: texteBorne(client.nom, BORNES.texteMax), telephone: /^\+\d{6,15}$/.test(telephone) ? telephone : "" },
+    nom: texteBorne(objet.nom, BORNES.texteMax),
+    lieu: texteBorne(objet.lieu, BORNES.texteMax),
+    type: Object.prototype.hasOwnProperty.call(TYPES_CHANTIER, objet.type) ? objet.type : "villa",
+    alimentation: objet.alimentation === "tri" ? "tri" : "mono",
+    pieces,
+    appareils: normaliserAppareils(objet.appareils),
+    options,
+    mainOeuvre: {
+      points,
+      forfait: entierBorne(mo.forfait, 0, BORNES_CHANTIER.prixMax, 0),
+      journees: {
+        ouvriers: entierBorne(journees.ouvriers, 0, BORNES_CHANTIER.ouvriersMax, 0),
+        jours: arrondi(borner(journees.jours, 0, BORNES_CHANTIER.joursMax, 0), 1),
+        tarif: quantiteFacultative(journees.tarif, BORNES_CHANTIER.prixMax)
+      },
+      libres: (Array.isArray(mo.libres) ? mo.libres : []).slice(0, BORNES_CHANTIER.lignesLibresMax)
+        .filter((l) => l && typeof l === "object")
+        .map((l) => ({ libelle: texteBorne(l.libelle, 120), montant: entierBorne(l.montant, 0, BORNES_CHANTIER.prixMax, 0) }))
+    }
+  };
+}
+
+/* ----- Stockage : chantiers enregistrés et brouillon (un par compte) ----- */
+
+async function lireChantiersBruts() {
+  const liste = await lireJson(CLES_STOCKAGE.chantiers);
+  return Array.isArray(liste) ? liste.filter((c) => c && typeof c === "object" && !Array.isArray(c)) : [];
+}
+
+async function lireChantiers(compteId) {
+  return (await lireChantiersBruts()).map((c) => chantierValide(c, compteId)).filter(Boolean);
+}
+
+async function lireBrouillons() {
+  const brut = await lireJson(CLES_STOCKAGE.brouillonChantier);
+  const brouillons = {};
+  if (brut && typeof brut === "object" && !Array.isArray(brut)) {
+    Object.keys(brut).forEach((compteId) => {
+      const chantier = chantierValide(brut[compteId], compteId);
+      if (chantier) brouillons[compteId] = chantier;
+    });
+  }
+  return brouillons;
+}
+
+async function lireBrouillon(compteId) {
+  const brouillons = await lireBrouillons();
+  return Object.prototype.hasOwnProperty.call(brouillons, compteId) ? brouillons[compteId] : null;
+}
+
+async function ecrireBrouillon(chantier) {
+  const brouillons = await lireBrouillons();
+  if (chantier) brouillons[chantier.compteId] = chantier;
+  else if (etat.compte) delete brouillons[etat.compte.id];
+  if (!Object.keys(brouillons).length) {
+    await supprimerValeur(CLES_STOCKAGE.brouillonChantier);
+    return true;
+  }
+  return ecrireValeur(CLES_STOCKAGE.brouillonChantier, JSON.stringify(brouillons));
+}
+
+function heureCourte(date) {
+  return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+async function enregistrerBrouillon() {
+  clearTimeout(assistant.minuterie);
+  assistant.minuterie = 0;
+  const chantier = assistant.chantier;
+  if (!chantier || !etat.compte || chantier.compteId !== etat.compte.id) return;
+  lireEtape(chantier.etape, false);
+  chantier.modifieLe = new Date().toISOString();
+  const reussi = await ecrireBrouillon(chantier);
+  $("etat-brouillon").textContent = reussi
+    ? "Brouillon enregistré à " + heureCourte(new Date())
+    : "Brouillon non enregistré : mémoire de l'appareil indisponible.";
+}
+
+function planifierBrouillon() {
+  if (!assistant.chantier) return;
+  clearTimeout(assistant.minuterie);
+  assistant.minuterie = setTimeout(enregistrerBrouillon, DELAI_BROUILLON);
+}
+
+/* L'application passe en arrière-plan : le brouillon en attente est écrit tout de suite. */
+function surVisibilite() {
+  if (document.visibilityState === "hidden" && assistant.minuterie) enregistrerBrouillon();
+}
+
+/* ----- Construction des éléments fixes (une fois au démarrage) ----- */
+
+function creerPuce(nom, valeur, libelle) {
+  const label = document.createElement("label");
+  label.className = "puce";
+  const entree = document.createElement("input");
+  entree.type = "radio";
+  entree.name = nom;
+  entree.value = valeur;
+  const texte = document.createElement("span");
+  texte.textContent = libelle;
+  label.append(entree, texte);
+  return label;
+}
+
+function creerCompteurSaisie(id, libelle, max, donnees) {
+  const bloc = document.createElement("div");
+  bloc.className = "compteur-saisie";
+  const moins = document.createElement("button");
+  moins.type = "button";
+  moins.className = "bouton-pas";
+  moins.dataset.pas = "-1";
+  moins.dataset.cible = id;
+  moins.setAttribute("aria-label", "Diminuer : " + libelle);
+  moins.appendChild(creerIcone("i-moins"));
+  const entree = document.createElement("input");
+  entree.type = "text";
+  entree.id = id;
+  entree.inputMode = "numeric";
+  entree.autocomplete = "off";
+  entree.maxLength = String(max).length;
+  entree.dataset.max = String(max);
+  Object.entries(donnees || {}).forEach(([cle, valeur]) => { entree.dataset[cle] = valeur; });
+  const plus = document.createElement("button");
+  plus.type = "button";
+  plus.className = "bouton-pas";
+  plus.dataset.pas = "1";
+  plus.dataset.cible = id;
+  plus.setAttribute("aria-label", "Augmenter : " + libelle);
+  plus.appendChild(creerIcone("i-plus"));
+  bloc.append(moins, entree, plus);
+  return bloc;
+}
+
+function creerChamp(idEntree, libelle, enfant) {
+  const champ = document.createElement("div");
+  champ.className = "champ";
+  const label = document.createElement("label");
+  label.htmlFor = idEntree;
+  label.textContent = libelle;
+  champ.append(label, enfant);
+  return champ;
+}
+
+function creerEntreeTexte(id, mode, longueur, donnees) {
+  const entree = document.createElement("input");
+  entree.type = "text";
+  entree.id = id;
+  entree.inputMode = mode;
+  entree.autocomplete = "off";
+  entree.maxLength = longueur;
+  Object.entries(donnees || {}).forEach(([cle, valeur]) => { entree.dataset[cle] = valeur; });
+  return entree;
+}
+
+function construireAssistant() {
+  $("progression-chantier").replaceChildren(...ETAPES_CHANTIER.map((libelle, index) => {
+    const li = document.createElement("li");
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "progression-pas";
+    bouton.dataset.etapeCible = String(index + 1);
+    const numero = document.createElement("span");
+    numero.className = "progression-numero";
+    numero.textContent = String(index + 1);
+    const texte = document.createElement("span");
+    texte.className = "progression-libelle";
+    texte.textContent = libelle;
+    bouton.append(numero, texte);
+    li.appendChild(bouton);
+    return li;
+  }));
+  $("choix-type-chantier").replaceChildren(...Object.entries(TYPES_CHANTIER).map(([v, l]) => creerPuce("chantier-type", v, l)));
+  $("choix-alimentation").replaceChildren(...Object.entries(ALIMENTATIONS).map(([v, l]) => creerPuce("chantier-alimentation", v, l)));
+  $("piece-type").replaceChildren(...Object.entries(TYPES_PIECES).map(([valeur, regle]) => {
+    const option = document.createElement("option");
+    option.value = valeur;
+    option.textContent = regle.libelle;
+    return option;
+  }));
+  $("liste-appareils").replaceChildren(...Object.entries(APPAREILS).map(([id, appareil]) => {
+    const li = document.createElement("li");
+    li.className = "appareil";
+    const label = document.createElement("label");
+    label.className = "case";
+    const coche = document.createElement("input");
+    coche.type = "checkbox";
+    coche.id = "appareil-coche-" + id;
+    coche.dataset.appareil = id;
+    const texte = document.createElement("span");
+    texte.appendChild(ecrireInsecable(document.createElement("strong"), appareil.libelle));
+    const detail = document.createElement("small");
+    detail.textContent = formaterSection(appareil.section) + " mm² · " + appareil.calibre + " A";
+    texte.appendChild(detail);
+    label.append(coche, texte);
+    li.append(label, creerCompteurSaisie("appareil-nombre-" + id, appareil.libelle, BORNES_CHANTIER.appareilsMax, { appareilNombre: id }));
+    return li;
+  }));
+  $("liste-mo-points").replaceChildren(...Object.entries(MAIN_OEUVRE_POINTS).map(([id, ligne]) => {
+    const li = document.createElement("li");
+    li.className = "ligne-mo";
+    const titre = document.createElement("div");
+    titre.className = "ligne-mo-titre";
+    const libelle = ecrireInsecable(document.createElement("strong"), ligne.libelle);
+    const auto = document.createElement("span");
+    auto.className = "aide";
+    auto.id = "mo-auto-" + id;
+    titre.append(libelle, auto);
+    const montant = document.createElement("div");
+    montant.className = "ligne-mo-montant";
+    const etiquette = document.createElement("span");
+    etiquette.className = "etiquette-champ";
+    etiquette.textContent = "Montant";
+    const valeur = document.createElement("strong");
+    valeur.className = "montant";
+    valeur.id = "mo-montant-" + id;
+    montant.append(etiquette, valeur);
+    li.append(
+      titre,
+      creerChamp("mo-qte-" + id, "Quantité", creerEntreeTexte("mo-qte-" + id, "numeric", 4, { moQuantite: id })),
+      creerChamp("mo-prix-" + id, "Prix unitaire", creerEntreeTexte("mo-prix-" + id, "numeric", 12, { moPrix: id })),
+      montant
+    );
+    return li;
+  }));
+}
+
+/* ----- Remplissage depuis le chantier en cours ----- */
+
+function cocherPuce(nom, valeur) {
+  document.querySelectorAll("input[name=\"" + nom + "\"]").forEach((entree) => { entree.checked = entree.value === valeur; });
+}
+
+function valeurPuce(nom) {
+  const cochee = document.querySelector("input[name=\"" + nom + "\"]:checked");
+  return cochee ? cochee.value : "";
+}
+
+async function remplirClientsConnus() {
+  const noms = new Map();
+  const chantiers = await lireChantiers(etat.compte.id);
+  const devis = await lireDevis(etat.compte.id);
+  [...chantiers.map((c) => c.client.nom), ...devis.map((d) => d.client)].forEach((nom) => {
+    const cle = normaliser(nom);
+    if (cle && !noms.has(cle)) noms.set(cle, nom);
+  });
+  $("liste-clients-chantier").replaceChildren(...[...noms.values()].sort((a, b) => a.localeCompare(b, "fr")).slice(0, 200).map((nom) => {
+    const option = document.createElement("option");
+    option.value = nom;
+    return option;
+  }));
+}
+
+function remplirAssistant() {
+  const c = assistant.chantier;
+  $("chantier-client").value = c.client.nom;
+  $("chantier-telephone").value = c.client.telephone ? formaterTelephone(c.client.telephone, etat.compte.pays) : "";
+  $("chantier-nom").value = c.nom;
+  $("chantier-lieu").value = c.lieu;
+  cocherPuce("chantier-type", c.type);
+  cocherPuce("chantier-alimentation", c.alimentation);
+  $("piece-surface").value = "";
+  afficherPieces();
+  Object.keys(APPAREILS).forEach((id) => {
+    const nombre = c.appareils[id] || 0;
+    $("appareil-coche-" + id).checked = nombre > 0;
+    $("appareil-nombre-" + id).value = String(nombre);
+  });
+  $("option-distance").value = formaterDecimal(c.options.distance);
+  $("option-hauteur").value = formaterDecimal(c.options.hauteur);
+  $("option-parafoudre").checked = c.options.parafoudre;
+  $("option-terre").checked = c.options.terreNeuve;
+  $("option-remplacement").checked = c.options.tableauARemplacer;
+  $("mo-forfait").value = c.mainOeuvre.forfait ? String(c.mainOeuvre.forfait) : "";
+  $("mo-ouvriers").value = c.mainOeuvre.journees.ouvriers ? String(c.mainOeuvre.journees.ouvriers) : "";
+  $("mo-jours").value = c.mainOeuvre.journees.jours ? formaterDecimal(c.mainOeuvre.journees.jours) : "";
+  afficherLignesLibres();
+  document.querySelectorAll("#ecran-nouveau-chantier .champ.invalide").forEach((bloc) => bloc.classList.remove("invalide"));
+  document.querySelectorAll("#ecran-nouveau-chantier .champ-erreur, #msg-etape-2").forEach((p) => { p.textContent = ""; });
+}
+
+async function ouvrirAssistant() {
+  if (!etat.compte) return;
+  if (!assistant.chantier || assistant.chantier.compteId !== etat.compte.id) {
+    const brouillon = await lireBrouillon(etat.compte.id);
+    assistant.chantier = brouillon || nouveauChantier();
+    /* Le brouillon relu a été nettoyé champ par champ : c'est cette version propre qui est réécrite. */
+    if (brouillon) await ecrireBrouillon(brouillon);
+    $("etat-brouillon").textContent = brouillon
+      ? "Brouillon repris (enregistré le " + new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short" }).format(new Date(brouillon.modifieLe)) + ")"
+      : "";
+  }
+  $("devise-forfait").textContent = "(" + (DEVISES[etat.compte.devise] || DEVISES.XOF).libelle + ")";
+  remplirAssistant();
+  afficherEtape(assistant.chantier.etape, false);
+  remplirClientsConnus();
+}
+
+/* ----- Étapes ----- */
+
+function afficherEtape(numero, avecFocus) {
+  const c = assistant.chantier;
+  c.etape = numero;
+  c.etapeMax = Math.max(c.etapeMax, numero);
+  document.querySelectorAll(".etape-chantier").forEach((form) => { form.hidden = Number(form.dataset.etape) !== numero; });
+  document.querySelectorAll(".progression-pas").forEach((bouton) => {
+    const cible = Number(bouton.dataset.etapeCible);
+    const li = bouton.parentElement;
+    li.classList.toggle("faite", cible < numero);
+    li.classList.toggle("courante", cible === numero);
+    bouton.disabled = cible > c.etapeMax;
+    if (cible === numero) bouton.setAttribute("aria-current", "step");
+    else bouton.removeAttribute("aria-current");
+    bouton.setAttribute("aria-label", "Étape " + cible + " sur " + ETAPES_CHANTIER.length + " : " + ETAPES_CHANTIER[cible - 1]);
+  });
+  $("bouton-etape-precedente").hidden = numero === 1;
+  $("bouton-etape-suivante").querySelector(".bouton-libelle").textContent = numero === ETAPES_CHANTIER.length ? "Enregistrer le chantier" : "Suivant";
+  if (numero === ETAPES_CHANTIER.length) afficherEtude();
+  if (avecFocus) {
+    $("titre-etape-" + numero).focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: defilementDoux() });
+  }
+}
+
+function lireTelephoneClient(strict) {
+  const saisie = $("chantier-telephone").value.trim();
+  if (!saisie) return "";
+  const analyse = analyserTelephone(saisie, etat.compte.pays);
+  if (telephoneValide(analyse)) return versE164(analyse);
+  if (strict) afficherErreur("chantier-telephone", messageTelephone(analyse));
+  return assistant.chantier.client.telephone;
+}
+
+/* strict = au passage à l'étape suivante (erreurs affichées) ; sinon lecture silencieuse pour le brouillon. */
+function lireEtape(numero, strict) {
+  const c = assistant.chantier;
+  let premiereErreur = "";
+  const exiger = (id, message) => {
+    const valeur = nettoyerTexte($(id).value);
+    if (!texteValide(valeur, true)) {
+      if (strict) afficherErreur(id, message);
+      if (!premiereErreur) premiereErreur = id;
+    }
+    return valeur.slice(0, BORNES.texteMax);
+  };
+  if (numero === 1) {
+    c.client.nom = exiger("chantier-client", "Indiquez le nom du client (2 caractères minimum).");
+    const telephone = lireTelephoneClient(strict);
+    if (strict && $("chantier-telephone").getAttribute("aria-invalid") === "true" && !premiereErreur) premiereErreur = "chantier-telephone";
+    c.client.telephone = telephone;
+    c.nom = exiger("chantier-nom", "Donnez un nom au chantier (2 caractères minimum).");
+    c.lieu = exiger("chantier-lieu", "Indiquez le lieu du chantier.");
+    c.type = valeurPuce("chantier-type") || c.type;
+    c.alimentation = valeurPuce("chantier-alimentation") || c.alimentation;
+  } else if (numero === 2) {
+    const invalide = document.querySelector("#liste-pieces .champ.invalide input");
+    if (invalide) premiereErreur = invalide.id;
+    else if (!c.pieces.length) {
+      premiereErreur = "piece-surface";
+      if (strict) message("msg-etape-2", "Ajoutez au moins une pièce pour continuer.");
+    }
+  } else if (numero === 3) {
+    Object.keys(APPAREILS).forEach((id) => {
+      const nombre = $("appareil-coche-" + id).checked ? entierBorne($("appareil-nombre-" + id).value, 1, BORNES_CHANTIER.appareilsMax, 1) : 0;
+      if (nombre > 0) c.appareils[id] = nombre;
+      else delete c.appareils[id];
+    });
+  } else if (numero === 4) {
+    const distance = lireNombre($("option-distance").value.trim() || "0");
+    if (Number.isFinite(distance) && distance >= 0 && distance <= BORNES_CHANTIER.distanceMax) c.options.distance = arrondi(distance, 1);
+    else {
+      if (strict) afficherErreur("option-distance", "Distance entre 0 et 500 m.");
+      premiereErreur = "option-distance";
+    }
+    const hauteur = lireNombre($("option-hauteur").value.trim() || String(BORNES_CHANTIER.hauteurDefaut));
+    if (Number.isFinite(hauteur) && hauteur >= BORNES_CHANTIER.hauteurMin && hauteur <= BORNES_CHANTIER.hauteurMax) c.options.hauteur = arrondi(hauteur, 2);
+    else {
+      if (strict) afficherErreur("option-hauteur", "Hauteur entre 2 et 6 m.");
+      if (!premiereErreur) premiereErreur = "option-hauteur";
+    }
+    c.options.parafoudre = $("option-parafoudre").checked;
+    c.options.terreNeuve = $("option-terre").checked;
+    c.options.tableauARemplacer = $("option-remplacement").checked;
+  } else if (numero === 5) {
+    lireMainOeuvre();
+  }
+  return premiereErreur;
+}
+
+async function surEtapeSuivante(evenement) {
+  if (evenement) evenement.preventDefault();
+  const c = assistant.chantier;
+  if (!c) return;
+  const erreur = lireEtape(c.etape, true);
+  if (erreur) {
+    if ($(erreur).closest(".champ")) allerAuChamp(erreur);
+    else $(erreur).focus();
+    trembler($("bouton-etape-suivante"));
+    return;
+  }
+  vibrer();
+  if (c.etape === ETAPES_CHANTIER.length) {
+    await enregistrerChantier();
+    return;
+  }
+  afficherEtape(c.etape + 1, true);
+  await enregistrerBrouillon();
+}
+
+async function surEtapePrecedente() {
+  const c = assistant.chantier;
+  if (!c || c.etape === 1) return;
+  lireEtape(c.etape, false);
+  afficherEtape(c.etape - 1, true);
+  await enregistrerBrouillon();
+}
+
+async function surClicProgression(evenement) {
+  const bouton = evenement.target.closest(".progression-pas");
+  const c = assistant.chantier;
+  if (!bouton || bouton.disabled || !c) return;
+  const cible = Number(bouton.dataset.etapeCible);
+  if (cible === c.etape) return;
+  if (cible > c.etape && lireEtape(c.etape, true)) return;
+  lireEtape(c.etape, false);
+  afficherEtape(cible, true);
+  await enregistrerBrouillon();
+}
+
+async function surRecommencerChantier() {
+  const ok = await demanderConfirmation("Recommencer ?", "Le brouillon en cours sera effacé. Les chantiers déjà enregistrés ne sont pas touchés.", "Effacer le brouillon", "Garder");
+  if (!ok) return;
+  clearTimeout(assistant.minuterie);
+  assistant.minuterie = 0;
+  await ecrireBrouillon(null);
+  assistant.chantier = nouveauChantier();
+  $("etat-brouillon").textContent = "";
+  remplirAssistant();
+  afficherEtape(1, true);
+}
+
+/* ----- Étape 2 : pièces ----- */
+
+function creerCartePiece(piece, nom, proposition) {
+  const li = document.createElement("li");
+  li.className = "piece";
+  li.dataset.id = piece.id;
+  const tete = document.createElement("div");
+  tete.className = "piece-tete";
+  const titre = document.createElement("strong");
+  titre.className = "piece-nom";
+  titre.textContent = nom;
+  const propose = document.createElement("span");
+  propose.className = "aide piece-propose";
+  tete.append(titre, propose);
+  const champs = document.createElement("div");
+  champs.className = "piece-champs";
+  const surface = creerEntreeTexte("surface-" + piece.id, "decimal", 8, { champPiece: "surface" });
+  surface.value = formaterDecimal(piece.surface);
+  surface.setAttribute("aria-describedby", "err-surface-" + piece.id);
+  const champSurface = creerChamp(surface.id, "Surface (m²)", surface);
+  const erreur = document.createElement("p");
+  erreur.className = "champ-erreur";
+  erreur.id = "err-surface-" + piece.id;
+  champSurface.appendChild(erreur);
+  const prises = creerCompteurSaisie("prises-" + piece.id, "prises de " + nom, BORNES_CHANTIER.prisesMax, { champPiece: "prises" });
+  const points = creerCompteurSaisie("points-" + piece.id, "points lumineux de " + nom, BORNES_CHANTIER.pointsMax, { champPiece: "points" });
+  champs.append(champSurface, creerChamp("prises-" + piece.id, "Prises", prises), creerChamp("points-" + piece.id, "Points lumineux", points));
+  const actions = document.createElement("div");
+  actions.className = "piece-actions";
+  const proposer = document.createElement("button");
+  proposer.type = "button";
+  proposer.className = "lien-texte";
+  proposer.dataset.actionPiece = "proposer";
+  proposer.textContent = "Reprendre la proposition";
+  const outils = document.createElement("div");
+  outils.className = "piece-outils";
+  [["monter", "i-haut", "Monter"], ["descendre", "i-bas", "Descendre"], ["dupliquer", "i-copier", "Dupliquer"], ["supprimer", "i-poubelle", "Supprimer"]]
+    .forEach(([action, icone, libelle]) => {
+      const bouton = document.createElement("button");
+      bouton.type = "button";
+      bouton.className = "bouton-icone bouton-outil" + (action === "supprimer" ? " outil-danger" : "");
+      bouton.dataset.actionPiece = action;
+      bouton.setAttribute("aria-label", libelle + " : " + nom);
+      bouton.appendChild(creerIcone(icone));
+      outils.appendChild(bouton);
+    });
+  actions.append(proposer, outils);
+  li.append(tete, champs, actions);
+  majCartePiece(li, piece, proposition);
+  return li;
+}
+
+function majCartePiece(li, piece, proposition) {
+  const prises = piece.prises === null ? proposition.prises : piece.prises;
+  const points = piece.points === null ? proposition.points : piece.points;
+  li.querySelector(".piece-propose").textContent = "Proposé : " + proposition.prises + (proposition.prises > 1 ? " prises" : " prise")
+    + " · " + proposition.points + (proposition.points > 1 ? " points" : " point");
+  const entreePrises = li.querySelector("[data-champ-piece=\"prises\"]");
+  const entreePoints = li.querySelector("[data-champ-piece=\"points\"]");
+  if (document.activeElement !== entreePrises) entreePrises.value = String(prises);
+  if (document.activeElement !== entreePoints) entreePoints.value = String(points);
+  li.querySelector("[data-action-piece=\"proposer\"]").hidden = prises === proposition.prises && points === proposition.points;
+}
+
+function afficherPieces() {
+  const c = assistant.chantier;
+  const etudiees = normaliserPieces(c.pieces);
+  $("liste-pieces").replaceChildren(...c.pieces.map((piece, index) => creerCartePiece(piece, etudiees[index].nom, etudiees[index].proposition)));
+  const premier = $("liste-pieces").firstElementChild;
+  const dernier = $("liste-pieces").lastElementChild;
+  if (premier) premier.querySelector("[data-action-piece=\"monter\"]").disabled = true;
+  if (dernier) dernier.querySelector("[data-action-piece=\"descendre\"]").disabled = true;
+  majResumePieces();
+}
+
+function majResumePieces() {
+  const c = assistant.chantier;
+  const surface = c.pieces.reduce((s, p) => s + p.surface, 0);
+  $("resume-pieces").textContent = c.pieces.length
+    ? c.pieces.length + (c.pieces.length > 1 ? " pièces · " : " pièce · ") + formaterDecimal(arrondi(surface, 2)) + " m²"
+    : "Aucune pièce pour l'instant.";
+  $("bouton-ajouter-piece").disabled = c.pieces.length >= BORNES_CHANTIER.piecesMax;
+}
+
+function surAjouterPiece() {
+  const c = assistant.chantier;
+  const entree = $("piece-surface");
+  const surface = lireNombre(entree.value.trim());
+  const bloc = entree.closest(".champ");
+  if (!surfaceValide(surface)) {
+    $("err-piece-surface").textContent = "Surface entre 0,5 et 2 000 m².";
+    bloc.classList.add("invalide");
+    entree.setAttribute("aria-invalid", "true");
+    trembler(bloc);
+    entree.focus();
+    return;
+  }
+  if (c.pieces.length >= BORNES_CHANTIER.piecesMax) return;
+  c.pieces.push({ id: identifiantCourt(), type: $("piece-type").value, surface: arrondi(surface, 2), prises: null, points: null });
+  entree.value = "";
+  message("msg-etape-2", "");
+  afficherPieces();
+  vibrer();
+  entree.focus();
+  planifierBrouillon();
+}
+
+function surSaisieSurfaceAjout(evenement) {
+  $("err-piece-surface").textContent = "";
+  evenement.currentTarget.closest(".champ").classList.remove("invalide");
+  evenement.currentTarget.removeAttribute("aria-invalid");
+}
+
+function surToucheSurfaceAjout(evenement) {
+  if (evenement.key !== "Enter") return;
+  evenement.preventDefault();
+  surAjouterPiece();
+}
+
+function pieceDepuis(element) {
+  const li = element.closest(".piece");
+  if (!li) return null;
+  const index = assistant.chantier.pieces.findIndex((p) => p.id === li.dataset.id);
+  return index < 0 ? null : { li, index, piece: assistant.chantier.pieces[index] };
+}
+
+function majPiece(cible) {
+  const etudiees = normaliserPieces(assistant.chantier.pieces);
+  majCartePiece(cible.li, cible.piece, etudiees[cible.index].proposition);
+  majResumePieces();
+}
+
+function surSaisiePiece(evenement) {
+  const entree = evenement.target;
+  const champ = entree.dataset.champPiece;
+  const cible = champ ? pieceDepuis(entree) : null;
+  if (!cible) return;
+  const bloc = entree.closest(".champ");
+  if (champ === "surface") {
+    const surface = lireNombre(entree.value.trim());
+    const valide = surfaceValide(surface);
+    bloc.classList.toggle("invalide", !valide);
+    $("err-surface-" + cible.piece.id).textContent = valide ? "" : "Surface entre 0,5 et 2 000 m².";
+    if (valide) {
+      entree.removeAttribute("aria-invalid");
+      cible.piece.surface = arrondi(surface, 2);
+    } else {
+      entree.setAttribute("aria-invalid", "true");
+    }
+  } else {
+    const max = Number(entree.dataset.max);
+    const nombre = lireNombre(entree.value.trim());
+    const valide = Number.isInteger(nombre) && nombre >= 0 && nombre <= max;
+    bloc.classList.toggle("invalide", !valide);
+    if (valide) cible.piece[champ] = nombre;
+  }
+  majPiece(cible);
+}
+
+function surActionPiece(evenement) {
+  const bouton = evenement.target.closest("[data-action-piece]");
+  const cible = bouton ? pieceDepuis(bouton) : null;
+  if (!cible || bouton.disabled) return;
+  const pieces = assistant.chantier.pieces;
+  const action = bouton.dataset.actionPiece;
+  let focus = "";
+  if (action === "proposer") {
+    cible.piece.prises = null;
+    cible.piece.points = null;
+    majPiece(cible);
+    planifierBrouillon();
+    return;
+  }
+  if (action === "monter" && cible.index > 0) {
+    pieces.splice(cible.index - 1, 0, pieces.splice(cible.index, 1)[0]);
+    focus = cible.piece.id + "|monter";
+  } else if (action === "descendre" && cible.index < pieces.length - 1) {
+    pieces.splice(cible.index + 1, 0, pieces.splice(cible.index, 1)[0]);
+    focus = cible.piece.id + "|descendre";
+  } else if (action === "dupliquer" && pieces.length < BORNES_CHANTIER.piecesMax) {
+    const copie = { ...cible.piece, id: identifiantCourt() };
+    pieces.splice(cible.index + 1, 0, copie);
+    focus = copie.id + "|dupliquer";
+  } else if (action === "supprimer") {
+    pieces.splice(cible.index, 1);
+    const voisine = pieces[Math.min(cible.index, pieces.length - 1)];
+    focus = voisine ? voisine.id + "|supprimer" : "";
+  }
+  afficherPieces();
+  vibrer();
+  if (focus) {
+    const [id, nomAction] = focus.split("|");
+    const li = [...$("liste-pieces").children].find((e) => e.dataset.id === id);
+    const prochain = li && li.querySelector("[data-action-piece=\"" + nomAction + "\"]");
+    if (prochain && !prochain.disabled) prochain.focus();
+    else if (li) li.querySelector("input").focus();
+  } else {
+    $("piece-surface").focus();
+  }
+  planifierBrouillon();
+}
+
+/* Boutons − et + : bornés, puis l'évènement « input » prend le relais. */
+function surBoutonPas(evenement) {
+  const bouton = evenement.target.closest(".bouton-pas");
+  if (!bouton) return;
+  const entree = $(bouton.dataset.cible);
+  const max = Number(entree.dataset.max);
+  const actuelle = lireNombre(entree.value.trim());
+  const depart = Number.isFinite(actuelle) ? Math.round(actuelle) : 0;
+  entree.value = String(Math.min(max, Math.max(0, depart + Number(bouton.dataset.pas))));
+  entree.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/* ----- Étape 3 : appareils ----- */
+
+function surSaisieAppareil(evenement) {
+  const entree = evenement.target;
+  if (entree.dataset.appareil) {
+    const nombre = $("appareil-nombre-" + entree.dataset.appareil);
+    if (entree.checked && (lireNombre(nombre.value) || 0) < 1) nombre.value = "1";
+    if (!entree.checked) nombre.value = "0";
+  } else if (entree.dataset.appareilNombre) {
+    const nombre = lireNombre(entree.value.trim());
+    if (Number.isInteger(nombre)) $("appareil-coche-" + entree.dataset.appareilNombre).checked = nombre > 0;
+  }
+  lireEtape(3, false);
+}
+
+/* ----- Étape 5 : main-d'œuvre et synthèse ----- */
+
+function lireMainOeuvre() {
+  const mo = assistant.chantier.mainOeuvre;
+  const etude = etudierChantier(assistant.chantier, etat.compte.devise);
+  Object.keys(MAIN_OEUVRE_POINTS).forEach((id) => {
+    const ligne = etude.mainOeuvre.lignes.find((l) => l.id === id);
+    const quantite = quantiteFacultative($("mo-qte-" + id).value.trim(), BORNES_CHANTIER.quantiteMax);
+    const prix = quantiteFacultative($("mo-prix-" + id).value.trim(), BORNES_CHANTIER.prixMax);
+    const reglage = {
+      quantite: quantite === null || quantite === ligne.auto ? null : quantite,
+      prix: prix === null || prix === prixDefautMainOeuvre(id, etat.compte.devise) ? null : prix
+    };
+    if (reglage.quantite === null && reglage.prix === null) delete mo.points[id];
+    else mo.points[id] = reglage;
+  });
+  mo.forfait = entierBorne($("mo-forfait").value.trim(), 0, BORNES_CHANTIER.prixMax, 0);
+  mo.journees.ouvriers = entierBorne($("mo-ouvriers").value.trim(), 0, BORNES_CHANTIER.ouvriersMax, 0);
+  mo.journees.jours = arrondi(borner($("mo-jours").value.trim(), 0, BORNES_CHANTIER.joursMax, 0), 1);
+  const tarif = quantiteFacultative($("mo-tarif").value.trim(), BORNES_CHANTIER.prixMax);
+  mo.journees.tarif = tarif === null || tarif === (DEVISES_PRIX_DEFAUT.includes(etat.compte.devise) ? TARIF_JOURNEE_DEFAUT : 0) ? null : tarif;
+  mo.libres = [...$("liste-lignes-libres").children].map((li) => ({
+    libelle: texteBorne(li.querySelector("[data-libre=\"libelle\"]").value, 120),
+    montant: entierBorne(li.querySelector("[data-libre=\"montant\"]").value.trim(), 0, BORNES_CHANTIER.prixMax, 0)
+  }));
+}
+
+function creerLigneLibre(ligne, index) {
+  const li = document.createElement("li");
+  li.className = "ligne-libre";
+  const libelle = creerEntreeTexte("libre-libelle-" + index, "text", 120, { libre: "libelle" });
+  libelle.value = ligne.libelle;
+  libelle.placeholder = "Ex. : Saignées dans le béton";
+  const montant = creerEntreeTexte("libre-montant-" + index, "numeric", 12, { libre: "montant" });
+  montant.value = ligne.montant ? String(ligne.montant) : "";
+  montant.placeholder = "0";
+  const supprimer = document.createElement("button");
+  supprimer.type = "button";
+  supprimer.className = "bouton-icone bouton-outil outil-danger";
+  supprimer.dataset.supprimerLibre = String(index);
+  supprimer.setAttribute("aria-label", "Supprimer la ligne " + (index + 1));
+  supprimer.appendChild(creerIcone("i-poubelle"));
+  li.append(creerChamp(libelle.id, "Libellé", libelle), creerChamp(montant.id, "Montant", montant), supprimer);
+  return li;
+}
+
+function afficherLignesLibres() {
+  const libres = assistant.chantier.mainOeuvre.libres;
+  $("liste-lignes-libres").replaceChildren(...libres.map(creerLigneLibre));
+  $("bouton-ajouter-ligne").hidden = libres.length >= BORNES_CHANTIER.lignesLibresMax;
+}
+
+function surAjouterLigneLibre() {
+  lireMainOeuvre();
+  const libres = assistant.chantier.mainOeuvre.libres;
+  if (libres.length >= BORNES_CHANTIER.lignesLibresMax) return;
+  libres.push({ libelle: "", montant: 0 });
+  afficherLignesLibres();
+  $("libre-libelle-" + (libres.length - 1)).focus();
+  planifierBrouillon();
+}
+
+function surSupprimerLigneLibre(evenement) {
+  const bouton = evenement.target.closest("[data-supprimer-libre]");
+  if (!bouton) return;
+  lireMainOeuvre();
+  assistant.chantier.mainOeuvre.libres.splice(Number(bouton.dataset.supprimerLibre), 1);
+  afficherLignesLibres();
+  $("bouton-ajouter-ligne").focus();
+  afficherEtude();
+  planifierBrouillon();
+}
+
+function ajouterChiffre(liste, terme, valeur, large) {
+  const bloc = document.createElement("div");
+  if (large) bloc.className = "chiffre-large";
+  const dt = document.createElement("dt");
+  dt.textContent = terme;
+  const dd = document.createElement("dd");
+  dd.textContent = valeur;
+  bloc.append(dt, dd);
+  liste.appendChild(bloc);
+}
+
+function pluriel(nombre, singulier, plurielTexte) {
+  return formaterEntier(nombre) + "\u00A0" + (nombre > 1 ? plurielTexte : singulier);
+}
+
+/* Recalcule l'étude et met à jour la main-d'œuvre et la synthèse (étape 5). */
+function afficherEtude() {
+  const c = assistant.chantier;
+  const devise = etat.compte.devise;
+  const etude = etudierChantier(c, devise);
+  const mo = etude.mainOeuvre;
+  mo.lignes.forEach((ligne) => {
+    const qte = $("mo-qte-" + ligne.id);
+    const prix = $("mo-prix-" + ligne.id);
+    if (document.activeElement !== qte) qte.value = String(ligne.quantite);
+    if (document.activeElement !== prix) prix.value = String(ligne.prix);
+    $("mo-auto-" + ligne.id).textContent = ligne.quantite === ligne.auto ? "Calculé : " + ligne.auto : "Calculé : " + ligne.auto + " · modifié";
+    $("mo-montant-" + ligne.id).textContent = formaterMontant(ligne.montant, devise);
+  });
+  /* Chaque champ non actif affiche la valeur retenue par le calcul (jamais « -5000 » ni « abc »). */
+  const montrerValeur = (entree, texte) => { if (document.activeElement !== entree) entree.value = texte; };
+  montrerValeur($("mo-tarif"), String(mo.journees.tarif));
+  montrerValeur($("mo-forfait"), mo.forfait ? String(mo.forfait) : "");
+  montrerValeur($("mo-ouvriers"), mo.journees.ouvriers ? String(mo.journees.ouvriers) : "");
+  montrerValeur($("mo-jours"), mo.journees.jours ? formaterDecimal(mo.journees.jours) : "");
+  mo.libres.forEach((ligne, index) => {
+    const entree = $("libre-montant-" + index);
+    if (entree) montrerValeur(entree, ligne.montant ? String(ligne.montant) : "");
+  });
+  $("total-mo-points").textContent = formaterMontant(mo.totalPoints, devise);
+  $("total-mo").textContent = formaterMontant(mo.total, devise);
+
+  const chiffres = $("synthese-chiffres");
+  chiffres.replaceChildren();
+  ajouterChiffre(chiffres, "Surface totale", formaterDecimal(etude.surfaceTotale) + "\u00A0m² · " + pluriel(etude.pieces.length, "pièce", "pièces"));
+  ajouterChiffre(chiffres, "Prises", formaterEntier(etude.totaux.prises) + (etude.totaux.prisesEtanches ? " dont " + etude.totaux.prisesEtanches + " étanches" : ""));
+  ajouterChiffre(chiffres, "Points lumineux", formaterEntier(etude.totaux.points));
+  ajouterChiffre(chiffres, "Circuits", pluriel(etude.circuits.length, "circuit", "circuits") + " (" + etude.comptes.eclairage + " éclairage, "
+    + (etude.comptes.prises + etude.comptes.cuisine) + " prises, " + etude.comptes.dedies + " dédiés)", true);
+  ajouterChiffre(chiffres, "Différentiels 30 mA", formaterEntier(etude.differentiels.length));
+  ajouterChiffre(chiffres, "Coffret", etude.coffret.rangees
+    ? pluriel(etude.coffret.rangees, "rangée", "rangées") + " · " + etude.coffret.modules + " modules utilisés sur " + etude.coffret.capacite
+    : "—", true);
+  ajouterChiffre(chiffres, "Câble", Object.keys(etude.cables).map(Number).sort((a, b) => a - b)
+    .map((s) => "3G" + formaterSection(s) + "\u00A0: " + formaterEntier(etude.cables[s]) + "\u00A0m").join(" · ") || "—", true);
+  if (etude.cableAlimentation) ajouterChiffre(chiffres, "Alimentation", (etude.alimentation === "tri" ? "5G10" : "3G10") + "\u00A0: " + etude.cableAlimentation + "\u00A0m");
+
+  $("corps-circuits").replaceChildren(...etude.circuits.map((circuit) => {
+    const tr = document.createElement("tr");
+    const nom = document.createElement("th");
+    nom.scope = "row";
+    nom.appendChild(ecrireInsecable(document.createElement("span"), circuit.nom));
+    if (circuit.pieces.length) {
+      const detail = document.createElement("small");
+      detail.textContent = circuit.pieces.map((n) => n.replace(/ /g, "\u00A0")).join(", ");
+      nom.appendChild(detail);
+    }
+    const section = document.createElement("td");
+    section.textContent = formaterSection(circuit.section) + "\u00A0mm²";
+    const protection = document.createElement("td");
+    protection.textContent = circuit.calibre + "\u00A0A";
+    const longueur = document.createElement("td");
+    longueur.textContent = circuit.longueur + "\u00A0m";
+    tr.append(nom, section, protection, longueur);
+    return tr;
+  }));
+  $("synthese-differentiels").replaceChildren(...etude.differentiels.map((d) => {
+    const li = document.createElement("li");
+    const titre = document.createElement("strong");
+    titre.textContent = d.nom + " · " + d.calibre + "\u00A0A type\u00A0" + d.type;
+    const detail = ecrireInsecable(document.createElement("span"), d.circuits.join(", "));
+    li.append(titre, detail);
+    return li;
+  }), ...(c.options.parafoudre ? [(() => {
+    const li = document.createElement("li");
+    const titre = document.createElement("strong");
+    titre.textContent = "Parafoudre";
+    const detail = document.createElement("span");
+    detail.textContent = "En tête de tableau, avec sa protection intégrée.";
+    li.append(titre, detail);
+    return li;
+  })()] : []));
+  return etude;
+}
+
+function surSaisieMainOeuvre() {
+  lireMainOeuvre();
+  afficherEtude();
+}
+
+/* Toute saisie dans l'assistant programme l'enregistrement du brouillon (600 ms). */
+function surSaisieAssistant(evenement) {
+  const cible = evenement.target;
+  if (evenement.type === "input" && cible.matches("input, select, textarea") && cible.closest(".champ") && !cible.closest("#liste-pieces")) {
+    effacerErreur(cible);
+  }
+  planifierBrouillon();
+}
+
+function afficherToast(texte) {
+  const toast = $("toast");
+  ecrireInsecable(toast, texte);
+  toast.hidden = false;
+  clearTimeout(assistant.toast);
+  assistant.toast = setTimeout(() => { toast.hidden = true; }, DUREE_TOAST);
+}
+
+async function enregistrerChantier() {
+  const c = assistant.chantier;
+  clearTimeout(assistant.minuterie);
+  assistant.minuterie = 0;
+  const maintenant = new Date().toISOString();
+  const propre = chantierValide({ ...c, statut: "etudie", modifieLe: maintenant }, etat.compte.id);
+  if (!propre || !propre.pieces.length) {
+    afficherEtape(2, true);
+    return;
+  }
+  const bruts = await lireChantiersBruts();
+  const autres = bruts.filter((x) => x.id !== propre.id);
+  const reussi = await ecrireValeur(CLES_STOCKAGE.chantiers, JSON.stringify([...autres, propre]));
+  if (!reussi) {
+    $("etat-brouillon").textContent = "Enregistrement impossible : mémoire de l'appareil indisponible. Le brouillon est conservé.";
+    await enregistrerBrouillon();
+    return;
+  }
+  await ecrireBrouillon(null);
+  assistant.chantier = null;
+  $("etat-brouillon").textContent = "";
+  montrer(ECRAN_DEPART);
+  afficherToast("Chantier « " + propre.nom + " » enregistré.");
+}
+
 /* ---------- Écran de démarrage natif ---------- */
 
 function masquerSplashNatif() {
@@ -4145,6 +5894,28 @@ function brancherEvenements() {
   logo.addEventListener("contextmenu", surMenuContextuelLogo);
   $("form-admin").addEventListener("submit", surAdmin);
 
+  const ecranChantier = $("ecran-nouveau-chantier");
+  ecranChantier.addEventListener("input", surSaisieAssistant);
+  ecranChantier.addEventListener("change", surSaisieAssistant);
+  ecranChantier.addEventListener("click", surBoutonPas);
+  document.querySelectorAll(".etape-chantier").forEach((form) => form.addEventListener("submit", surEtapeSuivante));
+  $("bouton-etape-suivante").addEventListener("click", surEtapeSuivante);
+  $("bouton-etape-precedente").addEventListener("click", surEtapePrecedente);
+  $("progression-chantier").addEventListener("click", surClicProgression);
+  $("bouton-recommencer-chantier").addEventListener("click", surRecommencerChantier);
+  $("bouton-ajouter-piece").addEventListener("click", surAjouterPiece);
+  $("piece-surface").addEventListener("input", surSaisieSurfaceAjout);
+  $("piece-surface").addEventListener("keydown", surToucheSurfaceAjout);
+  $("liste-pieces").addEventListener("input", surSaisiePiece);
+  $("liste-pieces").addEventListener("click", surActionPiece);
+  $("liste-appareils").addEventListener("input", surSaisieAppareil);
+  $("liste-appareils").addEventListener("change", surSaisieAppareil);
+  $("etape-chantier-5").addEventListener("input", surSaisieMainOeuvre);
+  $("etape-chantier-5").addEventListener("change", surSaisieMainOeuvre);
+  $("liste-lignes-libres").addEventListener("click", surSupprimerLigneLibre);
+  $("bouton-ajouter-ligne").addEventListener("click", surAjouterLigneLibre);
+  document.addEventListener("visibilitychange", surVisibilite);
+
   $("modale").addEventListener("click", surClicFondModale);
   $("bouton-fermer-modale").addEventListener("click", surAnnulerModale);
   $("bouton-modale-annuler").addEventListener("click", surAnnulerModale);
@@ -4162,6 +5933,7 @@ function preparerInterface() {
   $("etat-plateforme").textContent = nomPlateforme();
   surveillerLogos();
   surveillerPhotos();
+  construireAssistant();
   construireNavigation();
   masquerLiensAbsents();
   remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);

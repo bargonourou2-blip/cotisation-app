@@ -21,7 +21,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 2 | Écrans d'entrée : démarrage, présentation, connexion/inscription | ✔ livrée |
 | 3 | Accueil, profil, à propos, réglages, thème, navigation complète | ✔ livrée |
 | 4 | Identités visuelles : logos réels, icônes, photos | ✔ livrée |
-| 5 | Assistant Nouveau chantier (5 étapes) et moteur de calcul NF C 15-100 | à venir |
+| 5 | Assistant Nouveau chantier (5 étapes) et moteur de calcul NF C 15-100 | ✔ livrée |
 | 6 | Résultat de l'étude : circuits, schéma du tableau, conformité | à venir |
 | 7 | Le devis : catalogue lié, lignes modifiables, main-d'œuvre 4 modes | à venir |
 | 8 | Feuille A4 imprimable, PDF natif, partage WhatsApp | à venir |
@@ -158,6 +158,30 @@ version blanche, calque de l'éclair, logo BRG Électro+).
 Les photos de la présentation sont produites depuis `sources-photos/` par
 `python3 src/scripts/preparer_photos.py` (WebP de moins de 150 Ko ; fond retiré sur la photo du fondateur).
 
+### Nouveau chantier et moteur NF C 15-100 (étape 5)
+
+- **Assistant en 5 étapes** : Client → Pièces → Appareils → Options → Main-d'œuvre. Barre de
+  progression cliquable (retour libre, avance seulement si l'étape est valide), boutons
+  Précédent / Suivant toujours visibles au-dessus des onglets.
+- **Brouillon automatique** (`bp_v1_brouillon_chantier`, un par compte) : écrit à chaque changement
+  d'étape, 600 ms après chaque saisie et dès que l'application passe en arrière-plan
+  (« Brouillon enregistré à HH:MM »). À la réouverture, on reprend à la même étape. Tout brouillon
+  relu passe par `chantierValide()` (champ par champ, bornes, pièces invalides écartées) puis est
+  réécrit propre.
+- **Enregistrement** : « Enregistrer le chantier » range le chantier (statut « étudié ») dans
+  `bp_v1_chantiers`, efface le brouillon et revient à l'accueil avec une confirmation.
+- **Moteur** : fonctions pures dans `src/moteur.js`, entre `/* ==== MOTEUR NF C 15-100 ==== */` et
+  `/* ==== FIN DU MOTEUR ==== */` (aucun accès au DOM ni au stockage). Les règles chiffrées
+  (prises par pièce, 8 points par circuit, sections, calibres, différentiels, réserve du coffret,
+  prix de départ de la main-d'œuvre) sont dans `src/donnees.js`.
+- **Validation** : `npm run valider:moteur` exécute le moteur seul dans une VM Node, compare les
+  3 chantiers types (studio, villa, boutique) à leurs valeurs de référence, lance 1 000 chantiers
+  aléatoires piégés et régénère `docs/validation-moteur-nfc15100.md`. Cette validation fait
+  partie de `npm run construire`. Toute modification d'une règle qui change un chiffre doit mettre
+  à jour `ATTENDUS` dans `src/scripts/chantiers-types.mjs`.
+- **Bornes** : surface de 0,5 à 2 000 m² par pièce, 60 pièces, 50 prises et 50 points par pièce,
+  20 appareils de chaque type, distance 0 à 500 m, hauteur 2 à 6 m, montants ≤ 100 000 000.
+
 ## Structure
 
 ```
@@ -173,7 +197,8 @@ batiplus/
 │   ├── icons/               icônes SVG de l'interface (sources du sprite)
 │   └── assets/polices/      Inter et Montserrat en local (licence OFL)
 ├── src/                     sources de www/index.html
-│   └── scripts/             assembler, vérifier (jsdom + Chromium), aperçu, logos, photos
+│   └── scripts/             assembler, vérifier (jsdom + Chromium), moteur, aperçu, logos, photos
+├── docs/                    validation du moteur NF C 15-100 (générée)
 ├── sources-logos/           fichiers originaux fournis par le client
 ├── sources-photos/          photos d'origine de la présentation
 ├── assets/                  sources des icônes et du splash Android (@capacitor/assets)

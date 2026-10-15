@@ -10,6 +10,7 @@
      ⑱ aucun texte tronqué ni mot/montant coupé sur les écrans connectés et le
         tiroir (360 et 1440 px, clair et sombre, devis de 125 000 000)
      ⑲ le contenu ne passe jamais sous le menu latéral (1440 et 1025 px)
+     AS assistant Nouveau chantier : 5 étapes, 360 et 1440 px, rien de coupé, Suivant visible
      ㉒ tous les logos chargent et sont détourés, aucune image cassée, photo absente
         remplacée par l'illustration de repli
      ㉓ icônes maskable (navigateur et Android) : le pictogramme reste dans la zone sûre
@@ -418,6 +419,59 @@ async function main() {
   controle("⑲", "le contenu ne passe jamais sous le menu latéral", fautes19.length === 0,
     fautes19.length ? fautes19.slice(0, 3).join(" | ")
       : "1440 et 1025 px, 4 écrans + défilement : menu fixe visible (" + Math.max(...largeursMenu) + " px), 0 élément du contenu ou de l'en-tête à sa gauche");
+
+  /* AS assistant Nouveau chantier : 5 étapes de la villa, 360 et 1440 px, clair et sombre :
+     aucun débordement, aucun mot ni montant coupé, Suivant toujours visible, rien sous le menu. */
+  const fautesAS = [];
+  let vuesAS = 0;
+  let motsAS = 0;
+  {
+    const piece = (id, type, surface) => ({ id, type, surface, prises: null, points: null });
+    const villa = {
+      id: "villa-essai-0001", compteId, creeLe: new Date().toISOString(), modifieLe: new Date().toISOString(),
+      statut: "brouillon", etape: 5, etapeMax: 5,
+      client: { nom: "Société Immobilière du Kadiogo", telephone: "+22605608608" },
+      nom: "Villa R+1 Ouaga 2000 — famille Compaoré-Ouédraogo", lieu: "Ouaga 2000, Ouagadougou", type: "villa", alimentation: "mono",
+      pieces: [piece("p1", "sejour", 36), piece("p2", "cuisine", 12), piece("p3", "chambre", 14), piece("p4", "chambre", 12), piece("p5", "chambre", 12),
+        piece("p6", "salle-eau", 6), piece("p7", "salle-eau", 5), piece("p8", "wc", 2), piece("p9", "couloir", 9), piece("p10", "veranda", 12)],
+      appareils: { "chauffe-eau": 1, cuisiniere: 1, "lave-linge": 1, climatiseur: 2 },
+      options: { distance: 15, hauteur: 2.8, parafoudre: true, terreNeuve: true, tableauARemplacer: true },
+      mainOeuvre: { points: {}, forfait: 125000000, journees: { ouvriers: 3, jours: 4.5, tarif: null }, libres: [{ libelle: "Saignées et rebouchage dans le béton banché", montant: 99999999 }] }
+    };
+    const avecVilla = { ...base, bp_v1_brouillon_chantier: JSON.stringify({ [compteId]: villa }) };
+    for (const [largeur, hauteur, sombre] of [[360, 640, false], [360, 640, true], [1440, 900, false], [1440, 900, true]]) {
+      const { page, contexte, nom } = await nouvellePage(largeur, hauteur, sombre, true, avecVilla);
+      await pause(1800);
+      await page.evaluate(() => document.getElementById("bouton-nouveau-chantier").click());
+      await pause(400);
+      for (let etape = 1; etape <= 5; etape++) {
+        await page.evaluate((n) => document.querySelector("[data-etape-cible='" + n + "']").click(), etape);
+        await pause(350);
+        const visible = await page.evaluate(() => [1, 2, 3, 4, 5].find((n) => !document.getElementById("etape-chantier-" + n).hidden));
+        if (visible !== etape) { fautesAS.push(nom + " étape " + etape + " non affichée (" + visible + ")"); continue; }
+        const t = await page.evaluate(mesurerTextes, [".ecran.actif", ".entete", largeur > 1024 ? "#tiroir" : ".onglets"]);
+        vuesAS++;
+        motsAS += t.mots;
+        if (t.motsCoupes.length || t.rognes.length || t.deborde.length || t.defileX) fautesAS.push(nom + " étape " + etape + " " + JSON.stringify(t));
+        const bouton = await page.evaluate(() => {
+          const r = document.getElementById("bouton-etape-suivante").getBoundingClientRect();
+          const onglets = document.querySelector(".onglets");
+          const haut = onglets && getComputedStyle(onglets).display !== "none" ? onglets.getBoundingClientRect().top : window.innerHeight;
+          return { haut: Math.round(r.top), bas: Math.round(r.bottom), limite: Math.round(haut) };
+        });
+        if (bouton.bas > bouton.limite + 1 || bouton.haut < 0) fautesAS.push(nom + " étape " + etape + " Suivant hors de portée " + JSON.stringify(bouton));
+        if (largeur > 1024) {
+          const m = await page.evaluate(mesurerSousMenu);
+          if (m.total) fautesAS.push(nom + " étape " + etape + " sous le menu " + JSON.stringify(m));
+        }
+        await capturer(page, nom + "-chantier-" + etape, true);
+      }
+      await contexte.close();
+    }
+  }
+  controle("AS", "assistant chantier : rien ne déborde ni n'est coupé (360 et 1440)", fautesAS.length === 0,
+    fautesAS.length ? fautesAS.slice(0, 3).join(" | ")
+      : vuesAS + " vues (5 étapes de la villa, clair et sombre), " + motsAS.toLocaleString("fr-FR") + " mots mesurés, montants jusqu'à 125 000 000 FCFA sur une ligne, Suivant toujours au-dessus des onglets, rien sous le menu fixe");
 
   /* I images réelles : photo et logo redessinés, fichiers piégés refusés */
   {

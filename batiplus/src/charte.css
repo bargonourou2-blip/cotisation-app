@@ -745,6 +745,185 @@ a.bouton { text-decoration: none; }
 @keyframes monte { from { opacity: 0; transform: translateY(24px); } }
 #feuille-devis { display: none; }
 
+/* ---------- 7d. Nouveau chantier : assistant en 5 étapes ---------- */
+.assistant { display: grid; gap: 14px; max-width: 920px; }
+.assistant-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bouton-compact { width: auto; min-height: 44px; padding: 0 16px; font-size: 14px; }
+
+/* Progression : 5 pastilles reliées ; le libellé de l'étape courante est toujours visible. */
+.progression { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); counter-reset: none; }
+.progression li { position: relative; display: grid; justify-items: center; min-width: 0; }
+.progression li + li::before {
+  content: ""; position: absolute; top: 19px; right: 50%; width: 100%; height: 3px; border-radius: 3px;
+  background: var(--ligne); transition: background-color 0.3s ease;
+}
+.progression li.faite::before, .progression li.courante::before { background: var(--violet-2); }
+.progression-pas {
+  position: relative; z-index: 1; display: grid; justify-items: center; gap: 6px; min-width: 0; width: 100%;
+  padding: 0 2px; border: 0; background: none; color: var(--texte-2); cursor: pointer; font: inherit;
+}
+.progression-pas:disabled { cursor: default; }
+.progression-numero {
+  width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%;
+  border: 2px solid var(--ligne); background: var(--carte); color: var(--texte-2);
+  font-family: var(--police-titre); font-weight: 800; font-size: 16px;
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.3s var(--courbe);
+}
+.faite .progression-numero { background: var(--violet-doux); border-color: var(--violet-2); color: var(--accent-texte); }
+.courante .progression-numero {
+  background: linear-gradient(135deg, var(--violet-2), var(--violet-3)); border-color: transparent; color: #fff;
+  transform: scale(1.08); box-shadow: 0 6px 16px rgba(106, 13, 173, 0.32);
+}
+.progression-libelle { font-size: 12px; font-weight: 700; line-height: 1.25; text-align: center; overflow-wrap: normal; }
+.courante .progression-libelle { color: var(--accent-texte); }
+/* Petit écran : seul le libellé de l'étape courante s'affiche, sur toute la largeur, sans coupure. */
+@media (max-width: 639px) {
+  .progression li:not(.courante) .progression-libelle { display: none; }
+  .progression { padding-bottom: 22px; }
+  .progression li.courante .progression-libelle {
+    position: absolute; top: 48px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+  }
+  .progression li:first-child.courante .progression-libelle { left: 0; transform: none; text-align: left; }
+  .progression li:last-child.courante .progression-libelle { left: auto; right: 0; transform: none; text-align: right; }
+}
+.brouillon-etat { font-size: 13px; color: var(--texte-2); min-height: 18px; }
+.brouillon-etat:empty { display: none; }
+
+.choix-groupe { border: 0; margin: 0; padding: 0; min-width: 0; }
+.choix-groupe legend { padding: 0; margin-bottom: 8px; }
+.puces { display: flex; flex-wrap: wrap; gap: 8px; }
+.puce { position: relative; display: inline-flex; cursor: pointer; }
+.puce input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.puce span {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 999px;
+  border: 1.5px solid var(--ligne); background: var(--carte-2); color: var(--texte); font-size: 15px; font-weight: 600;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.puce input:checked + span { background: var(--violet); border-color: var(--violet); color: #fff; }
+.puce input:focus-visible + span { box-shadow: 0 0 0 4px rgba(139, 47, 214, 0.3); }
+
+.ajout-piece { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: end; }
+.ajout-piece .bouton { min-height: 50px; }
+.ajout-erreur { grid-column: 1 / -1; }
+.resume-ligne { font-weight: 700; color: var(--texte); font-size: 15px; }
+.liste-pieces, .liste-appareils, .lignes-mo, .lignes-libres, .liste-simple { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.piece {
+  display: grid; gap: 12px; padding: 14px; border-radius: var(--rayon-petit);
+  border: 1px solid var(--ligne); background: var(--carte-2); animation: cascade-entree 360ms var(--courbe) both;
+}
+.piece-tete { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.piece-nom { font-family: var(--police-titre); font-size: 16px; }
+.piece-champs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.piece-champs > .champ:first-child { grid-column: 1 / -1; }
+.piece-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.piece-actions .lien-texte { min-height: 44px; }
+.piece-outils { display: flex; gap: 6px; margin-left: auto; }
+.bouton-outil { width: 44px; height: 44px; color: var(--texte-2); }
+.bouton-outil .icone { width: 20px; height: 20px; }
+.bouton-outil:disabled { opacity: 0.4; cursor: not-allowed; }
+.outil-danger { color: var(--erreur); }
+
+.compteur-saisie {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; min-height: 50px;
+  border: 1.5px solid var(--ligne); border-radius: 14px; background: var(--carte); overflow: hidden;
+}
+.champ.invalide .compteur-saisie { border-color: var(--erreur); }
+.compteur-saisie input {
+  width: 100%; min-width: 0; height: 46px; border: 0; background: transparent; color: var(--texte);
+  text-align: center; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+/* Plus précis que « .champ input[type="text"] » : le champ central n'a ni marge ni bordure propre. */
+.champ .compteur-saisie input[type="text"], .compteur-saisie input[type="text"] {
+  min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+.champ .compteur-saisie input[type="text"]:focus, .compteur-saisie input:focus { outline: none; border: 0; box-shadow: none; }
+.compteur-saisie:focus-within { border-color: var(--violet-2); box-shadow: 0 0 0 4px rgba(139, 47, 214, 0.18); }
+.bouton-pas { height: 100%; min-height: 46px; display: grid; place-items: center; border: 0; background: var(--violet-doux); color: var(--accent-texte); cursor: pointer; }
+.bouton-pas .icone { width: 18px; height: 18px; }
+.bouton-pas:active { background: var(--violet-2); color: #fff; }
+
+.appareil {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2);
+}
+.appareil .case { flex: 1 1 150px; min-width: 0; align-items: center; color: var(--texte); font-weight: 600; font-size: 15px; }
+.appareil .case > span { display: grid; gap: 2px; min-width: 0; }
+.appareil .case small { color: var(--texte-2); font-weight: 500; font-size: 12px; }
+.appareil .compteur-saisie { flex: 0 0 140px; margin-left: auto; min-height: 44px; }
+.appareil .compteur-saisie input, .appareil .bouton-pas { height: 40px; min-height: 40px; }
+
+.etape-finale { display: grid; gap: 14px; }
+.sous-titre { font-size: 15px; font-weight: 800; color: var(--accent-texte); margin-top: 6px; }
+.ligne-mo {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; padding: 12px;
+  border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2);
+}
+.ligne-mo-titre { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; }
+.ligne-mo-montant { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.montant { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.total-ligne {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;
+  padding: 14px 16px; border-radius: var(--rayon-petit); background: linear-gradient(135deg, var(--violet-2), var(--violet-3)); color: #fff;
+}
+.total-ligne strong { font-family: var(--police-titre); font-size: 20px; }
+.total-partiel { background: var(--violet-doux); color: var(--texte); padding: 10px 14px; }
+.total-partiel strong { font-size: 16px; color: var(--accent-texte); }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ligne-libre { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px 10px; align-items: end; padding: 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2); }
+.ligne-libre > .champ:first-child { grid-column: 1 / -1; }
+
+.synthese { display: grid; gap: 12px; align-content: start; }
+.chiffres { margin: 0; display: grid; gap: 8px; }
+.chiffres > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--rayon-petit); background: var(--violet-doux); }
+.chiffres dt { font-size: 12px; font-weight: 700; color: var(--texte-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.chiffres dd { margin: 0; font-weight: 700; color: var(--texte); }
+.tableau-defile { max-width: 100%; overflow-x: auto; }
+.tableau-circuits { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tableau-circuits th, .tableau-circuits td { padding: 9px 6px; border-bottom: 1px solid var(--ligne); text-align: left; vertical-align: top; }
+.tableau-circuits thead th { font-size: 12px; color: var(--texte-2); white-space: nowrap; }
+.tableau-circuits th:first-child { padding-left: 0; }
+.tableau-circuits td:last-child, .tableau-circuits th:last-child { padding-right: 0; text-align: right; }
+.tableau-circuits td { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tableau-circuits tbody th { font-weight: 700; }
+.tableau-circuits tbody th small { display: block; font-weight: 500; font-size: 12px; color: var(--texte-2); }
+.liste-simple li { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); }
+.liste-simple span { font-size: 13px; color: var(--texte-2); }
+
+/* Précédent / Suivant toujours à portée de pouce, au-dessus de la barre d'onglets. */
+.navigation-etapes {
+  position: sticky; bottom: calc(var(--hauteur-onglets) + var(--bas-sur) + 10px); z-index: 5;
+  display: flex; gap: 10px; padding: 10px; border-radius: var(--rayon);
+  background: var(--entete-fond); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--ligne); box-shadow: var(--ombre-1);
+}
+.navigation-etapes .bouton { flex: 1 1 0; min-width: 0; padding: 0 14px; }
+.navigation-etapes .bouton-discret { flex: 0 1 auto; }
+.navigation-etapes .bouton-principal { flex: 1 1 auto; }
+/* Titre d'étape : reçoit le focus par programme (lecteurs d'écran), sans cadre visible. */
+.etape-chantier .bloc-titre:focus { outline: none; }
+
+.toast {
+  position: fixed; z-index: 80; left: 16px; right: 16px; bottom: calc(var(--hauteur-onglets) + var(--bas-sur) + 16px);
+  margin: 0 auto; max-width: 480px; padding: 14px 18px; border-radius: 16px;
+  background: var(--texte); color: var(--fond); font-weight: 600; font-size: 15px; box-shadow: var(--ombre-2);
+  animation: monte 320ms var(--courbe) both;
+}
+.toast[hidden] { display: none; }
+
+@media (min-width: 640px) {
+  .ajout-piece { grid-template-columns: minmax(0, 1fr) 160px auto; }
+  .ajout-piece .bouton { width: auto; }
+  .piece-champs { grid-template-columns: 1fr 1fr 1fr; }
+  .piece-champs > .champ:first-child { grid-column: auto; }
+  .ligne-mo { grid-template-columns: minmax(0, 1.4fr) 110px 140px minmax(0, 1fr); align-items: end; }
+  .ligne-mo-titre { grid-column: auto; display: grid; align-self: center; }
+  .ligne-mo-montant { grid-column: auto; display: grid; justify-items: end; align-self: center; }
+  .ligne-libre { grid-template-columns: minmax(0, 1fr) 160px 44px; }
+  .ligne-libre > .champ:first-child { grid-column: auto; }
+  .chiffres { grid-template-columns: 1fr 1fr; }
+  .chiffres > .chiffre-large { grid-column: 1 / -1; }
+}
+
 /* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */
 @media (min-width: 1025px) {
   #tiroir { transform: none; box-shadow: none; width: var(--largeur-tiroir); }
@@ -766,6 +945,13 @@ a.bouton { text-decoration: none; }
   .colonne-etroite { grid-template-columns: 1fr; }
   body[data-mode="entree"] .page { margin-left: 0; }
   .connexion { padding-top: 40px; }
+  .navigation-etapes { bottom: 16px; }
+  .toast { bottom: 24px; left: calc(var(--largeur-tiroir) + 32px); right: 32px; }
+}
+@media (min-width: 1280px) {
+  .etape-finale { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
+  .etape-finale .ligne-mo { grid-template-columns: 1fr 1fr; }
+  .etape-finale .ligne-mo-titre, .etape-finale .ligne-mo-montant { grid-column: 1 / -1; display: flex; justify-items: initial; }
 }
 
 /* ---------- 10. Impression ---------- */

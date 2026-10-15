@@ -24,7 +24,9 @@ const CLES_STOCKAGE = Object.freeze({
   comptes: "bp_v1_comptes",
   session: "bp_v1_session",
   verrou: "bp_v1_verrou",
-  devis: "bp_v1_devis"
+  devis: "bp_v1_devis",
+  chantiers: "bp_v1_chantiers",
+  brouillonChantier: "bp_v1_brouillon_chantier"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -187,6 +189,8 @@ const STATUTS_DEVIS = Object.freeze({
 
 /* Animations des compteurs du tableau de bord (ms). */
 const DUREE_COMPTEUR = 700;
+const DELAI_BROUILLON = 600;
+const DUREE_TOAST = 3500;
 /* Appui long sur le logo de « À propos » pour ouvrir l'administration (ms). */
 const DUREE_APPUI_ADMIN = 3000;
 
@@ -230,6 +234,7 @@ const ASTUCES = Object.freeze([
    clients s'ajouteront quand leurs écrans existeront. */
 const RECHERCHE = Object.freeze([
   { libelle: "Accueil", detail: "Tableau de bord", ecran: "accueil", mots: "tableau bord compteurs astuce" },
+  { libelle: "Nouveau chantier", detail: "Étude NF C 15-100 en 5 étapes", ecran: "nouveau-chantier", mots: "chantier etude nouveau pieces prises circuits tableau norme calcul" },
   { libelle: "Mon profil", detail: "Nom, entreprise, téléphone, ville", ecran: "profil", cible: "carte-infos", mots: "profil nom entreprise telephone ville pays devise" },
   { libelle: "Photo de profil", detail: "Mon profil", ecran: "profil", cible: "carte-identite", mots: "photo image avatar" },
   { libelle: "Logo de l'entreprise", detail: "Mon profil", ecran: "profil", cible: "carte-logo", mots: "logo entreprise image devis" },
@@ -247,6 +252,80 @@ const RECHERCHE = Object.freeze([
 const CONDITIONS_DEFAUT = "Devis valable 30 jours. Acompte de 50 % à la commande, solde à la fin des travaux. Matériel garanti selon les conditions du fabricant.";
 
 /* ---------- Images importées (photo, logo) ---------- */
+/* ==========================================================================
+   Nouveau chantier et moteur de calcul NF C 15-100 (étape 5)
+   Les propositions sont des valeurs de départ : l'électricien peut tout modifier.
+   ========================================================================== */
+const ETAPES_CHANTIER = Object.freeze(["Client", "Pièces", "Appareils", "Options", "Main-d'œuvre"]);
+const TYPES_CHANTIER = Object.freeze({
+  villa: "Villa", appartement: "Appartement", boutique: "Boutique", bureau: "Bureau", renovation: "Rénovation"
+});
+const ALIMENTATIONS = Object.freeze({ mono: "Monophasé", tri: "Triphasé" });
+
+/* Bornes de saisie : toute valeur hors bornes est refusée à la saisie et ramenée dans les bornes par le moteur. */
+const BORNES_CHANTIER = Object.freeze({
+  surfaceMin: 0.5, surfaceMax: 2000, piecesMax: 60, prisesMax: 50, pointsMax: 50,
+  appareilsMax: 20, distanceMax: 500, hauteurMin: 2, hauteurMax: 6, hauteurDefaut: 2.8,
+  quantiteMax: 9999, prixMax: 100000000, ouvriersMax: 50, joursMax: 365, lignesLibresMax: 20
+});
+
+/* Pièces : prises proposées = max(minimum, arrondi supérieur de surface / m² par prise) ;
+   points lumineux = max(1, arrondi supérieur de surface / m² par point).
+   Séjour : 1 prise par 4 m², 5 minimum, 7 au-delà de 28 m². Chambre : 3. Cuisine : 6 dont 4 sur
+   plan de travail (circuit dédié 20 A). Salle d'eau, véranda : 1. WC : aucune. */
+const TYPES_PIECES = Object.freeze({
+  sejour: Object.freeze({ libelle: "Séjour", prisesMin: 5, m2ParPrise: 4, m2ParPoint: 20, commande: "simple" }),
+  chambre: Object.freeze({ libelle: "Chambre", prisesMin: 3, m2ParPrise: 0, m2ParPoint: 20, commande: "simple" }),
+  cuisine: Object.freeze({ libelle: "Cuisine", prisesMin: 6, m2ParPrise: 0, m2ParPoint: 15, commande: "simple", circuitCuisine: true }),
+  "salle-eau": Object.freeze({ libelle: "Salle d'eau", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 20, commande: "simple", etanche: true }),
+  wc: Object.freeze({ libelle: "WC", prisesMin: 0, m2ParPrise: 0, m2ParPoint: 20, commande: "simple" }),
+  couloir: Object.freeze({ libelle: "Couloir", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 10, commande: "va-et-vient" }),
+  veranda: Object.freeze({ libelle: "Véranda", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 20, commande: "simple", etanche: true }),
+  garage: Object.freeze({ libelle: "Garage", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 20, commande: "simple" }),
+  magasin: Object.freeze({ libelle: "Magasin", prisesMin: 2, m2ParPrise: 8, m2ParPoint: 8, commande: "simple" }),
+  bureau: Object.freeze({ libelle: "Bureau", prisesMin: 3, m2ParPrise: 4, m2ParPoint: 10, commande: "simple" }),
+  exterieur: Object.freeze({ libelle: "Extérieur", prisesMin: 1, m2ParPrise: 0, m2ParPoint: 25, commande: "simple", etanche: true })
+});
+const SEJOUR_GRAND = Object.freeze({ surface: 28, prisesMin: 7 });
+
+/* Circuits : sections en mm², calibres en A. */
+const REGLES_CIRCUITS = Object.freeze({
+  prises: Object.freeze({ section: 1.5, calibre: 16, max: 8 }),
+  prisesCuisine: Object.freeze({ section: 2.5, calibre: 20, max: 12 }),
+  eclairage: Object.freeze({ section: 1.5, calibre: 10, max: 8 }),
+  differentiel: Object.freeze({ circuitsMax: 8, minimum: 2, sensibilite: 30 }),
+  margeCable: 0.12,
+  reserveModules: 0.2,
+  modulesParRangee: 13
+});
+/* Appareils à circuit dédié : un circuit par appareil. Type A : différentiel de type A (plaque, lave-linge). */
+const APPAREILS = Object.freeze({
+  climatiseur: Object.freeze({ libelle: "Climatiseur", section: 2.5, calibre: 20 }),
+  "chauffe-eau": Object.freeze({ libelle: "Chauffe-eau", section: 2.5, calibre: 20 }),
+  cuisiniere: Object.freeze({ libelle: "Cuisinière / plaque", section: 6, calibre: 32, typeA: true }),
+  four: Object.freeze({ libelle: "Four", section: 2.5, calibre: 20 }),
+  "lave-linge": Object.freeze({ libelle: "Lave-linge", section: 2.5, calibre: 20, typeA: true }),
+  "lave-vaisselle": Object.freeze({ libelle: "Lave-vaisselle", section: 2.5, calibre: 20 }),
+  pompe: Object.freeze({ libelle: "Pompe", section: 2.5, calibre: 20 }),
+  congelateur: Object.freeze({ libelle: "Congélateur", section: 2.5, calibre: 20 }),
+  portail: Object.freeze({ libelle: "Portail motorisé", section: 2.5, calibre: 20 })
+});
+
+/* Main-d'œuvre au point : prix de départ en FCFA (XOF/XAF), modifiables sur chaque chantier.
+   Dans une autre devise, les prix partent de 0 et l'électricien les saisit. */
+const MAIN_OEUVRE_POINTS = Object.freeze({
+  prise: Object.freeze({ libelle: "Prise de courant", prix: 2500 }),
+  interrupteur: Object.freeze({ libelle: "Interrupteur", prix: 2000 }),
+  "va-et-vient": Object.freeze({ libelle: "Va-et-vient (2 commandes)", prix: 3000 }),
+  point: Object.freeze({ libelle: "Point lumineux", prix: 2500 }),
+  dedie: Object.freeze({ libelle: "Circuit dédié", prix: 7500 }),
+  tableau: Object.freeze({ libelle: "Pose de tableau", prix: 25000 }),
+  depose: Object.freeze({ libelle: "Dépose de l'ancien tableau", prix: 10000 }),
+  terre: Object.freeze({ libelle: "Prise de terre", prix: 20000 })
+});
+const TARIF_JOURNEE_DEFAUT = 10000;
+const DEVISES_PRIX_DEFAUT = Object.freeze(["XOF", "XAF"]);
+
 /* ---------- Identité visuelle (étape 4) ---------- */
 /* Remplace toute photo d'électricien manquante : jamais de cadre vide. */
 const PHOTO_REPLI = "images/equipe/electricien-repli.svg";

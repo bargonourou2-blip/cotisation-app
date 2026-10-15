@@ -341,6 +341,160 @@
       </div>
     </section>
 
+    <!-- Nouveau chantier : assistant en 5 étapes (étape 5) -->
+    <section class="ecran" id="ecran-nouveau-chantier" aria-labelledby="titre-nouveau-chantier">
+      <div class="assistant">
+        <div class="assistant-tete">
+          <h1 class="titre-ecran" id="titre-nouveau-chantier">Nouveau chantier</h1>
+          <button type="button" class="bouton bouton-discret bouton-compact" id="bouton-recommencer-chantier">Recommencer</button>
+        </div>
+        <ol class="progression" id="progression-chantier" aria-label="Étapes du chantier"></ol>
+        <p class="brouillon-etat" id="etat-brouillon" role="status" aria-live="polite"></p>
+
+        <!-- 1. Client et chantier -->
+        <form class="carte formulaire etape-chantier" id="etape-chantier-1" data-etape="1" novalidate aria-labelledby="titre-etape-1">
+          <h2 class="bloc-titre" id="titre-etape-1" tabindex="-1">Client et chantier</h2>
+          <div class="champ">
+            <label for="chantier-client">Nom du client</label>
+            <input id="chantier-client" type="text" list="liste-clients-chantier" autocomplete="off" maxlength="120" required aria-describedby="err-chantier-client">
+            <datalist id="liste-clients-chantier"></datalist>
+            <p class="champ-erreur" id="err-chantier-client"></p>
+          </div>
+          <div class="champ">
+            <label for="chantier-telephone">Téléphone du client <span class="facultatif">(facultatif)</span></label>
+            <input id="chantier-telephone" type="tel" inputmode="tel" autocomplete="off" maxlength="22" aria-describedby="err-chantier-telephone">
+            <p class="champ-erreur" id="err-chantier-telephone"></p>
+          </div>
+          <div class="champ">
+            <label for="chantier-nom">Nom du chantier</label>
+            <input id="chantier-nom" type="text" autocomplete="off" maxlength="120" placeholder="Ex. : Villa Ouaga 2000" required aria-describedby="err-chantier-nom">
+            <p class="champ-erreur" id="err-chantier-nom"></p>
+          </div>
+          <div class="champ">
+            <label for="chantier-lieu">Lieu</label>
+            <input id="chantier-lieu" type="text" autocomplete="off" maxlength="120" placeholder="Quartier, ville" required aria-describedby="err-chantier-lieu">
+            <p class="champ-erreur" id="err-chantier-lieu"></p>
+          </div>
+          <fieldset class="champ choix-groupe">
+            <legend class="etiquette-champ">Type de chantier</legend>
+            <div class="puces" id="choix-type-chantier"></div>
+          </fieldset>
+          <fieldset class="champ choix-groupe">
+            <legend class="etiquette-champ">Alimentation</legend>
+            <div class="puces" id="choix-alimentation"></div>
+          </fieldset>
+        </form>
+
+        <!-- 2. Pièces -->
+        <form class="carte formulaire etape-chantier" id="etape-chantier-2" data-etape="2" novalidate aria-labelledby="titre-etape-2" hidden>
+          <h2 class="bloc-titre" id="titre-etape-2" tabindex="-1">Pièces</h2>
+          <p class="aide">Ajoutez chaque pièce avec sa surface. BâtiPlus propose les prises et les points lumineux selon la NF C 15-100 ; vous pouvez tout modifier.</p>
+          <div class="ajout-piece">
+            <div class="champ">
+              <label for="piece-type">Pièce</label>
+              <select id="piece-type"></select>
+            </div>
+            <div class="champ">
+              <label for="piece-surface">Surface (m²)</label>
+              <input id="piece-surface" type="text" inputmode="decimal" autocomplete="off" maxlength="8" placeholder="Ex. : 12,5" aria-describedby="err-piece-surface">
+            </div>
+            <button type="button" class="bouton bouton-secondaire" id="bouton-ajouter-piece"><svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg><span class="bouton-libelle">Ajouter</span></button>
+            <p class="champ-erreur ajout-erreur" id="err-piece-surface"></p>
+          </div>
+          <p class="resume-ligne" id="resume-pieces" aria-live="polite"></p>
+          <ul class="liste-pieces" id="liste-pieces" aria-label="Pièces du chantier"></ul>
+          <p class="message-formulaire" id="msg-etape-2" role="alert"></p>
+        </form>
+
+        <!-- 3. Appareils -->
+        <form class="carte formulaire etape-chantier" id="etape-chantier-3" data-etape="3" novalidate aria-labelledby="titre-etape-3" hidden>
+          <h2 class="bloc-titre" id="titre-etape-3" tabindex="-1">Appareils à circuit dédié</h2>
+          <p class="aide">Chaque appareil coché reçoit son propre circuit protégé. Laissez tout décoché s'il n'y en a pas.</p>
+          <ul class="liste-appareils" id="liste-appareils" aria-label="Appareils"></ul>
+        </form>
+
+        <!-- 4. Options -->
+        <form class="carte formulaire etape-chantier" id="etape-chantier-4" data-etape="4" novalidate aria-labelledby="titre-etape-4" hidden>
+          <h2 class="bloc-titre" id="titre-etape-4" tabindex="-1">Options</h2>
+          <div class="champ">
+            <label for="option-distance">Distance compteur – tableau (m)</label>
+            <input id="option-distance" type="text" inputmode="decimal" autocomplete="off" maxlength="6" aria-describedby="aide-option-distance err-option-distance">
+            <p class="aide" id="aide-option-distance">De 0 à 500 m. Sert au câble d'alimentation.</p>
+            <p class="champ-erreur" id="err-option-distance"></p>
+          </div>
+          <div class="champ">
+            <label for="option-hauteur">Hauteur sous plafond (m)</label>
+            <input id="option-hauteur" type="text" inputmode="decimal" autocomplete="off" maxlength="5" aria-describedby="aide-option-hauteur err-option-hauteur">
+            <p class="aide" id="aide-option-hauteur">De 2 à 6 m, 2,8 m par défaut.</p>
+            <p class="champ-erreur" id="err-option-hauteur"></p>
+          </div>
+          <div class="champ champ-case">
+            <label class="case"><input type="checkbox" id="option-parafoudre"><span>Parafoudre (fortement conseillé en zone orageuse)</span></label>
+          </div>
+          <div class="champ champ-case">
+            <label class="case"><input type="checkbox" id="option-terre"><span>Prise de terre neuve (piquet, câble 16 mm², barrette, regard)</span></label>
+          </div>
+          <div class="champ champ-case">
+            <label class="case"><input type="checkbox" id="option-remplacement"><span>Ancien tableau à remplacer (dépose comptée)</span></label>
+          </div>
+        </form>
+
+        <!-- 5. Main-d'œuvre et synthèse -->
+        <form class="etape-chantier etape-finale" id="etape-chantier-5" data-etape="5" novalidate aria-labelledby="titre-etape-5" hidden>
+          <div class="carte formulaire">
+            <h2 class="bloc-titre" id="titre-etape-5" tabindex="-1">Main-d'œuvre</h2>
+            <p class="aide">Les quatre façons de compter peuvent se cumuler. Les quantités au point sont calculées à partir de l'étude ; vous pouvez les corriger.</p>
+            <h3 class="sous-titre">Au point</h3>
+            <ul class="lignes-mo" id="liste-mo-points" aria-label="Main-d'œuvre au point"></ul>
+            <div class="total-ligne total-partiel"><span>Sous-total au point</span><strong class="montant" id="total-mo-points"></strong></div>
+            <h3 class="sous-titre">Au forfait</h3>
+            <div class="champ">
+              <label for="mo-forfait">Montant du forfait <span class="facultatif" id="devise-forfait"></span></label>
+              <input id="mo-forfait" type="text" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="0">
+            </div>
+            <h3 class="sous-titre">À la journée</h3>
+            <div class="trio">
+              <div class="champ">
+                <label for="mo-ouvriers">Ouvriers</label>
+                <input id="mo-ouvriers" type="text" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="0">
+              </div>
+              <div class="champ">
+                <label for="mo-jours">Jours</label>
+                <input id="mo-jours" type="text" inputmode="decimal" autocomplete="off" maxlength="5" placeholder="0">
+              </div>
+              <div class="champ">
+                <label for="mo-tarif">Tarif / jour</label>
+                <input id="mo-tarif" type="text" inputmode="numeric" autocomplete="off" maxlength="12">
+              </div>
+            </div>
+            <h3 class="sous-titre">Lignes libres</h3>
+            <ul class="lignes-libres" id="liste-lignes-libres" aria-label="Lignes libres"></ul>
+            <button type="button" class="lien-texte" id="bouton-ajouter-ligne"><svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg>Ajouter une ligne</button>
+            <div class="total-ligne"><span>Total main-d'œuvre</span><strong class="montant" id="total-mo"></strong></div>
+          </div>
+          <section class="carte synthese" aria-labelledby="titre-synthese">
+            <h2 class="bloc-titre" id="titre-synthese">Synthèse de l'étude</h2>
+            <dl class="chiffres" id="synthese-chiffres"></dl>
+            <h3 class="sous-titre">Circuits</h3>
+            <div class="tableau-defile">
+              <table class="tableau-circuits">
+                <thead><tr><th scope="col">Circuit</th><th scope="col">Section</th><th scope="col">Calibre</th><th scope="col">Câble</th></tr></thead>
+                <tbody id="corps-circuits"></tbody>
+              </table>
+            </div>
+            <h3 class="sous-titre">Protections</h3>
+            <ul class="liste-simple" id="synthese-differentiels"></ul>
+            <p class="mention">Étude indicative établie selon les règles usuelles de la NF C 15-100. L'électricien reste responsable de la conformité de l'installation.</p>
+          </section>
+        </form>
+
+        <div class="navigation-etapes">
+          <button type="button" class="bouton bouton-discret" id="bouton-etape-precedente">Précédent</button>
+          <button type="button" class="bouton bouton-principal" id="bouton-etape-suivante"><span class="bouton-libelle">Suivant</span></button>
+        </div>
+      </div>
+    </section>
+
     <!-- Mon profil -->
     <section class="ecran" id="ecran-profil" aria-labelledby="titre-profil">
       <div class="colonnes">
@@ -591,6 +745,7 @@
 
 <nav class="onglets" id="onglets" aria-label="Navigation rapide"></nav>
 
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <div id="modale" hidden>
   <div class="modale-boite carte" role="dialog" aria-modal="true" aria-labelledby="modale-titre">
     <div class="modale-tete">

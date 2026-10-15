@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* ==========================================================================
    BâtiPlus — vérificateur
-   Rapporte les contrôles bloquants des étapes 1-4 (①…⑫, ⑮, ⑰, ⑳, ㉑, ㉔, ㉕ ; ⑬, ⑭, ⑯, ⑱, ⑲, ㉒, ㉓ dans verifier-navigateur.mjs) et les contrôles de
+   Rapporte les contrôles bloquants des étapes 1-5 (①…⑫, ⑮, ⑰, ⑳, ㉑, ㉔…㉙ ; ⑬, ⑭, ⑯, ⑱, ⑲, ㉒, ㉓ dans verifier-navigateur.mjs) et les contrôles de
    sécurité du front (S①…S⑪) sur le fichier livré www/index.html.
    Code de sortie 1 si un seul contrôle échoue.
    Le contrôle ⑩ (console au chargement) exécute la page dans jsdom :
@@ -14,11 +14,16 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import {
+  ATTENDUS, CHANTIERS_TYPES, aleatoire, chantierAleatoire, chargerMoteur, invariants, moteurLivre, nombresInvalides, resumer, sectionMoteur
+} from "./chantiers-types.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const WWW = join(RACINE, "www");
 const html = readFileSync(join(WWW, "index.html"), "utf8");
 const resultats = [];
+/* Constats de l'étape 5 relevés dans jsdom, complétés par le moteur exécuté seul (controlesMoteur). */
+const etape5 = { fait: false, cas: [], persistance: [], nombres: [], bornes: [] };
 
 function controle(numero, libelle, ok, detail) {
   resultats.push({ numero, libelle, ok: Boolean(ok), detail: detail || "" });
@@ -389,7 +394,8 @@ async function controlesExecution() {
     if (a.doc.querySelector("img[src='x']") || a.doc.querySelector("#accueil-devis b")) accueil.push("XSS dans les devis");
     if (!a.texte("astuce-texte") || !/\d{4}/.test(a.texte("accueil-date"))) accueil.push("astuce ou date absente");
     if (!a.$("accueil-devis-vide").hidden) accueil.push("message « aucun devis » affiché");
-    if (a.$("bouton-nouveau-chantier").hidden !== true || [...a.doc.querySelectorAll("[data-ecran]")].some((l) => !l.hidden && !a.$("ecran-" + l.dataset.ecran))) accueil.push("lien vers un écran absent visible");
+    if (a.$("bouton-nouveau-chantier").hidden !== !a.$("ecran-nouveau-chantier")) accueil.push("bouton Nouveau chantier : visibilité incohérente avec l'écran");
+    if ([...a.doc.querySelectorAll("[data-ecran]")].some((l) => !l.hidden && !a.$("ecran-" + l.dataset.ecran))) accueil.push("lien vers un écran absent visible");
     if (valeursCompteur.size < 3) accueil.push("compteur non animé (" + valeursCompteur.size + " valeur(s))");
     controle("A", "accueil : compteurs animés, 3 derniers devis, astuce du jour", accueil.length === 0,
       accueil.join(" ; ") || "4 compteurs animés (" + valeursCompteur.size + " valeurs vues en 700 ms) : " + a.texte("cpt-montant").replace(/\s/g, " ") + ", 3 ce mois, 2 acceptés, ∞ ; devis d'un autre compte et devis falsifiés ignorés ; client piégé affiché en texte");
@@ -543,6 +549,176 @@ async function controlesExecution() {
     if (/admin.{0,20}[:=]\s*["']\d{4,}/i.test(js)) admin.push("code admin dans le script");
     controle("S⑦", "accès admin caché, code vérifié par l'API seulement", admin.length === 0,
       admin.join(" ; ") || "appui de 1 s ignoré, appui de 3 s → écran de code ; code envoyé en POST à l'API (credentials omit), 401 → « Code incorrect. », champ vidé ; aucun code dans l'application");
+
+    /* ---------- Étape 5 : assistant Nouveau chantier (㉖ ㉗ ㉘ ㉙, partie interface) ---------- */
+    {
+      const KC = { chantiers: "bp_v1_chantiers", brouillon: "bp_v1_brouillon_chantier" };
+      const base = { [K.pres]: "1", [K.comptes]: stockageInscrit[K.comptes], [K.session]: sessionActive };
+      const brouillonDe = (page) => {
+        try { return JSON.parse(page.stockage()[KC.brouillon] || "{}")[compte.id] || null; } catch { return null; }
+      };
+      const nb = (s) => s.replace(/[\s\u202f\u00a0]/g, " ");
+      const fcfa = (n) => nb(new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(n)) + " FCFA";
+      const suivant = async (page, ms) => { page.$("bouton-etape-suivante").click(); await pause(ms || 150); };
+      const etapeVisible = (page) => [1, 2, 3, 4, 5].find((n) => !page.$("etape-chantier-" + n).hidden) || 0;
+      const nombresEcran = (page, ou) => {
+        const texte = page.$("ecran-nouveau-chantier").textContent;
+        const valeurs = [...page.$("ecran-nouveau-chantier").querySelectorAll("input")].map((i) => i.value).join(" ");
+        const motif = /(?:^|[^0-9A-Za-zÀ-ÿ])(NaN|Infinity|undefined|-\s?\d)/;
+        const tout = texte + " " + valeurs;
+        if (motif.test(tout)) etape5.nombres.push(ou + " : « " + tout.slice(Math.max(0, tout.search(motif) - 20), tout.search(motif) + 20) + " »");
+      };
+
+      const c1 = ouvrirPage(base);
+      await pause(1800);
+      const onglet = c1.doc.querySelector("#onglets [data-ecran='nouveau-chantier']");
+      if (!onglet || onglet.hidden || c1.$("bouton-nouveau-chantier").hidden) etape5.persistance.push("accès Nouveau chantier absent (onglet ou accueil)");
+      c1.$("bouton-nouveau-chantier").click();
+      await pause(200);
+      if (c1.actif() !== "ecran-nouveau-chantier") etape5.persistance.push("écran non ouvert (" + c1.actif() + ")");
+      if (c1.doc.querySelectorAll("#progression-chantier .progression-pas").length !== 5) etape5.persistance.push("progression sans 5 étapes");
+      await suivant(c1);
+      if (etapeVisible(c1) !== 1 || !c1.texte("err-chantier-client")) etape5.persistance.push("étape 1 vide acceptée");
+      c1.remplir("chantier-client", "<img src=x onerror=alert(5)>Ouédraogo");
+      c1.remplir("chantier-telephone", "70 11 22 44");
+      c1.remplir("chantier-nom", "Studio Gounghin");
+      c1.remplir("chantier-lieu", "Gounghin, Ouagadougou");
+      c1.doc.querySelector("input[name='chantier-type'][value='appartement']").click();
+      await suivant(c1, 250);
+      if (etapeVisible(c1) !== 2) etape5.persistance.push("étape 1 valide refusée (" + c1.texte("err-chantier-telephone") + ")");
+      await suivant(c1);
+      if (etapeVisible(c1) !== 2 || !c1.texte("msg-etape-2")) etape5.persistance.push("étape 2 sans pièce acceptée");
+
+      /* ㉙ à la saisie : 0,2 et 5 000 refusés (et quelques pièges), 0,5 et 2 000 acceptés. */
+      const ajouter = async (type, surface) => {
+        c1.choisir("piece-type", type);
+        c1.remplir("piece-surface", surface);
+        c1.$("bouton-ajouter-piece").click();
+        await pause(40);
+      };
+      const refusees = [];
+      for (const s of ["0,2", "5000", "5 000", "abc", "2000,5", "-3", "0,49", "", "1e3", "Infinity"]) {
+        await ajouter("sejour", s);
+        if (c1.doc.querySelectorAll("#liste-pieces .piece").length !== 0) { refusees.push(s); c1.doc.querySelector("#liste-pieces [data-action-piece='supprimer']").click(); }
+      }
+      if (refusees.length) etape5.bornes.push("surfaces acceptées à tort : " + refusees.join(", "));
+      if (!c1.texte("err-piece-surface").includes("0,5") || !c1.texte("err-piece-surface").includes("2 000")) etape5.bornes.push("message de bornes absent : « " + c1.texte("err-piece-surface") + " »");
+      await ajouter("garage", "0,5");
+      await ajouter("garage", "2000");
+      if (c1.doc.querySelectorAll("#liste-pieces .piece").length !== 2) etape5.bornes.push("0,5 ou 2 000 m² refusé");
+      for (let i = 0; i < 5 && c1.doc.querySelector("#liste-pieces [data-action-piece='supprimer']"); i++) c1.doc.querySelector("#liste-pieces [data-action-piece='supprimer']").click();
+      await pause(40);
+      await ajouter("sejour", "18");
+      await ajouter("salle-eau", "4");
+      await ajouter("wc", "3");
+      const cartes = c1.doc.querySelectorAll("#liste-pieces .piece");
+      if (cartes.length !== 3) etape5.persistance.push(cartes.length + " pièce(s) au lieu de 3");
+      else {
+        const p1 = cartes[0].querySelector("[data-champ-piece='surface']");
+        for (const s of ["5000", "0,2"]) {
+          c1.remplir(p1.id, s);
+          if (!p1.closest(".champ").classList.contains("invalide")) etape5.bornes.push("surface " + s + " acceptée en modification");
+        }
+        await suivant(c1, 100);
+        if (etapeVisible(c1) !== 2) etape5.bornes.push("étape 2 franchie avec une surface invalide");
+        c1.remplir(p1.id, "18");
+        if (cartes[0].querySelector("[data-champ-piece='prises']").value !== "5") etape5.cas.push("séjour 18 m² : " + cartes[0].querySelector("[data-champ-piece='prises']").value + " prises proposées au lieu de 5");
+      }
+      await pause(900);
+      const b1 = brouillonDe(c1);
+      if (!b1 || b1.pieces.length !== 3 || b1.etape !== 2) etape5.persistance.push("brouillon non écrit 600 ms après la saisie");
+      if (!/^Brouillon enregistré à \d{2}:\d{2}$/.test(c1.texte("etat-brouillon"))) etape5.persistance.push("indication « Brouillon enregistré à HH:MM » absente (« " + c1.texte("etat-brouillon") + " »)");
+      if (b1 && b1.pieces.some((p) => !(p.surface >= 0.5 && p.surface <= 2000))) etape5.bornes.push("surface hors bornes écrite dans le brouillon");
+
+      /* ㉗ L'application est fermée puis rouverte : on reprend exactement où on en était. */
+      const c2 = ouvrirPage(c1.stockage());
+      c1.w.close();
+      await pause(1800);
+      c2.$("bouton-nouveau-chantier").click();
+      await pause(250);
+      if (etapeVisible(c2) !== 2) etape5.persistance.push("brouillon repris à l'étape " + etapeVisible(c2) + " au lieu de 2");
+      if (c2.doc.querySelectorAll("#liste-pieces .piece").length !== 3) etape5.persistance.push("pièces non reprises");
+      if (c2.$("chantier-nom").value !== "Studio Gounghin" || c2.$("chantier-client").value !== "<img src=x onerror=alert(5)>Ouédraogo") etape5.persistance.push("champs de l'étape 1 non repris");
+      if (!c2.doc.querySelector("input[name='chantier-type'][value='appartement']").checked) etape5.persistance.push("type de chantier non repris");
+      if (!c2.texte("etat-brouillon").startsWith("Brouillon repris")) etape5.persistance.push("reprise non signalée");
+      if (c2.doc.querySelector("img[src='x']")) etape5.persistance.push("XSS : nom du client interprété");
+      await suivant(c2);
+      await suivant(c2);
+      for (const s of ["abc", "-5", "600"]) {
+        c2.remplir("option-distance", s);
+        await suivant(c2, 80);
+        if (etapeVisible(c2) !== 4) etape5.bornes.push("distance « " + s + " » acceptée");
+      }
+      c2.remplir("option-distance", "0");
+      await suivant(c2, 250);
+      if (etapeVisible(c2) !== 5) etape5.persistance.push("étape 5 non atteinte");
+
+      /* ㉖ L'interface affiche les chiffres du moteur pour le studio. */
+      const synthese = nb(c2.texte("synthese-chiffres"));
+      if (!synthese.includes("25 m²") || !synthese.includes("Prises6 dont 1 étanches") || !synthese.includes("Points lumineux3")) etape5.cas.push("synthèse studio : « " + synthese.slice(0, 120) + " »");
+      if (c2.doc.querySelectorAll("#corps-circuits tr").length !== 2 || c2.doc.querySelectorAll("#synthese-differentiels li").length !== 2) etape5.cas.push("studio : circuits ou différentiels affichés incorrects");
+      if (nb(c2.texte("total-mo")) !== fcfa(53500)) etape5.cas.push("main-d'œuvre studio : « " + c2.texte("total-mo") + " » au lieu de 53 500 FCFA");
+
+      /* ㉘ Saisies piégées dans la main-d'œuvre : jamais de NaN, d'Infinity ni de négatif. */
+      c2.remplir("mo-forfait", "-5000");
+      c2.remplir("mo-jours", "Infinity");
+      c2.remplir("mo-ouvriers", "abc");
+      c2.remplir("mo-qte-prise", "1e400");
+      c2.remplir("mo-prix-point", "-2500");
+      nombresEcran(c2, "étape 5 après saisies piégées");
+      if (nb(c2.texte("total-mo")) !== fcfa(53500 - 3 * 2500)) etape5.nombres.push("total après pièges : « " + c2.texte("total-mo") + " »");
+      c2.remplir("mo-prix-point", "2500");
+      c2.remplir("mo-forfait", "20000");
+      if (nb(c2.texte("total-mo")) !== fcfa(73500)) etape5.cas.push("forfait non ajouté : « " + c2.texte("total-mo") + " »");
+      c2.$("bouton-ajouter-ligne").click();
+      c2.remplir("libre-libelle-0", "Saignées");
+      c2.remplir("libre-montant-0", "5000");
+      if (nb(c2.texte("total-mo")) !== fcfa(78500)) etape5.cas.push("ligne libre non ajoutée : « " + c2.texte("total-mo") + " »");
+
+      await suivant(c2, 500);
+      let enregistres = [];
+      try { enregistres = JSON.parse(c2.stockage()[KC.chantiers] || "[]"); } catch { enregistres = []; }
+      const e0 = enregistres[0] || {};
+      if (enregistres.length !== 1 || e0.statut !== "etudie" || (e0.pieces || []).length !== 3 || e0.nom !== "Studio Gounghin") etape5.persistance.push("chantier non enregistré correctement");
+      if (e0.client && e0.client.telephone !== "+22670112244") etape5.persistance.push("téléphone client : " + (e0.client && e0.client.telephone));
+      if (e0.mainOeuvre && (e0.mainOeuvre.forfait !== 20000 || e0.mainOeuvre.libres.length !== 1)) etape5.persistance.push("main-d'œuvre non enregistrée");
+      if (brouillonDe(c2)) etape5.persistance.push("brouillon non effacé après enregistrement");
+      if (c2.actif() !== "ecran-accueil" || c2.$("toast").hidden || !c2.texte("toast").includes("Studio Gounghin")) etape5.persistance.push("pas de retour à l'accueil avec confirmation");
+      c2.$("bouton-nouveau-chantier").click();
+      await pause(250);
+      if (etapeVisible(c2) !== 1 || c2.$("chantier-nom").value !== "" || c2.doc.querySelectorAll("#liste-pieces .piece").length) etape5.persistance.push("nouveau chantier non vierge après enregistrement");
+      if (!c2.doc.querySelector("#liste-clients-chantier option[value='<img src=x onerror=alert(5)>Ouédraogo']")) etape5.persistance.push("client enregistré non proposé");
+
+      /* ㉙ Brouillon falsifié dans le stockage : nettoyé champ par champ par chantierValide(). */
+      const faux = {
+        [compte.id]: {
+          id: "falsifie-0001", compteId: compte.id, etape: 9, etapeMax: 99, statut: "etudie", abonnement: "vie",
+          nom: "<script>alert(1)</script>", type: "<b>", alimentation: "tri", client: { nom: 42, telephone: "javascript:alert(1)" },
+          pieces: [
+            { id: "a", type: "sejour", surface: 5000 }, { id: "b", type: "wc", surface: 0.2 }, { id: "c", type: "<img src=x>", surface: 10 },
+            { id: "d", type: "chambre", surface: "12", prises: 1e9, points: -4 }, { id: "e", type: "cuisine", surface: null },
+            { id: "f", type: "__proto__", surface: 10 }, { id: "<b>", type: "wc", surface: -2 }
+          ],
+          appareils: { climatiseur: 1e6, inconnu: 3 },
+          options: { distance: -50, hauteur: 99, parafoudre: "oui" },
+          mainOeuvre: { forfait: -1, points: { prise: { quantite: -5, prix: "abc" } }, journees: { ouvriers: 1e9, jours: -2, tarif: -1 }, libres: "x" }
+        }
+      };
+      const c3 = ouvrirPage({ ...base, [KC.brouillon]: JSON.stringify(faux) });
+      await pause(1800);
+      c3.$("bouton-nouveau-chantier").click();
+      await pause(300);
+      const pieces3 = c3.doc.querySelectorAll("#liste-pieces .piece");
+      if (pieces3.length !== 1 || c3.doc.querySelector("#liste-pieces [data-champ-piece='prises']").value !== "50" || c3.doc.querySelector("#liste-pieces [data-champ-piece='points']").value !== "0") etape5.bornes.push("brouillon falsifié mal nettoyé (" + pieces3.length + " pièce(s))");
+      if (etapeVisible(c3) !== 5) etape5.bornes.push("étape falsifiée (9) non ramenée à 5");
+      if (c3.$("option-hauteur").value !== "6" || c3.$("option-distance").value !== "0" || c3.$("appareil-nombre-climatiseur").value !== "20") etape5.bornes.push("options ou appareils falsifiés non bornés");
+      if (c3.doc.querySelectorAll("script").length !== 1 || c3.doc.querySelector("img[src='x']") || c3.doc.querySelector("#ecran-nouveau-chantier b")) etape5.bornes.push("XSS par le brouillon");
+      nombresEcran(c3, "brouillon falsifié");
+      await pause(900);
+      const b3 = brouillonDe(c3);
+      if (b3 && (b3.abonnement !== undefined || b3.pieces.some((p) => !(p.surface >= 0.5 && p.surface <= 2000)))) etape5.bornes.push("brouillon réécrit avec des champs falsifiés");
+      etape5.fait = true;
+    }
 
     /* ㉑ bouton retour Android : modale → recherche → tiroir → historique → accueil → quitter */
     const retour = [];
@@ -778,14 +954,80 @@ function controlesIdentite() {
     fautesPaiement.join(" ; ") || (Array.isArray(fournis) ? fournis.length : 0) + " logo(s) officiel(s) fourni(s) ; 7 pastilles de repli aux couleurs des marques, contraste ≥ 4,5 (" + pastilles.join(", ") + ")");
 }
 
+/* ---------- Étape 5 : moteur NF C 15-100 exécuté seul (VM Node, sans DOM) ---------- */
+function controlesMoteur() {
+  const absent = etape5.fait ? [] : ["parcours de l'assistant non exécuté (jsdom)"];
+  let moteur;
+  try {
+    moteur = chargerMoteur();
+  } catch (erreur) {
+    for (const n of ["㉖", "㉗", "㉘", "㉙"]) controle(n, "moteur NF C 15-100", false, "moteur non chargeable : " + erreur.message);
+    return;
+  }
+  /* ㉖ */
+  const cas = [...absent, ...etape5.cas];
+  const section = sectionMoteur();
+  const acces = section.match(/\b(document|window|localStorage|getElementById|querySelector|lireValeur|ecrireValeur|\$\()/);
+  if (acces) cas.push("le moteur touche au DOM ou au stockage : " + acces[0]);
+  if (!moteurLivre()) cas.push("le moteur livré dans index.html diffère de src/moteur.js");
+  const chiffres = [];
+  for (const type of CHANTIERS_TYPES) {
+    const a = moteur.etudierChantier(type.chantier, "XOF");
+    const b = moteur.etudierChantier(JSON.parse(JSON.stringify(type.chantier)), "XOF");
+    if (JSON.stringify(a) !== JSON.stringify(b)) cas.push(type.cle + " non reproductible");
+    if (JSON.stringify(resumer(a)) !== JSON.stringify(ATTENDUS[type.cle])) cas.push(type.cle + " ≠ valeurs de référence : " + JSON.stringify(resumer(a)));
+    invariants(moteur, a).forEach((e) => cas.push(type.cle + " : " + e));
+    chiffres.push(type.cle + " " + a.totaux.prises + " prises/" + a.totaux.points + " pts/" + a.circuits.length + " circuits/" + a.differentiels.length + " ID/"
+      + a.coffret.rangees + " rangée(s)/" + new Intl.NumberFormat("fr-FR").format(a.mainOeuvre.total).replace(/\s/g, " ") + " F");
+  }
+  controle("㉖", "les 3 chantiers types donnent des résultats cohérents et reproductibles", cas.length === 0,
+    cas.join(" ; ") || chiffres.join(" · ") + " ; valeurs de référence, règles (8 pts/circuit, 8 circuits/ID, type A, réserve 20 %) et affichage du studio identiques au moteur");
+
+  /* ㉗ */
+  const persistance = [...absent, ...etape5.persistance];
+  controle("㉗", "le brouillon survit à la fermeture de l'application", persistance.length === 0,
+    persistance.join(" ; ") || "brouillon écrit 600 ms après la saisie (« Brouillon enregistré à HH:MM »), page fermée puis rouverte → étape 2, 3 pièces et champs repris ; enregistrement final → statut étudié, brouillon effacé, retour à l'accueil avec confirmation");
+
+  /* ㉘ */
+  const nombres = [...absent, ...etape5.nombres];
+  const alea = aleatoire(20261015);
+  let exceptions = 0;
+  for (let i = 0; i < 1000; i += 1) {
+    try {
+      const etude = moteur.etudierChantier(chantierAleatoire(moteur, alea), i % 2 ? "XOF" : "EUR");
+      const inv = nombresInvalides(etude);
+      if (inv.length && nombres.length < 5) nombres.push("fuzz #" + i + " : " + inv[0]);
+      const ec = invariants(moteur, etude);
+      if (ec.length && nombres.length < 5) nombres.push("fuzz #" + i + " : " + ec[0]);
+    } catch (erreur) {
+      exceptions += 1;
+      if (nombres.length < 5) nombres.push("fuzz #" + i + " : exception " + erreur.message);
+    }
+  }
+  controle("㉘", "aucun NaN, Infinity ni valeur négative", nombres.length === 0 && exceptions === 0,
+    nombres.join(" ; ") || "1 000 chantiers aléatoires (graine fixe, 20 % de valeurs piégées : NaN, Infinity, négatifs, 1e308, textes, types inconnus) : 0 exception, 0 nombre invalide, règles tenues ; écran sans NaN après saisies piégées");
+
+  /* ㉙ */
+  const bornes = [...absent, ...etape5.bornes];
+  const P = moteur.propositionPiece;
+  if (JSON.stringify(P("sejour", 5000)) !== JSON.stringify(P("sejour", 2000)) || JSON.stringify(P("wc", 0.2)) !== JSON.stringify(P("wc", 0.5))) bornes.push("moteur : surface non ramenée dans les bornes");
+  const np = moteur.normaliserPieces([{ type: "wc", surface: 0.2 }, { type: "garage", surface: 5000 }, { type: "wc", surface: "x" }]);
+  if (np.map((p) => p.surface).join("|") !== "0.5|2000|0.5") bornes.push("moteur : surfaces normalisées " + np.map((p) => p.surface).join("|"));
+  const sv = [0.2, 0.49, 0.5, 2000, 2000.01, 5000, NaN, Infinity, "12,5"].map(moteur.surfaceValide).join("");
+  if (sv !== "falsefalsetruetruefalsefalsefalsefalsetrue") bornes.push("surfaceValide : " + sv);
+  controle("㉙", "surfaces bornées de 0,5 à 2 000 m²", bornes.length === 0,
+    bornes.join(" ; ") || "saisie : 0,2 · 5 000 · 0,49 · 2 000,5 · -3 · abc · 1e3 refusés, 0,5 et 2 000 acceptés, modification à 5 000 bloquée ; moteur : 0,2 → 0,5 et 5 000 → 2 000 ; brouillon falsifié nettoyé (pièces invalides écartées, étape 9 → 5, quantités bornées, aucun champ inconnu réécrit)");
+}
+
 /* ---------- Rapport ---------- */
 await controlesExecution();
+controlesMoteur();
 controleCapacitor();
 controleGitignore();
 controlesSecurite();
 controlesIdentite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
