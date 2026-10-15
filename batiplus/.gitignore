@@ -1,0 +1,26 @@
+# Dépendances
+node_modules/
+
+# Secrets — ne JAMAIS versionner
+.env
+.env.*
+!.env.exemple
+*.keystore
+*.jks
+keystore.properties
+
+# Android — fichiers générés
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/
+*.apk
+*.aab
+
+# Éditeurs et système
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log

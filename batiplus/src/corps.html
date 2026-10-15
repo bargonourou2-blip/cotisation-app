@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="visuellement-cache" aria-hidden="true" focusable="false">
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-fermer" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-lune" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-soleil" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-eclair" viewBox="0 0 24 24"><path d="M13.5 2L4.5 13.5h6.2L9.8 22l9.7-12.3h-6.4L13.5 2z"/></symbol>
+  <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></symbol>
+  <symbol id="i-devis" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chantier" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M10 21v-5h4v5"/></symbol>
+  <symbol id="i-clients" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5A6.5 6.5 0 0 1 21.5 20"/></symbol>
+  <symbol id="i-prix" viewBox="0 0 24 24"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/></symbol>
+  <symbol id="i-profil" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-abonnement" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
+  <symbol id="i-installer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-telephone" viewBox="0 0 24 24"><path d="M21 16.5v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 1.1 3.7 2 2 0 0 1 3.1 1.5h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L7 9.3a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></symbol>
+</svg>
+
+<canvas id="toile" aria-hidden="true"></canvas>
+<div class="halo halo-violet" aria-hidden="true"></div>
+<div class="halo halo-rouge" aria-hidden="true"></div>
+<div class="voile" id="voile" aria-hidden="true"></div>
+
+<aside id="tiroir" aria-label="Menu principal" aria-hidden="true">
+  <div class="tiroir-tete">
+    <span class="logo" data-logo>
+      <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="612" decoding="async">
+      <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
+      <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+    </span>
+    <button type="button" class="bouton-icone bouton-fermer-tiroir" id="bouton-fermer-tiroir" aria-label="Fermer le menu">
+      <svg class="icone" aria-hidden="true"><use href="#i-fermer"/></svg>
+    </button>
+  </div>
+  <nav aria-label="Navigation">
+    <ul class="tiroir-menu" id="tiroir-menu"></ul>
+  </nav>
+  <div class="tiroir-pied">
+    <strong>BRG Électro+</strong>
+    <span>Concepteur de BâtiPlus</span>
+    <a href="tel:+22605608608"><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg>+226 05 60 86 08</a>
+    <a href="tel:+22668524290"><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg>+226 68 52 42 90</a>
+  </div>
+</aside>
+
+<div class="page">
+  <header class="entete">
+    <button type="button" class="bouton-icone bouton-menu" id="bouton-menu" aria-label="Ouvrir le menu" aria-controls="tiroir" aria-expanded="false">
+      <svg class="icone" aria-hidden="true"><use href="#i-menu"/></svg>
+    </button>
+    <span class="logo" data-logo>
+      <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="612" decoding="async">
+      <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
+      <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+    </span>
+    <span class="entete-espace"></span>
+    <button type="button" class="bouton-icone bouton-theme" id="bouton-theme" aria-label="Passer en mode sombre">
+      <svg class="icone i-lune" aria-hidden="true"><use href="#i-lune"/></svg>
+      <svg class="icone i-soleil" aria-hidden="true"><use href="#i-soleil"/></svg>
+    </button>
+  </header>
+
+  <main class="contenu" id="contenu">
+    <section class="ecran" id="ecran-accueil" aria-labelledby="titre-accueil">
+      <div class="demarrage">
+        <div class="carte demarrage-hero cascade" data-rang="0">
+          <span class="etiquette"><svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>Votre espace électricien</span>
+          <span class="logo" data-logo>
+            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="Logo BâtiPlus" width="720" height="612" decoding="async">
+            <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="Logo BâtiPlus" width="720" height="608" decoding="async">
+            <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+          </span>
+          <h1 class="demarrage-titre" id="titre-accueil">BâtiPlus démarre</h1>
+          <p class="demarrage-par">par <strong>BRG Électro+</strong></p>
+        </div>
+
+        <div class="carte soulevable cascade" data-rang="1">
+          <h2 class="etat-titre">État de l'application</h2>
+          <ul class="etat-liste">
+            <li class="etat-ligne"><span>Version</span><strong id="etat-version">1.0.0</strong></li>
+            <li class="etat-ligne"><span>Plateforme</span><strong id="etat-plateforme">Détection…</strong></li>
+            <li class="etat-ligne"><span>Réseau</span><strong class="pastille" id="etat-reseau">Détection…</strong></li>
+            <li class="etat-ligne"><span>Thème</span><strong id="etat-theme">Détection…</strong></li>
+            <li class="etat-ligne"><span>Animations</span><strong id="etat-animations">Détection…</strong></li>
+          </ul>
+        </div>
+
+        <div class="carte soulevable cascade" data-rang="2">
+          <button type="button" class="bouton bouton-principal" id="bouton-verifier">
+            <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
+            <span class="bouton-libelle">Vérifier le démarrage</span>
+          </button>
+          <div class="verif-resultat" id="verif-resultat" role="status" aria-live="polite" hidden>
+            <svg class="coche" id="verif-coche" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16"/><path d="M11 18.5l5 5 9-10"/></svg>
+            <div><strong id="verif-titre"></strong><p id="verif-detail"></p></div>
+          </div>
+        </div>
+
+        <p class="mention cascade" data-rang="3">
+          <strong>BâtiPlus est une application conçue et développée par BRG Électro+</strong>
+          <small>© 2026 BRG Électro+ — Tous droits réservés</small>
+        </p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<nav class="onglets" id="onglets" aria-label="Navigation rapide"></nav>
+
+<div id="modale" role="dialog" aria-modal="true" aria-labelledby="modale-titre" hidden>
+  <div class="carte"><h2 id="modale-titre" class="visuellement-cache">Fenêtre</h2></div>
+</div>
+<div id="feuille-devis" aria-hidden="true"></div>

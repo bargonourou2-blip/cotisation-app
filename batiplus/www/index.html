@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-hY44smLllgSyknGOHlrTIi2UBDoS3zkcZHkZ5yQYAyU='; style-src 'self' 'sha256-M9e9smNrXOQoDYJqApIZ8iZ2VO3kwpxYVm/uLTEoUxA='; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.batiplus.bf; media-src 'self'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#6A0DAD">
+<meta name="color-scheme" content="light dark">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="BâtiPlus, l'assistant d'étude et de devis pour électriciens, conçu et développé par BRG Électro+.">
+<title>BâtiPlus — études et devis pour électriciens</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="images/logo/icon-192.png">
+<link rel="apple-touch-icon" href="images/logo/icon-192.png">
+<link rel="preload" href="assets/polices/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/polices/montserrat-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+/* ==========================================================================
+   BâtiPlus — charte.css
+   Source unique du style. Assemblée dans www/index.html par
+   src/scripts/assembler.mjs. Ne jamais modifier www/index.html à la main.
+   ========================================================================== */
+
+/* ---------- 1. Polices embarquées (aucun CDN) ---------- */
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 400; font-display: swap; src: url("assets/polices/inter-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 500; font-display: swap; src: url("assets/polices/inter-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 600; font-display: swap; src: url("assets/polices/inter-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 700; font-display: swap; src: url("assets/polices/inter-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 800; font-display: swap; src: url("assets/polices/inter-latin-800-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 700; font-display: swap; src: url("assets/polices/montserrat-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 800; font-display: swap; src: url("assets/polices/montserrat-latin-800-normal.woff2") format("woff2"); }
+
+/* ---------- 2. Charte graphique (figée) ---------- */
+:root {
+  --violet: #6A0DAD;
+  --violet-2: #8B2FD6;
+  --violet-3: #4E0A80;
+  --violet-doux: #F3E9FD;
+  --rouge: #FF1E1E;
+  --rouge-2: #C41414;
+  --jaune: #FFD400;
+  --vert: #12A150;
+  --orange: #F59E0B;
+  --fond: #F4F2F9;
+  --carte: #FFFFFF;
+  --carte-2: #FBFAFE;
+  --texte: #17131F;
+  --texte-2: #5F5870;
+  --texte-3: #918AA3;
+  --ligne: #E8E4F0;
+
+  --entete-fond: rgba(244, 242, 249, 0.72);
+  --ombre-1: 0 1px 2px rgba(23, 19, 31, 0.06), 0 4px 14px rgba(78, 10, 128, 0.07);
+  --ombre-2: 0 6px 18px rgba(23, 19, 31, 0.10), 0 14px 34px rgba(78, 10, 128, 0.14);
+  --toile-point: 106, 13, 173;
+  --halo-opacite: 0.42;
+
+  --police: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --police-titre: "Montserrat", "Inter", system-ui, sans-serif;
+  --rayon: 18px;
+  --rayon-petit: 12px;
+  --largeur-tiroir: 288px;
+  --hauteur-onglets: 64px;
+  --hauteur-entete: 60px;
+  --bas-sur: env(safe-area-inset-bottom, 0px);
+  --haut-sur: env(safe-area-inset-top, 0px);
+  --courbe: cubic-bezier(0.22, 1, 0.36, 1);
+
+  color-scheme: light;
+}
+
+/* Mode sombre : choisi par l'utilisateur, ou par le système si aucun choix. */
+:root[data-theme="sombre"] {
+  --fond: #08070C;
+  --carte: #16121E;
+  --carte-2: #1D1827;
+  --texte: #F6F4FA;
+  --texte-2: #B9B2C9;
+  --texte-3: #8A839B;
+  --ligne: #2A2336;
+  --violet-doux: #251A35;
+  --entete-fond: rgba(8, 7, 12, 0.68);
+  --ombre-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
+  --ombre-2: 0 6px 18px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(106, 13, 173, 0.25);
+  --toile-point: 139, 47, 214;
+  --halo-opacite: 0.30;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="clair"]) {
+    --fond: #08070C;
+    --carte: #16121E;
+    --carte-2: #1D1827;
+    --texte: #F6F4FA;
+    --texte-2: #B9B2C9;
+    --texte-3: #8A839B;
+    --ligne: #2A2336;
+    --violet-doux: #251A35;
+    --entete-fond: rgba(8, 7, 12, 0.68);
+    --ombre-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
+    --ombre-2: 0 6px 18px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(106, 13, 173, 0.25);
+    --toile-point: 139, 47, 214;
+    --halo-opacite: 0.30;
+    color-scheme: dark;
+  }
+}
+
+/* ---------- 3. Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  font-family: var(--police);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--texte);
+  background: var(--fond);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+img, svg { display: block; max-width: 100%; }
+button, input, select, textarea { font: inherit; color: inherit; font-size: 16px; }
+button { cursor: pointer; }
+a { color: var(--violet-2); }
+h1, h2, h3 { font-family: var(--police-titre); line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
+p { margin: 0; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--jaune); outline-offset: 2px; border-radius: 6px; }
+.visuellement-cache {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.icone { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Logos : version claire / sombre selon le thème, repli texte si l'image échoue */
+.logo { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+.logo img { height: 100%; width: auto; object-fit: contain; }
+.logo .logo-sombre { display: none; }
+:root[data-theme="sombre"] .logo .logo-clair { display: none; }
+:root[data-theme="sombre"] .logo .logo-sombre { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="clair"]) .logo .logo-clair { display: none; }
+  :root:not([data-theme="clair"]) .logo .logo-sombre { display: block; }
+}
+.logo-repli { display: none; font-family: var(--police-titre); font-weight: 800; letter-spacing: 0.02em; white-space: nowrap; align-items: center; }
+.logo-repli .bati { color: var(--violet-2); }
+.logo-repli .plus { color: var(--rouge); }
+.logo-repli .icone { color: var(--jaune); fill: var(--jaune); stroke: none; width: 0.9em; height: 0.9em; }
+.logo.logo-echec img { display: none !important; }
+.logo.logo-echec .logo-repli { display: inline-flex; }
+
+/* ---------- 4. Fond animé ---------- */
+#toile { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.halo {
+  position: fixed; z-index: 0; pointer-events: none; border-radius: 50%;
+  width: 70vmax; height: 70vmax; filter: blur(30px); opacity: var(--halo-opacite);
+  will-change: transform;
+}
+.halo-violet {
+  top: -30vmax; left: -28vmax;
+  background: radial-gradient(circle at center, var(--violet-2) 0%, rgba(139, 47, 214, 0.35) 35%, transparent 68%);
+  animation: derive-violet 24s ease-in-out infinite alternate;
+}
+.halo-rouge {
+  bottom: -34vmax; right: -30vmax;
+  background: radial-gradient(circle at center, var(--rouge) 0%, rgba(255, 30, 30, 0.25) 32%, transparent 66%);
+  animation: derive-rouge 31s ease-in-out infinite alternate;
+}
+@keyframes derive-violet {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(12vw, 8vh) scale(1.08); }
+  100% { transform: translate(4vw, 18vh) scale(0.96); }
+}
+@keyframes derive-rouge {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-10vw, -10vh) scale(1.1); }
+  100% { transform: translate(-16vw, -2vh) scale(0.95); }
+}
+
+/* Voile du tiroir */
+.voile {
+  position: fixed; inset: 0; z-index: 40; background: rgba(8, 7, 12, 0.5);
+  opacity: 0; pointer-events: none; transition: opacity 340ms var(--courbe);
+}
+.voile.visible { opacity: 1; pointer-events: auto; }
+
+/* ---------- 5. Tiroir latéral ---------- */
+#tiroir {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 50;
+  width: min(var(--largeur-tiroir), 86vw);
+  display: flex; flex-direction: column;
+  padding: calc(var(--haut-sur) + 18px) 16px calc(var(--bas-sur) + 16px);
+  background: var(--carte);
+  border-right: 1px solid var(--ligne);
+  box-shadow: var(--ombre-2);
+  transform: translateX(-104%);
+  transition: transform 340ms var(--courbe);
+  overflow-y: auto; overscroll-behavior: contain;
+}
+#tiroir.ouvert { transform: translateX(0); }
+.tiroir-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 18px; }
+.tiroir-tete .logo { height: 54px; }
+.tiroir-menu { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tiroir-lien {
+  position: relative; overflow: hidden;
+  width: 100%; display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 0; border-radius: var(--rayon-petit);
+  background: transparent; color: var(--texte); font-weight: 600; text-align: left;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.tiroir-lien:hover { background: var(--violet-doux); }
+.tiroir-lien[aria-current="page"] { background: var(--violet); color: #fff; }
+.tiroir-lien .icone { transition: transform 0.25s var(--courbe); }
+.tiroir-lien:hover .icone { transform: rotate(-7deg) scale(1.08); }
+.tiroir-pied {
+  margin-top: auto; padding-top: 16px; border-top: 1px solid var(--ligne);
+  font-size: 13px; color: var(--texte-2); display: grid; gap: 6px;
+}
+.tiroir-pied strong { color: var(--texte); font-family: var(--police-titre); }
+.tiroir-pied a { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; white-space: nowrap; min-height: 32px; }
+.tiroir-pied .icone { width: 16px; height: 16px; }
+
+/* ---------- 6. Mise en page ---------- */
+.page { position: relative; z-index: 1; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.entete {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 10px;
+  min-height: calc(var(--hauteur-entete) + var(--haut-sur));
+  padding: var(--haut-sur) 14px 0;
+  background: var(--entete-fond);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid var(--ligne);
+}
+.entete .logo { height: 40px; }
+.entete-espace { flex: 1; }
+.bouton-icone {
+  position: relative; overflow: hidden;
+  width: 44px; height: 44px; flex: none;
+  display: inline-grid; place-items: center;
+  border: 1px solid var(--ligne); border-radius: 14px;
+  background: var(--carte); color: var(--texte);
+  transition: transform 0.2s var(--courbe), box-shadow 0.2s ease;
+}
+.bouton-icone:hover { box-shadow: var(--ombre-1); }
+.bouton-icone:hover .icone { transform: rotate(-7deg) scale(1.08); }
+.bouton-icone .icone { transition: transform 0.25s var(--courbe); }
+/* UNE seule icône de thème visible : lune en clair, soleil en sombre */
+.bouton-theme .i-soleil { display: none; }
+:root[data-theme="sombre"] .bouton-theme .i-lune { display: none; }
+:root[data-theme="sombre"] .bouton-theme .i-soleil { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="clair"]) .bouton-theme .i-lune { display: none; }
+  :root:not([data-theme="clair"]) .bouton-theme .i-soleil { display: block; }
+}
+
+main.contenu {
+  flex: 1; width: 100%; max-width: 1080px; margin: 0 auto;
+  padding: 18px 16px calc(var(--hauteur-onglets) + var(--bas-sur) + 24px);
+}
+
+/* ---------- 7. Écrans ---------- */
+.ecran { display: none; }
+.ecran.actif { display: block; animation: ecran-entree 420ms var(--courbe) both; }
+@keyframes ecran-entree { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+.cascade { animation: cascade-entree 520ms var(--courbe) both; animation-delay: calc(var(--rang, 0) * 60ms); }
+@keyframes cascade-entree { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+.cascade[data-rang="1"] { --rang: 1; }
+.cascade[data-rang="2"] { --rang: 2; }
+.cascade[data-rang="3"] { --rang: 3; }
+.cascade[data-rang="4"] { --rang: 4; }
+.cascade[data-rang="5"] { --rang: 5; }
+.cascade[data-rang="6"] { --rang: 6; }
+.cascade[data-rang="7"] { --rang: 7; }
+.cascade[data-rang="8"] { --rang: 8; }
+
+.carte {
+  position: relative; background: var(--carte); border: 1px solid var(--ligne);
+  border-radius: var(--rayon); box-shadow: var(--ombre-1); padding: 20px;
+  transition: transform 0.25s var(--courbe), box-shadow 0.25s ease;
+}
+.carte.soulevable:hover { transform: translateY(-4px); box-shadow: var(--ombre-2); }
+
+/* Écran de démarrage (test de l'étape 1) */
+.demarrage { display: grid; gap: 16px; }
+.demarrage-hero { text-align: center; padding: 28px 20px 24px; overflow: hidden; }
+.demarrage-hero .logo { height: clamp(150px, 42vw, 230px); margin: 0 auto 14px; }
+.demarrage-hero .logo-repli { font-size: clamp(34px, 11vw, 56px); }
+.demarrage-titre { font-size: clamp(24px, 6.5vw, 34px); font-weight: 800; color: var(--texte); }
+.demarrage-par { margin-top: 6px; color: var(--texte-2); font-size: 14px; font-weight: 600; }
+.demarrage-par strong { color: var(--violet-2); }
+.etiquette {
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px;
+  padding: 5px 12px; border-radius: 999px; background: var(--violet-doux); color: var(--violet-2);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.etiquette .icone { width: 14px; height: 14px; fill: var(--jaune); stroke: var(--violet); stroke-width: 1.5; }
+
+.etat-titre { font-size: 17px; font-weight: 800; margin-bottom: 12px; }
+.etat-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.etat-ligne {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 0; border-bottom: 1px dashed var(--ligne); font-size: 15px;
+}
+.etat-ligne:last-child { border-bottom: 0; }
+.etat-ligne span:first-child { color: var(--texte-2); }
+.etat-ligne strong { text-align: right; white-space: nowrap; }
+.pastille { display: inline-flex; align-items: center; gap: 6px; }
+.pastille::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--texte-3); }
+.pastille.ok::before { background: var(--vert); box-shadow: 0 0 0 4px rgba(18, 161, 80, 0.15); }
+.pastille.alerte::before { background: var(--orange); box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18); }
+
+/* Boutons */
+.bouton {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 52px; padding: 0 22px; width: 100%;
+  border: 0; border-radius: 16px;
+  font-weight: 700; font-size: 16px; letter-spacing: 0.01em;
+  transition: transform 0.2s var(--courbe), box-shadow 0.2s ease, background-color 0.2s ease;
+}
+.bouton:active { transform: scale(0.98); }
+.bouton-principal {
+  color: #fff; background: linear-gradient(135deg, var(--violet-2), var(--violet) 55%, var(--violet-3));
+  box-shadow: 0 10px 24px rgba(106, 13, 173, 0.32);
+}
+.bouton-principal .icone { fill: var(--jaune); stroke: none; }
+/* Reflet : un trait lumineux traverse les boutons principaux */
+.bouton-principal::after {
+  content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; width: 40%; left: -60%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: skewX(-18deg);
+  animation: reflet 3.6s ease-in-out infinite;
+}
+@keyframes reflet { 0%, 55% { left: -60%; } 100% { left: 130%; } }
+.bouton[aria-busy="true"] { pointer-events: none; }
+.bouton[aria-busy="true"] .bouton-libelle, .bouton[aria-busy="true"] .icone { visibility: hidden; }
+.bouton[aria-busy="true"]::before {
+  content: ""; position: absolute; width: 24px; height: 24px; border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.35); border-top-color: #fff;
+  animation: tourne 0.8s linear infinite;
+}
+@keyframes tourne { to { transform: rotate(360deg); } }
+
+/* Onde au toucher (Android) */
+.onde {
+  position: absolute; border-radius: 50%; pointer-events: none; z-index: 0;
+  width: 12px; height: 12px; margin: -6px 0 0 -6px;
+  background: currentColor; opacity: 0.28;
+  transform: scale(0); animation: onde 560ms ease-out forwards;
+}
+@keyframes onde { to { transform: scale(var(--onde-echelle, 30)); opacity: 0; } }
+
+/* Résultat de la vérification : coche qui se dessine */
+.verif-resultat { display: flex; align-items: flex-start; gap: 12px; margin-top: 14px; font-size: 15px; }
+.verif-resultat p { color: var(--texte-2); }
+.verif-resultat strong { color: var(--texte); display: block; }
+.coche { width: 36px; height: 36px; flex: none; }
+.coche circle { fill: none; stroke: var(--vert); stroke-width: 3; stroke-dasharray: 101; stroke-dashoffset: 101; animation: dessine 500ms var(--courbe) forwards; }
+.coche path { fill: none; stroke: var(--vert); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 30; stroke-dashoffset: 30; animation: dessine 360ms 380ms var(--courbe) forwards; }
+.coche.echec circle, .coche.echec path { stroke: var(--rouge); }
+@keyframes dessine { to { stroke-dashoffset: 0; } }
+
+.mention { text-align: center; font-size: 13px; color: var(--texte-2); padding: 6px 8px 0; }
+.mention strong { color: var(--texte); }
+.mention small { display: block; margin-top: 4px; color: var(--texte-3); font-size: 12px; }
+
+/* ---------- 8. Barre d'onglets mobile ---------- */
+.onglets {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 35;
+  height: calc(var(--hauteur-onglets) + var(--bas-sur));
+  padding: 0 8px var(--bas-sur);
+  display: flex; align-items: stretch; justify-content: space-around;
+  background: var(--entete-fond);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  backdrop-filter: saturate(180%) blur(16px);
+  border-top: 1px solid var(--ligne);
+}
+.onglet {
+  position: relative; overflow: hidden; flex: 1; max-width: 120px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  border: 0; background: transparent; color: var(--texte-3);
+  font-size: 12px; font-weight: 600; border-radius: 14px;
+}
+.onglet[aria-current="page"] { color: var(--violet-2); }
+.onglet[aria-current="page"] .icone { transform: translateY(-1px); }
+.onglet .icone { transition: transform 0.25s var(--courbe); }
+.onglet-central .onglet-bulle {
+  width: 52px; height: 52px; margin-top: -22px; border-radius: 18px;
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, var(--rouge), var(--rouge-2));
+  box-shadow: 0 10px 22px rgba(255, 30, 30, 0.35);
+}
+
+/* Modale et feuille de devis (remplies aux étapes suivantes) */
+#modale {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px;
+  background: rgba(8, 7, 12, 0.55);
+}
+#feuille-devis { display: none; }
+
+/* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */
+@media (min-width: 1025px) {
+  #tiroir { transform: none; box-shadow: none; width: var(--largeur-tiroir); }
+  .tiroir-tete .logo { height: 76px; }
+  .voile { display: none; }
+  .page { margin-left: var(--largeur-tiroir); }
+  .bouton-menu, .bouton-fermer-tiroir, .onglets { display: none; }
+  .entete .logo { display: none; }
+  main.contenu { padding: 28px 32px 40px; }
+  .demarrage { grid-template-columns: 1.25fr 1fr; align-items: start; }
+  .demarrage-hero { grid-row: span 2; padding: 44px 32px 36px; }
+  .demarrage .mention { grid-column: 1 / -1; }
+}
+
+/* ---------- 10. Impression ---------- */
+@media print {
+  #toile, .halo, .voile, #tiroir, .entete, .onglets { display: none !important; }
+  .page { margin: 0; }
+}
+
+/* ---------- 11. Respect : mouvements réduits ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .halo { animation: none; }
+  .bouton-principal::after { display: none; }
+}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" class="visuellement-cache" aria-hidden="true" focusable="false">
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-fermer" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-lune" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-soleil" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-eclair" viewBox="0 0 24 24"><path d="M13.5 2L4.5 13.5h6.2L9.8 22l9.7-12.3h-6.4L13.5 2z"/></symbol>
+  <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></symbol>
+  <symbol id="i-devis" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chantier" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M10 21v-5h4v5"/></symbol>
+  <symbol id="i-clients" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5A6.5 6.5 0 0 1 21.5 20"/></symbol>
+  <symbol id="i-prix" viewBox="0 0 24 24"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/></symbol>
+  <symbol id="i-profil" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-abonnement" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
+  <symbol id="i-installer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-telephone" viewBox="0 0 24 24"><path d="M21 16.5v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 1.1 3.7 2 2 0 0 1 3.1 1.5h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L7 9.3a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></symbol>
+</svg>
+
+<canvas id="toile" aria-hidden="true"></canvas>
+<div class="halo halo-violet" aria-hidden="true"></div>
+<div class="halo halo-rouge" aria-hidden="true"></div>
+<div class="voile" id="voile" aria-hidden="true"></div>
+
+<aside id="tiroir" aria-label="Menu principal" aria-hidden="true">
+  <div class="tiroir-tete">
+    <span class="logo" data-logo>
+      <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="612" decoding="async">
+      <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
+      <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+    </span>
+    <button type="button" class="bouton-icone bouton-fermer-tiroir" id="bouton-fermer-tiroir" aria-label="Fermer le menu">
+      <svg class="icone" aria-hidden="true"><use href="#i-fermer"/></svg>
+    </button>
+  </div>
+  <nav aria-label="Navigation">
+    <ul class="tiroir-menu" id="tiroir-menu"></ul>
+  </nav>
+  <div class="tiroir-pied">
+    <strong>BRG Électro+</strong>
+    <span>Concepteur de BâtiPlus</span>
+    <a href="tel:+22605608608"><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg>+226 05 60 86 08</a>
+    <a href="tel:+22668524290"><svg class="icone" aria-hidden="true"><use href="#i-telephone"/></svg>+226 68 52 42 90</a>
+  </div>
+</aside>
+
+<div class="page">
+  <header class="entete">
+    <button type="button" class="bouton-icone bouton-menu" id="bouton-menu" aria-label="Ouvrir le menu" aria-controls="tiroir" aria-expanded="false">
+      <svg class="icone" aria-hidden="true"><use href="#i-menu"/></svg>
+    </button>
+    <span class="logo" data-logo>
+      <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="BâtiPlus" width="720" height="612" decoding="async">
+      <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="BâtiPlus" width="720" height="608" decoding="async">
+      <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+    </span>
+    <span class="entete-espace"></span>
+    <button type="button" class="bouton-icone bouton-theme" id="bouton-theme" aria-label="Passer en mode sombre">
+      <svg class="icone i-lune" aria-hidden="true"><use href="#i-lune"/></svg>
+      <svg class="icone i-soleil" aria-hidden="true"><use href="#i-soleil"/></svg>
+    </button>
+  </header>
+
+  <main class="contenu" id="contenu">
+    <section class="ecran" id="ecran-accueil" aria-labelledby="titre-accueil">
+      <div class="demarrage">
+        <div class="carte demarrage-hero cascade" data-rang="0">
+          <span class="etiquette"><svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>Votre espace électricien</span>
+          <span class="logo" data-logo>
+            <img class="logo-clair" src="images/logo/batiplus-couleur.webp" alt="Logo BâtiPlus" width="720" height="612" decoding="async">
+            <img class="logo-sombre" src="images/logo/batiplus-fond-noir.webp" alt="Logo BâtiPlus" width="720" height="608" decoding="async">
+            <span class="logo-repli" aria-hidden="true"><span class="bati">BATI</span><span class="plus">PLUS</span><svg class="icone"><use href="#i-eclair"/></svg></span>
+          </span>
+          <h1 class="demarrage-titre" id="titre-accueil">BâtiPlus démarre</h1>
+          <p class="demarrage-par">par <strong>BRG Électro+</strong></p>
+        </div>
+
+        <div class="carte soulevable cascade" data-rang="1">
+          <h2 class="etat-titre">État de l'application</h2>
+          <ul class="etat-liste">
+            <li class="etat-ligne"><span>Version</span><strong id="etat-version">1.0.0</strong></li>
+            <li class="etat-ligne"><span>Plateforme</span><strong id="etat-plateforme">Détection…</strong></li>
+            <li class="etat-ligne"><span>Réseau</span><strong class="pastille" id="etat-reseau">Détection…</strong></li>
+            <li class="etat-ligne"><span>Thème</span><strong id="etat-theme">Détection…</strong></li>
+            <li class="etat-ligne"><span>Animations</span><strong id="etat-animations">Détection…</strong></li>
+          </ul>
+        </div>
+
+        <div class="carte soulevable cascade" data-rang="2">
+          <button type="button" class="bouton bouton-principal" id="bouton-verifier">
+            <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
+            <span class="bouton-libelle">Vérifier le démarrage</span>
+          </button>
+          <div class="verif-resultat" id="verif-resultat" role="status" aria-live="polite" hidden>
+            <svg class="coche" id="verif-coche" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16"/><path d="M11 18.5l5 5 9-10"/></svg>
+            <div><strong id="verif-titre"></strong><p id="verif-detail"></p></div>
+          </div>
+        </div>
+
+        <p class="mention cascade" data-rang="3">
+          <strong>BâtiPlus est une application conçue et développée par BRG Électro+</strong>
+          <small>© 2026 BRG Électro+ — Tous droits réservés</small>
+        </p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<nav class="onglets" id="onglets" aria-label="Navigation rapide"></nav>
+
+<div id="modale" role="dialog" aria-modal="true" aria-labelledby="modale-titre" hidden>
+  <div class="carte"><h2 id="modale-titre" class="visuellement-cache">Fenêtre</h2></div>
+</div>
+<div id="feuille-devis" aria-hidden="true"></div>
+<script>
+(() => {
+"use strict";
+
+/* ==========================================================================
+   BâtiPlus — donnees.js
+   Constantes et données de référence. Aucune fonction ici, aucun secret.
+   Assemblé AVANT moteur.js dans le script unique de www/index.html.
+   ========================================================================== */
+
+const DEBUG = false;
+
+const APP = Object.freeze({
+  nom: "BâtiPlus",
+  version: "1.0.0",
+  identifiant: "com.brgelectro.batiplus",
+  concepteur: "BRG Électro+",
+  telephones: Object.freeze(["+226 05 60 86 08", "+226 68 52 42 90"]),
+  mention: "BâtiPlus est une application conçue et développée par BRG Électro+",
+  copyright: "© 2026 BRG Électro+ — Tous droits réservés"
+});
+
+const CLES_STOCKAGE = Object.freeze({
+  theme: "bp.theme"
+});
+
+const THEMES = Object.freeze({
+  clair: { libelle: "Clair", barreEtat: "#6A0DAD" },
+  sombre: { libelle: "Sombre", barreEtat: "#08070C" }
+});
+
+/* Menu du tiroir : une entrée n'est affichée QUE si son écran existe dans la
+   page (section#ecran-<id>). Les écrans arrivent au fil des étapes. */
+const NAVIGATION = Object.freeze([
+  { ecran: "accueil", libelle: "Accueil", icone: "i-accueil" },
+  { ecran: "nouveau-chantier", libelle: "Nouveau chantier", icone: "i-eclair" },
+  { ecran: "devis", libelle: "Mes devis", icone: "i-devis" },
+  { ecran: "chantiers", libelle: "Mes chantiers", icone: "i-chantier" },
+  { ecran: "clients", libelle: "Mes clients", icone: "i-clients" },
+  { ecran: "prix", libelle: "Mes prix", icone: "i-prix" },
+  { ecran: "profil", libelle: "Profil", icone: "i-profil" },
+  { ecran: "abonnement", libelle: "Abonnement", icone: "i-abonnement" },
+  { ecran: "a-propos", libelle: "À propos", icone: "i-info" },
+  { ecran: "installer", libelle: "Installer", icone: "i-installer" }
+]);
+
+/* Barre d'onglets mobile : Accueil · Devis · [+] · Prix · Profil
+   Même règle : un onglet n'apparaît que si son écran existe. */
+const ONGLETS = Object.freeze([
+  { ecran: "accueil", libelle: "Accueil", icone: "i-accueil" },
+  { ecran: "devis", libelle: "Devis", icone: "i-devis" },
+  { ecran: "nouveau-chantier", libelle: "Nouveau", icone: "i-plus", central: true },
+  { ecran: "prix", libelle: "Prix", icone: "i-prix" },
+  { ecran: "profil", libelle: "Profil", icone: "i-profil" }
+]);
+
+const ECRAN_DEPART = "accueil";
+
+const TOILE = Object.freeze({
+  densite: 1 / 16000,
+  pointsMax: 70,
+  pointsMin: 18,
+  distanceLien: 130,
+  vitesse: 0.22,
+  impulsionsMax: 6,
+  vitesseImpulsion: 0.012
+});
+
+/* ==========================================================================
+   BâtiPlus — moteur.js
+   Fonctions de l'application, puis initialisation (tout en bas).
+   Règles : aucune donnée dans innerHTML, aucun eval, aucun gestionnaire
+   en attribut HTML, chaque fonction déclarée UNE seule fois.
+   ========================================================================== */
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const tiroirMobileQuery = window.matchMedia("(max-width: 1024px)");
+const mouvementReduitQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const themeSystemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+/* ---------- Outils DOM ---------- */
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+function journal(...elements) {
+  if (DEBUG) console.log("[BâtiPlus]", ...elements);
+}
+
+function creerIcone(idSymbole) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "icone");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(SVG_NS, "use");
+  use.setAttribute("href", "#" + idSymbole);
+  svg.appendChild(use);
+  return svg;
+}
+
+function attendre(ms) {
+  return new Promise((resoudre) => setTimeout(resoudre, ms));
+}
+
+/* ---------- Plateforme (Capacitor ou navigateur) ---------- */
+
+function estNatif() {
+  const cap = window.Capacitor;
+  return Boolean(cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform());
+}
+
+function plugin(nom) {
+  const cap = window.Capacitor;
+  if (!estNatif() || !cap.Plugins) return null;
+  return cap.Plugins[nom] || null;
+}
+
+function nomPlateforme() {
+  if (!estNatif()) return "Navigateur web";
+  const plateforme = window.Capacitor.getPlatform();
+  return plateforme === "android" ? "Android (application)" : plateforme;
+}
+
+/* ---------- Stockage local (Preferences en natif, localStorage sinon) ---------- */
+
+async function lireValeur(cle) {
+  const preferences = plugin("Preferences");
+  try {
+    if (preferences) {
+      const resultat = await preferences.get({ key: cle });
+      return resultat.value;
+    }
+    return window.localStorage.getItem(cle);
+  } catch (erreur) {
+    journal("lecture impossible", cle);
+    return null;
+  }
+}
+
+async function ecrireValeur(cle, valeur) {
+  const preferences = plugin("Preferences");
+  try {
+    if (preferences) {
+      await preferences.set({ key: cle, value: String(valeur) });
+    } else {
+      window.localStorage.setItem(cle, String(valeur));
+    }
+    return true;
+  } catch (erreur) {
+    journal("écriture impossible", cle);
+    return false;
+  }
+}
+
+async function supprimerValeur(cle) {
+  const preferences = plugin("Preferences");
+  try {
+    if (preferences) await preferences.remove({ key: cle });
+    else window.localStorage.removeItem(cle);
+  } catch (erreur) {
+    journal("suppression impossible", cle);
+  }
+}
+
+/* ---------- Retour haptique ---------- */
+
+function vibrer() {
+  const haptics = plugin("Haptics");
+  if (haptics) haptics.impact({ style: "LIGHT" }).catch(() => {});
+}
+
+/* ---------- Thème ---------- */
+
+function themeActuel() {
+  const choisi = document.documentElement.getAttribute("data-theme");
+  if (choisi === "clair" || choisi === "sombre") return choisi;
+  return themeSystemeQuery.matches ? "sombre" : "clair";
+}
+
+function appliquerTheme(theme) {
+  const valide = theme === "sombre" ? "sombre" : "clair";
+  document.documentElement.setAttribute("data-theme", valide);
+  const bouton = $("bouton-theme");
+  bouton.setAttribute("aria-label", valide === "sombre" ? "Passer en mode clair" : "Passer en mode sombre");
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", THEMES[valide].barreEtat);
+  appliquerBarreEtat(valide);
+  $("etat-theme").textContent = THEMES[valide].libelle;
+}
+
+function appliquerBarreEtat(theme) {
+  const barre = plugin("StatusBar");
+  if (!barre) return;
+  barre.setBackgroundColor({ color: THEMES[theme].barreEtat }).catch(() => {});
+  barre.setStyle({ style: "DARK" }).catch(() => {});
+}
+
+async function basculerTheme() {
+  const nouveau = themeActuel() === "sombre" ? "clair" : "sombre";
+  appliquerTheme(nouveau);
+  vibrer();
+  await ecrireValeur(CLES_STOCKAGE.theme, nouveau);
+}
+
+async function initialiserTheme() {
+  const enregistre = await lireValeur(CLES_STOCKAGE.theme);
+  if (enregistre === "clair" || enregistre === "sombre") {
+    appliquerTheme(enregistre);
+  } else {
+    appliquerTheme(themeActuel());
+    document.documentElement.removeAttribute("data-theme");
+  }
+  themeSystemeQuery.addEventListener("change", surChangementThemeSysteme);
+}
+
+async function surChangementThemeSysteme() {
+  const enregistre = await lireValeur(CLES_STOCKAGE.theme);
+  if (enregistre) return;
+  appliquerTheme(themeActuel());
+  document.documentElement.removeAttribute("data-theme");
+}
+
+/* ---------- Navigation : UNE seule fonction montrer(id) ---------- */
+
+function ecranExiste(id) {
+  return Boolean($("ecran-" + id));
+}
+
+function montrer(id) {
+  const cible = $("ecran-" + id);
+  if (!cible) {
+    journal("écran inexistant :", id);
+    return false;
+  }
+  document.querySelectorAll(".ecran.actif").forEach((ecran) => ecran.classList.remove("actif"));
+  cible.classList.add("actif");
+  document.querySelectorAll("[data-ecran]").forEach((lien) => {
+    if (lien.dataset.ecran === id) lien.setAttribute("aria-current", "page");
+    else lien.removeAttribute("aria-current");
+  });
+  fermerTiroir();
+  window.scrollTo({ top: 0, behavior: "auto" });
+  montrer.ecranCourant = id;
+  return true;
+}
+montrer.ecranCourant = null;
+
+function surClicNavigation(evenement) {
+  const lien = evenement.currentTarget;
+  vibrer();
+  montrer(lien.dataset.ecran);
+}
+
+function creerLienTiroir(entree) {
+  const li = document.createElement("li");
+  const bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.className = "tiroir-lien";
+  bouton.dataset.ecran = entree.ecran;
+  bouton.appendChild(creerIcone(entree.icone));
+  const libelle = document.createElement("span");
+  libelle.textContent = entree.libelle;
+  bouton.appendChild(libelle);
+  bouton.addEventListener("click", surClicNavigation);
+  li.appendChild(bouton);
+  return li;
+}
+
+function creerOnglet(entree) {
+  const bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.className = entree.central ? "onglet onglet-central" : "onglet";
+  bouton.dataset.ecran = entree.ecran;
+  bouton.setAttribute("aria-label", entree.libelle);
+  if (entree.central) {
+    const bulle = document.createElement("span");
+    bulle.className = "onglet-bulle";
+    bulle.appendChild(creerIcone(entree.icone));
+    bouton.appendChild(bulle);
+  } else {
+    bouton.appendChild(creerIcone(entree.icone));
+    const libelle = document.createElement("span");
+    libelle.textContent = entree.libelle;
+    bouton.appendChild(libelle);
+  }
+  bouton.addEventListener("click", surClicNavigation);
+  return bouton;
+}
+
+function construireNavigation() {
+  const menu = $("tiroir-menu");
+  const onglets = $("onglets");
+  menu.replaceChildren(...NAVIGATION.filter((e) => ecranExiste(e.ecran)).map(creerLienTiroir));
+  onglets.replaceChildren(...ONGLETS.filter((e) => ecranExiste(e.ecran)).map(creerOnglet));
+}
+
+/* ---------- Tiroir latéral ---------- */
+
+function tiroirOuvert() {
+  return $("tiroir").classList.contains("ouvert");
+}
+
+function ouvrirTiroir() {
+  if (!tiroirMobileQuery.matches) return;
+  $("tiroir").classList.add("ouvert");
+  $("tiroir").setAttribute("aria-hidden", "false");
+  $("voile").classList.add("visible");
+  $("bouton-menu").setAttribute("aria-expanded", "true");
+  const premier = $("tiroir").querySelector(".tiroir-lien");
+  if (premier) premier.focus({ preventScroll: true });
+}
+
+function fermerTiroir() {
+  const etaitOuvert = tiroirOuvert();
+  $("tiroir").classList.remove("ouvert");
+  $("voile").classList.remove("visible");
+  $("bouton-menu").setAttribute("aria-expanded", "false");
+  majAccessibiliteTiroir();
+  if (etaitOuvert) $("bouton-menu").focus({ preventScroll: true });
+}
+
+function majAccessibiliteTiroir() {
+  const visible = !tiroirMobileQuery.matches || tiroirOuvert();
+  $("tiroir").setAttribute("aria-hidden", visible ? "false" : "true");
+  $("tiroir").inert = !visible;
+}
+
+function surToucheClavier(evenement) {
+  if (evenement.key === "Escape" && tiroirOuvert()) fermerTiroir();
+}
+
+function activerGlissementTiroir() {
+  const tiroir = $("tiroir");
+  let departX = null;
+  tiroir.addEventListener("touchstart", (e) => { departX = e.touches[0].clientX; }, { passive: true });
+  tiroir.addEventListener("touchend", (e) => {
+    if (departX === null) return;
+    const ecart = e.changedTouches[0].clientX - departX;
+    departX = null;
+    if (ecart < -60) fermerTiroir();
+  }, { passive: true });
+}
+
+/* ---------- Bouton retour Android ---------- */
+
+function surBoutonRetour() {
+  if (!$("modale").hidden) {
+    $("modale").hidden = true;
+    return;
+  }
+  if (tiroirOuvert()) {
+    fermerTiroir();
+    return;
+  }
+  if (montrer.ecranCourant && montrer.ecranCourant !== ECRAN_DEPART) {
+    montrer(ECRAN_DEPART);
+    return;
+  }
+  const app = plugin("App");
+  if (app) app.exitApp();
+}
+
+function brancherBoutonRetour() {
+  const app = plugin("App");
+  if (app) app.addListener("backButton", surBoutonRetour);
+}
+
+/* ---------- Logos : repli texte si l'image ne charge pas ---------- */
+
+function surEchecLogo(evenement) {
+  const conteneur = evenement.currentTarget.closest("[data-logo]");
+  if (conteneur) conteneur.classList.add("logo-echec");
+}
+
+function surveillerLogos() {
+  document.querySelectorAll("[data-logo] img").forEach((img) => {
+    img.addEventListener("error", surEchecLogo);
+    if (img.complete && img.naturalWidth === 0 && img.offsetParent !== null) {
+      img.closest("[data-logo]").classList.add("logo-echec");
+    }
+  });
+}
+
+/* ---------- Onde au toucher ---------- */
+
+function surAppuiOnde(evenement) {
+  const cible = evenement.target.closest(".bouton, .bouton-icone, .onglet, .tiroir-lien");
+  if (!cible || mouvementReduitQuery.matches) return;
+  const rect = cible.getBoundingClientRect();
+  const onde = document.createElement("span");
+  onde.className = "onde";
+  onde.style.left = (evenement.clientX - rect.left) + "px";
+  onde.style.top = (evenement.clientY - rect.top) + "px";
+  onde.style.setProperty("--onde-echelle", String(Math.ceil(Math.max(rect.width, rect.height) / 5)));
+  onde.addEventListener("animationend", () => onde.remove());
+  cible.appendChild(onde);
+}
+
+/* ---------- Réseau ---------- */
+
+function afficherReseau(enLigne) {
+  const etat = $("etat-reseau");
+  etat.textContent = enLigne ? "En ligne" : "Hors ligne";
+  etat.classList.toggle("ok", enLigne);
+  etat.classList.toggle("alerte", !enLigne);
+}
+
+async function surveillerReseau() {
+  const reseau = plugin("Network");
+  if (reseau) {
+    const statut = await reseau.getStatus().catch(() => ({ connected: navigator.onLine }));
+    afficherReseau(statut.connected);
+    reseau.addListener("networkStatusChange", (s) => afficherReseau(s.connected));
+    return;
+  }
+  afficherReseau(navigator.onLine);
+  window.addEventListener("online", () => afficherReseau(true));
+  window.addEventListener("offline", () => afficherReseau(false));
+}
+
+/* ---------- Fond animé : réseau de points et impulsions de courant ---------- */
+
+const toileEtat = { ctx: null, largeur: 0, hauteur: 0, points: [], impulsions: [], animation: 0, dernier: 0 };
+
+function dimensionnerToile() {
+  const toile = $("toile");
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  toileEtat.largeur = window.innerWidth;
+  toileEtat.hauteur = window.innerHeight;
+  toile.width = Math.round(toileEtat.largeur * ratio);
+  toile.height = Math.round(toileEtat.hauteur * ratio);
+  toileEtat.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const nombre = Math.round(toileEtat.largeur * toileEtat.hauteur * TOILE.densite);
+  const total = Math.max(TOILE.pointsMin, Math.min(TOILE.pointsMax, nombre));
+  toileEtat.points = Array.from({ length: total }, creerPoint);
+  toileEtat.impulsions = [];
+}
+
+function creerPoint() {
+  const angle = Math.random() * Math.PI * 2;
+  return {
+    x: Math.random() * toileEtat.largeur,
+    y: Math.random() * toileEtat.hauteur,
+    vx: Math.cos(angle) * TOILE.vitesse,
+    vy: Math.sin(angle) * TOILE.vitesse,
+    r: 1.2 + Math.random() * 1.6
+  };
+}
+
+function couleurPoint(alpha) {
+  const base = getComputedStyle(document.documentElement).getPropertyValue("--toile-point").trim() || "106, 13, 173";
+  return "rgba(" + base + ", " + alpha + ")";
+}
+
+function deplacerPoints() {
+  for (const p of toileEtat.points) {
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.x < 0 || p.x > toileEtat.largeur) p.vx *= -1;
+    if (p.y < 0 || p.y > toileEtat.hauteur) p.vy *= -1;
+  }
+}
+
+function lancerImpulsion(liens) {
+  if (toileEtat.impulsions.length >= TOILE.impulsionsMax || liens.length === 0) return;
+  if (Math.random() > 0.04) return;
+  const [a, b] = liens[Math.floor(Math.random() * liens.length)];
+  toileEtat.impulsions.push({ a, b, t: 0 });
+}
+
+function dessinerToile() {
+  const { ctx, points, largeur, hauteur } = toileEtat;
+  const d2max = TOILE.distanceLien * TOILE.distanceLien;
+  const liens = [];
+  ctx.clearRect(0, 0, largeur, hauteur);
+  ctx.lineWidth = 0.7;
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const dx = points[i].x - points[j].x;
+      const dy = points[i].y - points[j].y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < d2max) {
+        liens.push([points[i], points[j]]);
+        ctx.strokeStyle = couleurPoint(0.16 * (1 - d2 / d2max));
+        ctx.beginPath();
+        ctx.moveTo(points[i].x, points[i].y);
+        ctx.lineTo(points[j].x, points[j].y);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.fillStyle = couleurPoint(0.45);
+  for (const p of points) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return liens;
+}
+
+function dessinerImpulsions() {
+  const { ctx } = toileEtat;
+  toileEtat.impulsions = toileEtat.impulsions.filter((imp) => imp.t <= 1);
+  for (const imp of toileEtat.impulsions) {
+    imp.t += TOILE.vitesseImpulsion * 1.6;
+    const x = imp.a.x + (imp.b.x - imp.a.x) * imp.t;
+    const y = imp.a.y + (imp.b.y - imp.a.y) * imp.t;
+    const lueur = ctx.createRadialGradient(x, y, 0, x, y, 9);
+    lueur.addColorStop(0, "rgba(255, 212, 0, 0.95)");
+    lueur.addColorStop(1, "rgba(255, 212, 0, 0)");
+    ctx.fillStyle = lueur;
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function boucleToile(horodatage) {
+  toileEtat.animation = requestAnimationFrame(boucleToile);
+  if (horodatage - toileEtat.dernier < 33) return;
+  toileEtat.dernier = horodatage;
+  deplacerPoints();
+  const liens = dessinerToile();
+  lancerImpulsion(liens);
+  dessinerImpulsions();
+}
+
+function demarrerToile() {
+  arreterToile();
+  if (mouvementReduitQuery.matches) {
+    dessinerToile();
+    return;
+  }
+  toileEtat.animation = requestAnimationFrame(boucleToile);
+}
+
+function arreterToile() {
+  if (toileEtat.animation) cancelAnimationFrame(toileEtat.animation);
+  toileEtat.animation = 0;
+}
+
+function initialiserToile() {
+  const toile = $("toile");
+  const ctx = toile.getContext ? toile.getContext("2d") : null;
+  if (!ctx) return;
+  toileEtat.ctx = ctx;
+  dimensionnerToile();
+  demarrerToile();
+  let minuterie = 0;
+  window.addEventListener("resize", () => {
+    clearTimeout(minuterie);
+    minuterie = setTimeout(() => { dimensionnerToile(); demarrerToile(); }, 150);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) arreterToile();
+    else demarrerToile();
+  });
+  mouvementReduitQuery.addEventListener("change", () => { afficherAnimations(); demarrerToile(); });
+}
+
+function afficherAnimations() {
+  $("etat-animations").textContent = mouvementReduitQuery.matches ? "Réduites (réglage de l'appareil)" : "Actives";
+}
+
+/* ---------- Vérification du démarrage (écran de test de l'étape 1) ---------- */
+
+async function testerStockage() {
+  const cle = "bp.test-demarrage";
+  const valeur = String(Date.now());
+  const ecrit = await ecrireValeur(cle, valeur);
+  const relu = await lireValeur(cle);
+  await supprimerValeur(cle);
+  return ecrit && relu === valeur;
+}
+
+function testerPolices() {
+  if (!document.fonts || typeof document.fonts.check !== "function") return true;
+  return document.fonts.check('600 16px "Inter"') && document.fonts.check('800 16px "Montserrat"');
+}
+
+async function verifierDemarrage() {
+  const bouton = $("bouton-verifier");
+  const resultat = $("verif-resultat");
+  bouton.setAttribute("aria-busy", "true");
+  resultat.hidden = true;
+  vibrer();
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  const controles = [
+    { nom: "stockage local", ok: await testerStockage() },
+    { nom: "polices embarquées", ok: testerPolices() },
+    { nom: "navigation", ok: ecranExiste(ECRAN_DEPART) && montrer.ecranCourant === ECRAN_DEPART },
+    { nom: "logo", ok: document.querySelectorAll("[data-logo].logo-echec").length === 0 }
+  ];
+  await attendre(650);
+  const echecs = controles.filter((c) => !c.ok).map((c) => c.nom);
+  afficherVerification(echecs);
+  bouton.removeAttribute("aria-busy");
+}
+
+function afficherVerification(echecs) {
+  const coche = $("verif-coche");
+  const nouvelle = coche.cloneNode(true);
+  nouvelle.classList.toggle("echec", echecs.length > 0);
+  coche.replaceWith(nouvelle);
+  if (echecs.length === 0) {
+    $("verif-titre").textContent = "Tout est prêt";
+    $("verif-detail").textContent = "Stockage, polices, navigation et logo fonctionnent sur cet appareil.";
+  } else {
+    $("verif-titre").textContent = "À vérifier";
+    $("verif-detail").textContent = "Problème détecté : " + echecs.join(", ") + ".";
+  }
+  $("verif-resultat").hidden = false;
+}
+
+/* ---------- Écran de démarrage natif ---------- */
+
+function masquerSplashNatif() {
+  const splash = plugin("SplashScreen");
+  if (splash) splash.hide().catch(() => {});
+}
+
+/* ==========================================================================
+   Initialisation
+   ========================================================================== */
+
+function brancherEvenements() {
+  $("bouton-menu").addEventListener("click", ouvrirTiroir);
+  $("bouton-fermer-tiroir").addEventListener("click", fermerTiroir);
+  $("voile").addEventListener("click", fermerTiroir);
+  $("bouton-theme").addEventListener("click", basculerTheme);
+  $("bouton-verifier").addEventListener("click", verifierDemarrage);
+  document.addEventListener("keydown", surToucheClavier);
+  document.addEventListener("pointerdown", surAppuiOnde);
+  tiroirMobileQuery.addEventListener("change", () => { fermerTiroir(); majAccessibiliteTiroir(); });
+  activerGlissementTiroir();
+  brancherBoutonRetour();
+}
+
+async function demarrer() {
+  $("etat-version").textContent = APP.version;
+  $("etat-plateforme").textContent = nomPlateforme();
+  afficherAnimations();
+  surveillerLogos();
+  construireNavigation();
+  brancherEvenements();
+  majAccessibiliteTiroir();
+  montrer(ECRAN_DEPART);
+  initialiserToile();
+  await initialiserTheme();
+  await surveillerReseau();
+  masquerSplashNatif();
+  journal("démarrage terminé");
+}
+
+demarrer();
+})();
+</script>
+</body>
+</html>

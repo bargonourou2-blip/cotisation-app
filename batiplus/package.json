@@ -1,0 +1,36 @@
+{
+  "name": "batiplus",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BâtiPlus — l'assistant d'étude et de devis pour électriciens, conçu et développé par BRG Électro+",
+  "author": "BRG Électro+",
+  "license": "UNLICENSED",
+  "scripts": {
+    "assembler": "node src/scripts/assembler.mjs",
+    "verifier": "node src/scripts/verifier.mjs",
+    "construire": "node src/scripts/assembler.mjs && node src/scripts/verifier.mjs",
+    "apercu": "node src/scripts/apercu.mjs",
+    "sync": "npm run construire && npx cap sync android",
+    "android": "npm run sync && npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/browser": "^7.0.0",
+    "@capacitor/camera": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/haptics": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.0",
+    "@capacitor/network": "^7.0.0",
+    "@capacitor/preferences": "^7.0.0",
+    "@capacitor/share": "^7.0.0",
+    "@capacitor/splash-screen": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
