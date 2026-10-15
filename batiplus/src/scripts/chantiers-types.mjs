@@ -31,11 +31,19 @@ export function sectionDocument() {
   return source.slice(debut, fin);
 }
 
+export function sectionListes() {
+  const source = readFileSync(join(RACINE, "src", "moteur.js"), "utf8");
+  const debut = source.indexOf("/* ==== LISTES ET STATISTIQUES ==== */");
+  const fin = source.indexOf("/* ==== FIN DES LISTES ==== */");
+  if (debut < 0 || fin < debut) throw new Error("section LISTES ET STATISTIQUES introuvable dans src/moteur.js");
+  return source.slice(debut, fin);
+}
+
 export function chargerMoteur() {
   const donnees = readFileSync(join(RACINE, "src", "donnees.js"), "utf8");
-  const section = sectionMoteur() + "\n" + sectionDocument();
+  const section = sectionMoteur() + "\n" + sectionDocument() + "\n" + sectionListes();
   const contexte = vm.createContext({});
-  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { etudierChantier, chiffrerChantier, calculerTotal, calculerDevis, devisDepuisChiffrage, ajusterMainOeuvre, calculerMainOeuvre, verifierConformite, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS, CATALOGUE_DEFAUT, TVA_MAX, montantEnLettres, nombreEnLettres, modeleFeuille, chainePdf, messageWhatsApp, lienWhatsApp, nomFichierDevis, creerPdfDevis, resumeDevis, formulePayante, couperPdf, largeurPdf, FORMULES, PIED_DEVIS, OPACITE_FILIGRANE };", contexte, { filename: "moteur-nfc15100.js" });
+  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { etudierChantier, chiffrerChantier, calculerTotal, calculerDevis, devisDepuisChiffrage, ajusterMainOeuvre, calculerMainOeuvre, verifierConformite, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS, CATALOGUE_DEFAUT, TVA_MAX, montantEnLettres, nombreEnLettres, modeleFeuille, chainePdf, messageWhatsApp, lienWhatsApp, nomFichierDevis, creerPdfDevis, resumeDevis, formulePayante, couperPdf, largeurPdf, FORMULES, PIED_DEVIS, OPACITE_FILIGRANE, cleTexte, correspondRecherche, filtrerDevis, comptesParStatut, carnetClients, filtrerClients, statistiquesDetaillees, TRIS_DEVIS, STATUTS_DEVIS };", contexte, { filename: "moteur-nfc15100.js" });
   return contexte.__moteur;
 }
 

@@ -36,6 +36,7 @@
   --erreur: #C41414;
   --accent-texte: #6A0DAD;
   --orange-texte: #8A5100;
+  --whatsapp-texte: #0B7A3B;
 
   --entete-fond: rgba(244, 242, 249, 0.72);
   --ombre-1: 0 1px 2px rgba(23, 19, 31, 0.06), 0 4px 14px rgba(78, 10, 128, 0.07);
@@ -70,6 +71,7 @@
   --erreur: #FF6B6B;
   --accent-texte: #D2B0F7;
   --orange-texte: #F59E0B;
+  --whatsapp-texte: #3DD68C;
   --entete-fond: rgba(8, 7, 12, 0.68);
   --ombre-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
   --ombre-2: 0 6px 18px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(106, 13, 173, 0.25);
@@ -90,6 +92,7 @@
     --erreur: #FF6B6B;
   --accent-texte: #D2B0F7;
   --orange-texte: #F59E0B;
+  --whatsapp-texte: #3DD68C;
     --entete-fond: rgba(8, 7, 12, 0.68);
     --ombre-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
     --ombre-2: 0 6px 18px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(106, 13, 173, 0.25);
@@ -1285,6 +1288,123 @@ a.bouton { text-decoration: none; }
 /* Formule gratuite : pied en filigrane discret. Abonné : le pied n'est pas créé du tout. */
 .f-filigrane { opacity: 0.22; }
 
+/* ---------- 7h. Mes devis, Mes chantiers, Mes clients, Statistiques (étape 9) ---------- */
+.bloc-tete { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 12px; }
+.bloc-tete .bloc-titre { margin-bottom: 0; }
+.lien-tous {
+  border: 0; background: none; padding: 10px 0; min-height: 44px; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 700; color: var(--accent-texte); white-space: nowrap;
+}
+.lien-tous:hover { text-decoration: underline; }
+.lien-tous[hidden] { display: none; }
+
+.outils-liste { display: grid; gap: 12px; }
+.outils-liste .aide { margin: 0; }
+.filtre-statuts { border: 0; margin: 0; padding: 0; min-width: 0; }
+.filtre-statuts legend { padding: 0; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--texte-2); }
+.filtre-statuts .puce span { min-height: 44px; padding: 0 14px; font-size: 14px; }
+
+.liste-elements { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.element { padding: 0; overflow: hidden; }
+.element-brouillon { border-color: rgba(245, 158, 11, 0.55); }
+.element-corps {
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 14px;
+  width: 100%; padding: 16px 18px 12px; border: 0; background: none; color: inherit; font: inherit; text-align: left;
+}
+button.element-corps { cursor: pointer; }
+button.element-corps:hover { background: var(--violet-doux); }
+button.element-corps:focus-visible { outline: 3px solid var(--violet-2); outline-offset: -3px; }
+.element-texte { display: grid; gap: 2px; min-width: 0; flex: 1 1 200px; }
+.element-texte strong { font-size: 16px; overflow-wrap: anywhere; }
+.element-texte > span { font-size: 13px; color: var(--texte-2); overflow-wrap: anywhere; }
+.element-droite { display: grid; justify-items: end; gap: 6px; margin-left: auto; max-width: 100%; }
+.element-montant { font-family: var(--police-titre); font-weight: 800; font-size: 16px; white-space: nowrap; }
+.element-montant[data-longueur="long"] { font-size: 14px; }
+.element-client .element-corps { justify-content: flex-start; flex-wrap: nowrap; align-items: center; }
+.avatar-client { width: 44px; height: 44px; font-size: 16px; }
+
+.element-actions {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); gap: 2px;
+  padding: 4px 8px 8px; border-top: 1px solid var(--ligne);
+}
+.action-liste {
+  display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 52px; padding: 4px 2px;
+  border: 0; border-radius: var(--rayon-petit); background: none; color: var(--accent-texte);
+  font: inherit; font-size: 12px; font-weight: 700; text-decoration: none; cursor: pointer; text-align: center;
+}
+.action-liste .icone { width: 20px; height: 20px; }
+.action-liste span { white-space: nowrap; }
+.action-liste:hover:not(:disabled) { background: var(--violet-doux); }
+.action-liste:focus-visible { outline: 3px solid var(--violet-2); outline-offset: -2px; }
+.action-liste:disabled { color: var(--texte-3); cursor: not-allowed; opacity: 0.7; }
+.action-whatsapp { color: var(--whatsapp-texte); }
+.action-danger { color: var(--erreur); }
+.element-note { grid-column: 1 / -1; margin: 6px 8px 0; font-size: 13px; color: var(--texte-2); }
+.vide-action { display: grid; gap: 12px; justify-items: start; }
+.vide-action p { margin: 0; }
+.vide-action .bouton { width: auto; }
+
+.annulation {
+  position: fixed; z-index: 81; left: 16px; right: 16px; bottom: calc(var(--hauteur-onglets) + var(--bas-sur) + 16px);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; overflow: hidden;
+  margin: 0 auto; max-width: 520px; padding: 12px 12px 14px 18px; border-radius: 16px;
+  background: var(--texte); color: var(--fond); font-weight: 600; font-size: 15px; box-shadow: var(--ombre-2);
+  animation: monte 320ms var(--courbe) both;
+}
+.annulation[hidden] { display: none; }
+.annulation-texte { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.annulation-bouton {
+  min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--jaune); color: #17131F; font: inherit; font-weight: 800;
+}
+.annulation-bouton:focus-visible { outline: 3px solid var(--violet-2); outline-offset: 2px; }
+.annulation-barre { position: absolute; left: 0; bottom: 0; height: 4px; width: 100%; background: var(--jaune); transform-origin: left; }
+.annulation-barre.decompte { animation: decompte 5s linear forwards; }
+@keyframes decompte { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+.stats-chiffres { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.stats-chiffre { display: grid; gap: 4px; min-width: 0; }
+.stats-libelle { font-size: 13px; font-weight: 700; color: var(--texte-2); text-transform: uppercase; letter-spacing: 0.05em; }
+.stats-valeur { font-family: var(--police-titre); font-size: 26px; font-weight: 800; color: var(--accent-texte); white-space: nowrap; }
+.stats-valeur[data-longueur="long"] { font-size: 21px; }
+.stats-valeur[data-longueur="tres-long"] { font-size: 17px; }
+.stats-detail { font-size: 13px; color: var(--texte-2); }
+.stats-resume { margin: 0 0 10px; font-weight: 700; }
+.stats-graphique { width: 100%; }
+.graphique-mois { display: block; width: 100%; height: auto; max-height: 260px; }
+.graphique-axe { stroke: var(--ligne); stroke-width: 1.5; }
+.graphique-baton { fill: var(--violet-2); }
+.graphique-aujourdhui { fill: var(--jaune); stroke: var(--violet); stroke-width: 1; }
+.graphique-futur { fill: var(--ligne); }
+.graphique-texte { fill: var(--texte-2); font-family: var(--police); font-size: 11px; font-weight: 600; }
+.graphique-jour { text-anchor: middle; }
+.stats-barres { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.stats-barre-tete { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; margin-bottom: 6px; }
+.stats-barre-nom { min-width: 0; flex: 1 1 160px; overflow-wrap: anywhere; font-size: 14px; }
+.stats-barre-montant { white-space: nowrap; margin-left: auto; }
+.stats-piste { height: 10px; border-radius: 999px; background: var(--violet-doux); overflow: hidden; }
+.stats-piste span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--violet), var(--violet-2)); }
+.stats-autres .stats-piste span { background: var(--texte-3); }
+.stats-statuts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.stats-statuts li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: var(--rayon-petit); background: var(--carte-2); border: 1px solid var(--ligne); }
+#carte-stats .bouton { margin-top: 14px; }
+
+@media (min-width: 700px) {
+  .outils-liste { grid-template-columns: minmax(0, 1fr) 260px; align-items: end; }
+  .outils-liste .filtre-statuts, .outils-liste > .aide { grid-column: 1 / -1; }
+  .outils-liste > .champ:only-of-type { grid-column: 1 / -1; }
+  .stats-chiffres { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-large { grid-column: 1 / -1; }
+  .element-actions { grid-template-columns: repeat(auto-fill, minmax(96px, 120px)); justify-content: end; }
+}
+@media (min-width: 1280px) {
+  .stats-chiffres { grid-template-columns: 1.4fr 1fr 1fr; }
+  .stats-large { grid-column: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .annulation-barre.decompte { animation: none; }
+}
+
 /* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */
 @media (min-width: 1025px) {
   #tiroir { transform: none; box-shadow: none; width: var(--largeur-tiroir); }
@@ -1318,7 +1438,7 @@ a.bouton { text-decoration: none; }
 /* ---------- 10. Impression ---------- */
 @media print {
   @page { size: A4; margin: 12mm; }
-  #toile, .halo, .voile, #tiroir, .entete, .onglets, .toast { display: none !important; }
+  #toile, .halo, .voile, #tiroir, .entete, .onglets, .toast, .annulation { display: none !important; }
   .page { margin: 0; }
   /* Écran « feuille » : seule la feuille A4 est imprimée, à sa taille réelle. */
   body[data-ecran-actif="feuille"] { background: #FFFFFF !important; }

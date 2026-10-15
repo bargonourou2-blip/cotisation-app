@@ -27,6 +27,7 @@ const etape5 = { fait: false, cas: [], persistance: [], nombres: [], bornes: [] 
 /* Constats de l'étape 6 (écran Résultat) relevés dans jsdom. */
 const etape6 = { fait: false, svg: [], contenu: [], total: [] };
 const etape7 = { fait: false, catalogue: [], deux: [], recalcul: [] };
+const etape9 = { fait: false, supprimer: [], recherche: [], fournisseurs: [], clients: [], stats: [] };
 const etape8 = { fait: false, a4: [], filigrane: [], whatsapp: [], octetsPdf: 0 };
 
 /* Lecture d'un PDF produit par l'application : en-tête, table xref (chaque position
@@ -1331,7 +1332,16 @@ async function controlesExecution() {
             await confirmer(m);
             if (catalogueDe(m).articles.some((a) => a.ref === ajoute.ref) || m.$("article-" + ajoute.ref)) etape7.catalogue.push("suppression d'un article");
           }
+          /* Double confirmation : « Non » à la seconde question ne change rien. */
           m.$("bouton-reinitialiser-prix").click();
+          await confirmer(m);
+          const secondeQuestion = m.texte("modale-titre");
+          await pause(60);
+          m.$("bouton-modale-annuler").click();
+          await pause(300);
+          if (secondeQuestion !== "Vraiment tout réinitialiser ?" || catalogueDe(m) === null) etape9.supprimer.push("Mes prix : « Réinitialiser » sans double confirmation (« " + secondeQuestion + " »)");
+          m.$("bouton-reinitialiser-prix").click();
+          await confirmer(m);
           await confirmer(m);
           if (catalogueDe(m) !== null || m.$("art-prise-f0-prix").value !== "1500" || m.$("prix-mo-prise").value !== "2500" || m.doc.querySelectorAll("#prix-groupes .article-prix").length !== Object.keys(moteur.CATALOGUE_DEFAUT).length) etape7.catalogue.push("« Réinitialiser » ne revient pas aux prix de départ");
           if (devisDe(m).length !== 2 || JSON.stringify(devisDe(m).find((d) => d.numero.endsWith("-0001")).mainOeuvre) !== moD1) etape7.catalogue.push("« Réinitialiser » a modifié des devis");
@@ -1455,6 +1465,273 @@ async function controlesExecution() {
         }
       }
       etape5.fait = true;
+    }
+
+    /* ---------- Étape 9 : Mes devis, Mes chantiers, Mes clients, Statistiques ---------- */
+    {
+      const moteur9 = chargerMoteur();
+      const an = new Date().getFullYear();
+      const ici = new Date();
+      const iso = (jours, heure) => new Date(ici.getFullYear(), ici.getMonth(), ici.getDate() - jours, heure === undefined ? 9 : heure).toISOString();
+      const cat9 = Object.fromEntries(Object.entries(moteur9.CATALOGUE_DEFAUT).map(([r, art]) => [r, { ...art }]));
+      const type9 = (cle) => CHANTIERS_TYPES.find((t) => t.cle === cle);
+      const base9 = (cle) => moteur9.devisDepuisChiffrage(moteur9.chiffrerChantier(type9(cle).chantier, cat9, "XOF", null));
+      const devis9 = (id, n, cle, titre, client, statut, jours, extra) => ({ ...base9(cle), id, compteId: compte.id, numero: "BP-" + an + "-000" + n, statut,
+        creeLe: iso(jours), modifieLe: iso(jours), titre, client, clientTelephone: "", lieu: "Ouagadougou", chantierId: null, conditions: "", note: "", ...extra });
+      const fixtures = [
+        devis9("e1", 1, "villa", "Villa R+1 Ouaga 2000", "Société Dupont & Fils", "accepte", 1, { clientTelephone: "+22670123456" }),
+        devis9("e2", 2, "boutique", "Rénovation tableau", "Mme Sawadogo Aminata", "envoye", 3),
+        devis9("e3", 3, "studio", "Éclairage boutique", "société dupont & fils", "paye", 40),
+        devis9("e4", 4, "studio", "Studio Gounghin", "M. Kaboré", "refuse", 20),
+        devis9("e5", 5, "boutique", "Studio Gounghin bis", "M. Kaboré", "brouillon", 0, { creeLe: iso(0, 0), modifieLe: iso(0, 0) }),
+        { id: "l1", compteId: compte.id, titre: "Ancien chantier", client: "M. Ilboudo", total: 100000, statut: "accepte", creeLe: iso(400) },
+        { ...devis9("x9", 9, "villa", "Pas à moi", "Inconnu", "accepte", 0), compteId: "autre-compte" }
+      ];
+      const totalDe = (d) => (Array.isArray(d.lignes) ? moteur9.calculerDevis(d, "XOF").total.totalGeneral : d.total);
+      const miens = fixtures.filter((d) => d.compteId === compte.id).map((d) => ({ ...d, total: totalDe(d) }));
+      const chantier9 = (id, cle, nom, client, telephone, jours) => ({ ...JSON.parse(JSON.stringify(type9(cle).chantier)), id, compteId: compte.id, statut: "etudie",
+        etape: 5, etapeMax: 5, nom, lieu: "Ouagadougou", type: cle, client: { nom: client, telephone }, creeLe: iso(jours), modifieLe: iso(jours) });
+      const chantiers9 = [chantier9("chantier-villa-01", "villa", "Villa Ouaga 2000", "M. Kaboré", "", 2), chantier9("chantier-boutique-02", "boutique", "Boutique Zogona", "Hôtel Laïco", "+22625000000", 5)];
+      const brouillon9 = { [compte.id]: { ...chantier9("brouillon-studio-03", "studio", "Studio en cours", "Client du brouillon", "", 0), statut: "brouillon", etape: 2, etapeMax: 2 } };
+      const clients9 = [
+        { id: "cm1", compteId: compte.id, nom: "Nouveau Client Manuel", telephone: "+22676000000", creeLe: iso(1), modifieLe: iso(1) },
+        { id: "cm2", compteId: compte.id, nom: "m. kabore", telephone: "+22605608608", creeLe: iso(1), modifieLe: iso(1) },
+        { id: "<b>x</b>", compteId: compte.id, nom: "Pirate" }, { id: "cm3", compteId: "autre-compte", nom: "Pas à moi" }, { id: "cm4", compteId: compte.id, nom: "" }, "texte", null, [1]
+      ];
+      const e = ouvrirPage({ ...q.stockage(), [K.devis]: JSON.stringify(fixtures), bp_v1_chantiers: JSON.stringify(chantiers9),
+        bp_v1_brouillon_chantier: JSON.stringify(brouillon9), bp_v1_clients: JSON.stringify(clients9) });
+      await pause(3600);
+      const ids = (liste) => [...e.doc.querySelectorAll("#" + liste + " > li")].map((li) => li.dataset.element);
+      const stocke = (cle) => JSON.parse(e.stockage()[cle] || "null");
+      const confirmer9 = async () => { await pause(60); e.$("bouton-modale-ok").click(); await pause(400); };
+      const refuser9 = async () => { await pause(60); e.$("bouton-modale-annuler").click(); await pause(300); };
+      const cliquer9 = async (selecteur, ms) => { const el = e.doc.querySelector(selecteur); if (el) el.click(); await pause(ms || 300); return Boolean(el); };
+      const nb9 = (s) => s.replace(/[\s\u202f\u00a0]/g, " ");
+      const fcfa = (v) => nb9(new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(v)) + " FCFA";
+
+      /* ST : mêmes chiffres sur l'accueil, le profil et l'écran Statistiques. */
+      const attendu = moteur9.statistiquesDetaillees(miens, new Date(), 8);
+      const montantTotal = miens.reduce((s, d) => s + d.total, 0);
+      if (e.actif() !== "ecran-accueil") etape9.stats.push("accueil absent (" + e.actif() + ")");
+      if (nb9(e.texte("cpt-montant")) !== fcfa(montantTotal)) etape9.stats.push("accueil montant « " + e.texte("cpt-montant") + " » ≠ " + fcfa(montantTotal));
+      if (e.texte("cpt-devis") !== String(attendu.mois.nombre) || e.texte("cpt-acceptes") !== "3") etape9.stats.push("accueil compteurs " + e.texte("cpt-devis") + "/" + e.texte("cpt-acceptes") + " (attendu " + attendu.mois.nombre + "/3)");
+      await cliquer9(".raccourci[data-ecran='profil']", 600);
+      if (e.texte("stat-devis") !== "6" || e.texte("stat-clients") !== "4" || e.texte("stat-acceptes") !== "3" || e.texte("stat-taux") !== "50\u00A0%") etape9.stats.push("profil : " + ["stat-devis", "stat-clients", "stat-acceptes", "stat-taux"].map((id) => e.texte(id)).join(" | "));
+      await cliquer9("#carte-stats [data-ecran='stats']", 400);
+      if (e.actif() !== "ecran-stats") etape9.stats.push("bouton « Voir toutes les statistiques » → " + e.actif());
+      if (nb9(e.texte("stats-montant")) !== fcfa(montantTotal) || e.texte("stats-taux") !== e.texte("stat-taux")) etape9.stats.push("Statistiques : " + e.texte("stats-montant") + " / " + e.texte("stats-taux") + " ≠ accueil/profil");
+      const accepteAttendu = miens.filter((d) => d.statut === "accepte" || d.statut === "paye").reduce((s, d) => s + d.total, 0);
+      if (nb9(e.texte("stats-accepte")) !== fcfa(accepteAttendu)) etape9.stats.push("montant accepté « " + e.texte("stats-accepte") + " » ≠ " + fcfa(accepteAttendu));
+      const barres = [...e.doc.querySelectorAll("#stats-clients > li")];
+      const dupont = fcfa(miens[0].total + miens[2].total);
+      if (barres.length !== 4 || !barres[0].textContent.includes("Société Dupont & Fils · 2 devis") || nb9(barres[0].querySelector(".stats-barre-montant").textContent) !== dupont
+        || barres[0].querySelector(".stats-piste span").style.width !== "100%" || !barres[3].textContent.includes("M. Ilboudo")) etape9.stats.push("montant par client : " + barres.map((b) => nb9(b.textContent)).join(" | "));
+      const svg = e.doc.querySelector("#stats-graphique svg");
+      const jours = new Date(ici.getFullYear(), ici.getMonth() + 1, 0).getDate();
+      if (!svg || svg.getAttribute("viewBox") !== "0 0 360 168" || !svg.querySelector("title") || !svg.getAttribute("aria-label").includes(attendu.mois.nombre ? "devis" : "aucun")
+        || svg.querySelectorAll(".graphique-futur").length !== jours - ici.getDate()) etape9.stats.push("graphique du mois incomplet");
+      if (attendu.mois.nombre && svg && !svg.querySelector(".graphique-aujourdhui") && miens.some((d) => d.statut === "brouillon" && d.total > 0)) etape9.stats.push("bâton d'aujourd'hui absent");
+      const statuts = [...e.doc.querySelectorAll("#stats-statuts li")].map((li) => li.textContent).join("|");
+      if (statuts !== "Brouillon1|Envoyé1|Accepté2|Refusé1|Payé1") etape9.stats.push("répartition par statut : " + statuts);
+
+      /* ㊶ Mes devis : recherche, filtre, tri. */
+      await cliquer9(".raccourci[data-ecran='accueil'], [data-ecran='accueil']", 300);
+      if (!await cliquer9(".lien-tous[data-ecran='devis']", 400) || e.actif() !== "ecran-devis") etape9.recherche.push("« Voir tous mes devis » → " + e.actif());
+      const verifier = (libelle, attenduIds) => { const vus = ids("liste-devis").join(","); if (vus !== attenduIds) etape9.recherche.push(libelle + " : " + vus + " (attendu " + attenduIds + ")"); };
+      verifier("liste complète, plus récents d'abord", "e5,e1,e2,e4,e3,l1");
+      if (e.texte("devis-compte") !== "6 devis") etape9.recherche.push("compteur « " + e.texte("devis-compte") + " »");
+      e.remplir("devis-recherche", "fils  DUPONT");
+      await pause(50);
+      verifier("« fils  DUPONT »", "e1,e3");
+      if (e.texte("devis-compte") !== "2 sur 6 devis") etape9.recherche.push("compteur filtré « " + e.texte("devis-compte") + " »");
+      e.remplir("devis-recherche", "eclairage");
+      verifier("« eclairage » sans accent", "e3");
+      e.remplir("devis-recherche", "bp-" + an + "-0004");
+      verifier("numéro", "e4");
+      e.remplir("devis-recherche", "payé");
+      verifier("statut cherché « payé »", "e3");
+      e.remplir("devis-recherche", "<img src=x onerror=alert(9)>");
+      verifier("requête piégée", "");
+      if (e.$("devis-vide").hidden || !e.texte("devis-vide").includes("Aucun devis ne correspond")) etape9.recherche.push("message « aucun résultat » absent");
+      e.remplir("devis-recherche", "");
+      const radio = (v) => e.doc.querySelector("#devis-filtre-statut [data-filtre-statut='" + v + "']");
+      if (!radio("accepte") || nb9(radio("accepte").nextElementSibling.textContent) !== "Accepté (2)") etape9.recherche.push("puce « Accepté (2) » absente");
+      radio("accepte").checked = true;
+      radio("accepte").dispatchEvent(new e.w.Event("change", { bubbles: true }));
+      verifier("filtre Accepté", "e1,l1");
+      radio("tous").checked = true;
+      radio("tous").dispatchEvent(new e.w.Event("change", { bubbles: true }));
+      e.choisir("devis-tri", "montant-desc");
+      verifier("tri montant décroissant (égalité → plus récent)", "e1,e5,e2,e4,e3,l1");
+      e.choisir("devis-tri", "montant-asc");
+      verifier("tri montant croissant", "l1,e4,e3,e5,e2,e1");
+      e.choisir("devis-tri", "anciens");
+      verifier("tri plus anciens", "l1,e3,e4,e2,e1,e5");
+      e.choisir("devis-tri", "recents");
+      if (e.doc.querySelector("#liste-devis [data-element='l1'] [data-ouvrir-devis], #liste-devis [data-element='l1'] [data-dupliquer-devis]")) etape9.recherche.push("ancien devis ouvrable ou duplicable");
+      if (e.doc.querySelector("#liste-devis img, #liste-devis b")) etape9.recherche.push("balise injectée dans la liste");
+
+      /* Envoyer : lien WhatsApp calculé au toucher, encodé, sûr. */
+      const envoyer = e.doc.querySelector("#liste-devis [data-envoyer-devis='e1']");
+      envoyer.addEventListener("click", (ev) => ev.preventDefault());
+      envoyer.click();
+      const href = envoyer.getAttribute("href");
+      if (!/^https:\/\/wa\.me\/22670123456\?text=[A-Za-z0-9%._~!*'()-]+$/.test(href) || !decodeURIComponent(href.split("text=")[1]).includes("BP-" + an + "-0001")
+        || envoyer.getAttribute("rel") !== "noopener noreferrer") etape9.recherche.push("Envoyer : lien « " + href.slice(0, 60) + " »");
+
+      /* Dupliquer : nouveau numéro, brouillon, mêmes lignes. */
+      await cliquer9("#liste-devis [data-dupliquer-devis='e1']", 600);
+      const apresCopie = stocke(K.devis).filter((d) => d.compteId === compte.id);
+      const copie = apresCopie.find((d) => !fixtures.some((f) => f.id === d.id));
+      const original = apresCopie.find((d) => d.id === "e1");
+      if (!copie || copie.statut !== "brouillon" || copie.numero !== "BP-" + an + "-0006" || copie.lignes.length !== original.lignes.length || copie.lignes.map((l) => l.designation).join() !== original.lignes.map((l) => l.designation).join()
+        || totalDe(copie) !== totalDe(original) || copie.client !== original.client || copie.id === original.id || !ids("liste-devis").includes(copie.id))
+        etape9.supprimer.push("Dupliquer un devis : " + (copie ? copie.numero + " " + copie.statut + " total " + totalDe(copie) + "/" + totalDe(original) + " liste " + ids("liste-devis").join(",") : "aucune copie"));
+
+      /* ㊵ Supprimer : confirmation, « Garder » ne supprime rien, « Annuler » (5 s) remet tout. */
+      const avant = e.stockage()[K.devis];
+      await cliquer9("#liste-devis [data-supprimer-devis='e2']", 100);
+      const titreModale = e.texte("modale-titre");
+      const texteModale = e.texte("modale-contenu");
+      await refuser9();
+      if (titreModale !== "Supprimer ce devis ?" || !texteModale.includes("BP-" + an + "-0002") || e.stockage()[K.devis] !== avant || !ids("liste-devis").includes("e2")) etape9.supprimer.push("devis : pas de confirmation ou « Garder » a supprimé");
+      await cliquer9("#liste-devis [data-supprimer-devis='e2']", 0);
+      await confirmer9();
+      if (stocke(K.devis).some((d) => d.id === "e2") || ids("liste-devis").includes("e2")) etape9.supprimer.push("devis confirmé non supprimé");
+      if (e.$("annulation").hidden || !e.texte("annulation-texte").includes("BP-" + an + "-0002") || !e.$("annulation-barre").classList.contains("decompte")) etape9.supprimer.push("bandeau « Annuler » absent");
+      e.$("bouton-annuler-suppression").click();
+      await pause(400);
+      if (e.stockage()[K.devis] !== avant || ids("liste-devis").join(",") !== copie.id + ",e5,e1,e2,e4,e3,l1" || !e.$("annulation").hidden) etape9.supprimer.push("« Annuler » ne remet pas le devis à sa place");
+      await cliquer9("#liste-devis [data-supprimer-devis='e4']", 0);
+      await confirmer9();
+      await pause(5300);
+      if (!e.$("annulation").hidden || stocke(K.devis).some((d) => d.id === "e4")) etape9.supprimer.push("après 5 s : bandeau encore là ou devis revenu");
+
+      /* Mes chantiers : brouillon d'abord, rouvrir, dupliquer, supprimer + annuler, effacer le brouillon + annuler. */
+      await cliquer9(".lien-tous[data-ecran='chantiers'], [data-ecran='chantiers']", 600);
+      if (e.actif() !== "ecran-chantiers") etape9.supprimer.push("Mes chantiers → " + e.actif());
+      if (ids("liste-chantiers").join(",") !== "brouillon-brouillon-studio-03,chantier-villa-01,chantier-boutique-02") etape9.supprimer.push("ordre des chantiers : " + ids("liste-chantiers").join(","));
+      e.remplir("chantiers-recherche", "laico");
+      if (ids("liste-chantiers").join(",") !== "chantier-boutique-02") etape9.recherche.push("chantiers « laico » : " + ids("liste-chantiers").join(","));
+      e.remplir("chantiers-recherche", "zzz");
+      if (ids("liste-chantiers").length || e.$("chantiers-vide").hidden) etape9.recherche.push("chantiers : aucun résultat mal signalé");
+      e.remplir("chantiers-recherche", "");
+      await cliquer9("#liste-chantiers [data-dupliquer-chantier='chantier-villa-01']", 600);
+      const chantiersApres = stocke("bp_v1_chantiers");
+      if (chantiersApres.length !== 3 || !chantiersApres.some((c) => c.nom === "Villa Ouaga 2000 (copie)" && c.id !== "chantier-villa-01")) etape9.supprimer.push("Dupliquer un chantier");
+      const avantChantiers = e.stockage().bp_v1_chantiers;
+      await cliquer9("#liste-chantiers [data-supprimer-chantier='chantier-boutique-02']", 0);
+      const titreChantier = e.texte("modale-titre");
+      await confirmer9();
+      if (titreChantier !== "Supprimer ce chantier ?" || stocke("bp_v1_chantiers").some((c) => c.id === "chantier-boutique-02") || e.$("annulation").hidden) etape9.supprimer.push("chantier : confirmation ou suppression");
+      e.$("bouton-annuler-suppression").click();
+      await pause(500);
+      if (e.stockage().bp_v1_chantiers !== avantChantiers || !ids("liste-chantiers").includes("chantier-boutique-02")) etape9.supprimer.push("chantier : « Annuler » ne le remet pas");
+      await cliquer9("#liste-chantiers [data-effacer-brouillon-chantier]", 0);
+      await confirmer9();
+      if (e.stockage().bp_v1_brouillon_chantier || ids("liste-chantiers").some((id) => id.startsWith("brouillon-"))) etape9.supprimer.push("brouillon non effacé : " + String(e.stockage().bp_v1_brouillon_chantier).slice(0, 80) + " " + ids("liste-chantiers").join(","));
+      e.$("bouton-annuler-suppression").click();
+      await pause(500);
+      if (!e.stockage().bp_v1_brouillon_chantier || !ids("liste-chantiers")[0].startsWith("brouillon-")) etape9.supprimer.push("brouillon : « Annuler » ne le remet pas");
+      await cliquer9("#liste-chantiers [data-ouvrir-chantier='chantier-villa-01']", 700);
+      if (e.actif() !== "ecran-resultat" || !e.texte("titre-resultat").includes("Villa Ouaga 2000")) etape9.supprimer.push("rouvrir un chantier → " + e.actif() + " « " + e.texte("titre-resultat") + " »");
+
+      /* CL : carnet de clients. */
+      await cliquer9(".raccourci[data-ecran='accueil'], [data-ecran='accueil']", 300);
+      await cliquer9(".raccourci[data-ecran='clients']", 600);
+      if (e.actif() !== "ecran-clients") etape9.clients.push("Mes clients → " + e.actif());
+      const noms = [...e.doc.querySelectorAll("#liste-clients > li strong")].map((s) => s.textContent);
+      const nomsAttendus = ["Hôtel Laïco", "M. Ilboudo", "M. Kaboré", "Mme Sawadogo Aminata", "Nouveau Client Manuel", "Société Dupont & Fils"];
+      if (JSON.stringify(noms) !== JSON.stringify(nomsAttendus)) etape9.clients.push("carnet : " + noms.join(" | "));
+      if (e.texte("clients-compte") !== "6 clients") etape9.clients.push("compteur « " + e.texte("clients-compte") + " »");
+      const ligneClient = (nom) => [...e.doc.querySelectorAll("#liste-clients > li")].find((li) => li.querySelector("strong").textContent === nom);
+      const kabore = ligneClient("M. Kaboré");
+      const appeler = kabore && kabore.querySelector("a[href^='tel:']");
+      const wa = kabore && kabore.querySelector("a.action-whatsapp");
+      if (!appeler || appeler.getAttribute("href") !== "tel:+22605608608" || !wa || !/^https:\/\/wa\.me\/22605608608\?text=/.test(wa.getAttribute("href")) || wa.getAttribute("rel") !== "noopener noreferrer" || wa.target !== "_blank")
+        etape9.clients.push("M. Kaboré : liens Appeler / WhatsApp (numéro saisi à la main prioritaire)");
+      /* À ce stade : e4 supprimé (1 devis pour M. Kaboré), e1 dupliqué (3 devis pour Dupont). */
+      if (kabore && (!nb9(kabore.textContent).includes("1 devis · " + fcfa(miens[4].total)) || kabore.querySelector("[data-supprimer-client]"))) etape9.clients.push("M. Kaboré : nb de devis, total ou suppression permise : " + nb9(kabore.textContent));
+      const dupontLigne = ligneClient("Société Dupont & Fils");
+      if (!dupontLigne || !nb9(dupontLigne.textContent).includes("3 devis · " + fcfa(2 * miens[0].total + miens[2].total)) || dupontLigne.querySelector("a[href^='tel:']").getAttribute("href") !== "tel:+22670123456") etape9.clients.push("Société Dupont & Fils : " + (dupontLigne ? nb9(dupontLigne.textContent) : "absente"));
+      const ilboudo = ligneClient("M. Ilboudo");
+      if (!ilboudo || ilboudo.querySelector("a[href^='tel:']") || !ilboudo.querySelector("button.action-liste[disabled]") || !ilboudo.textContent.includes("Pas de numéro")) etape9.clients.push("client sans numéro : boutons non désactivés");
+      e.remplir("clients-recherche", "70 12");
+      if (ids("liste-clients").length !== 1 || e.doc.querySelector("#liste-clients strong").textContent !== "Société Dupont & Fils") etape9.recherche.push("clients « 70 12 » : " + ids("liste-clients").join(","));
+      e.remplir("clients-recherche", "KABORE");
+      if (ids("liste-clients").length !== 1) etape9.recherche.push("clients « KABORE » : " + ids("liste-clients").length);
+      e.remplir("clients-recherche", "");
+      /* « Ses devis » ouvre Mes devis filtré sur le client. */
+      await cliquer9("#liste-clients [data-devis-client='m. kabore']", 500);
+      if (e.actif() !== "ecran-devis" || e.$("devis-recherche").value !== "M. Kaboré" || ids("liste-devis").join(",") !== "e5") etape9.clients.push("« Ses devis » → " + e.actif() + " « " + e.$("devis-recherche").value + " » " + ids("liste-devis").join(","));
+      e.remplir("devis-recherche", "");
+      await cliquer9(".raccourci[data-ecran='accueil'], [data-ecran='accueil']", 300);
+      await cliquer9(".raccourci[data-ecran='clients']", 500);
+      /* Ajout à la main : nom piégé affiché en texte, numéro normalisé, pas de doublon. */
+      e.remplir("client-nom", "<img src=x onerror=alert(9)>Zongo");
+      e.remplir("client-telephone", "12");
+      await e.soumettre("form-client", 300);
+      const nbZongo = () => (stocke("bp_v1_clients") || []).filter((c) => c && typeof c.nom === "string" && c.nom.toLowerCase() === "<img src=x onerror=alert(9)>zongo").length;
+      if (!e.$("client-telephone").getAttribute("aria-invalid") && !e.texte("err-client-telephone")) etape9.clients.push("numéro invalide accepté");
+      e.remplir("client-telephone", "70 99 88 77");
+      await e.soumettre("form-client", 400);
+      const zongo = (stocke("bp_v1_clients") || []).find((c) => c && c.nom === "<img src=x onerror=alert(9)>Zongo");
+      if (!zongo || zongo.telephone !== "+22670998877" || nbZongo() !== 1 || e.doc.querySelector("#liste-clients img") || !e.texte("msg-client").includes("ajouté")) etape9.clients.push("ajout manuel : " + JSON.stringify(zongo) + " « " + e.texte("msg-client") + " »");
+      e.remplir("client-nom", "<IMG SRC=X ONERROR=ALERT(9)>ZONGO");
+      e.remplir("client-telephone", "");
+      await e.soumettre("form-client", 400);
+      if (nbZongo() !== 1 || !e.texte("msg-client").includes("mis à jour")) etape9.clients.push("même nom (casse différente) dupliqué");
+      /* Modifier le téléphone d'un client venu des devis. */
+      await cliquer9("#liste-clients [data-modifier-client='mme sawadogo aminata']", 200);
+      if (!e.$("client-nom").readOnly || e.$("client-nom").value !== "Mme Sawadogo Aminata" || e.$("bouton-client-annuler").hidden) etape9.clients.push("Modifier : formulaire non prérempli");
+      e.remplir("client-telephone", "+226 65 43 21 09");
+      await e.soumettre("form-client", 400);
+      const sawadogo = ligneClient("Mme Sawadogo Aminata");
+      if (!sawadogo || sawadogo.querySelector("a[href^='tel:']").getAttribute("href") !== "tel:+22665432109" || e.$("client-nom").readOnly) etape9.clients.push("Modifier : numéro non retenu");
+      /* Supprimer un client ajouté à la main, puis annuler. */
+      const avantClients = e.stockage().bp_v1_clients;
+      await cliquer9("#liste-clients [data-supprimer-client='cm1']", 0);
+      const titreClient = e.texte("modale-titre");
+      await confirmer9();
+      if (titreClient !== "Supprimer ce client ?" || ligneClient("Nouveau Client Manuel") || e.$("annulation").hidden) etape9.supprimer.push("client : confirmation ou suppression");
+      e.$("bouton-annuler-suppression").click();
+      await pause(500);
+      if (e.stockage().bp_v1_clients !== avantClients || !ligneClient("Nouveau Client Manuel")) etape9.supprimer.push("client : « Annuler » ne le remet pas");
+      if (!(stocke("bp_v1_clients") || []).some((c) => c && c.id === "cm3" && c.compteId === "autre-compte")) etape9.clients.push("les clients d'un autre compte ont été effacés");
+
+      /* ㊷ Mes prix : le badge « Le moins cher » suit les prix saisis ; le devis prend le bon. */
+      await cliquer9(".raccourci[data-ecran='accueil'], [data-ecran='accueil']", 300);
+      await cliquer9("[data-ecran='prix']", 700);
+      if (e.actif() !== "ecran-prix") etape9.fournisseurs.push("Mes prix → " + e.actif());
+      else {
+        const details = e.doc.querySelector("#prix-groupes [data-ref='prise']");
+        const badge = () => [...details.querySelectorAll("[data-badge-fournisseur]")].filter((b) => !b.hidden).map((b) => b.dataset.badgeFournisseur).join(",");
+        const prixF = (i, v) => { const champ = e.$("art-prise-f" + i + "-prix"); champ.value = v; champ.dispatchEvent(new e.w.Event("input", { bubbles: true })); champ.dispatchEvent(new e.w.Event("change", { bubbles: true })); };
+        if (badge() !== "") etape9.fournisseurs.push("badge affiché avec un seul fournisseur");
+        details.querySelector("[data-ajouter-fournisseur]").click();
+        await pause(50);
+        details.querySelector("[data-ajouter-fournisseur]").click();
+        await pause(50);
+        prixF(1, "1 200");
+        prixF(2, "1800");
+        const cas = [];
+        cas.push(badge() === "1");
+        prixF(2, "900");
+        cas.push(badge() === "2");
+        prixF(0, "900");
+        cas.push(badge() === "0");
+        prixF(0, "");
+        prixF(1, "abc");
+        cas.push(badge() === "2");
+        if (cas.some((ok) => !ok)) etape9.fournisseurs.push("badge : " + cas.map((ok) => (ok ? "✔" : "✘")).join(""));
+        await pause(1200);
+        const catalogue = stocke("bp_v1_catalogue");
+        const prise = catalogue && catalogue[compte.id] && catalogue[compte.id].articles.find((a) => a.ref === "prise");
+        if (!prise || prise.fournisseurs.map((f) => f.prix).join(",") !== "0,0,900" || prise.choisi !== null) etape9.fournisseurs.push("catalogue enregistré : " + JSON.stringify(prise && prise.fournisseurs));
+        if (!nb9(details.querySelector("summary").textContent).includes("900")) etape9.fournisseurs.push("le résumé de l'article n'affiche pas le prix retenu (900) : " + nb9(details.querySelector("summary").textContent));
+      }
+      e.w.close();
+      etape9.fait = true;
     }
 
     /* ㉑ bouton retour Android : modale → recherche → tiroir → historique → accueil → quitter */
@@ -1868,18 +2145,88 @@ function controlesFeuille() {
     whatsapp.join(" ; ") || "wa.me/<chiffres>?text= encodé (& ? # % é ⚡ retour à la ligne) et relu à l'identique ; 6 numéros invalides → wa.me/?text= (choix du contact) ; message : client, numéro, titre, résumé " + r.circuits + " circuits/" + r.prises + " prises/" + r.points + " points, total, acompte, électricien, « Devis réalisé avec BâtiPlus » ; parcours réel : téléphone reformaté +226 70 12 34 56, erreur si incomplet, lien identique fiche/feuille, rel=noopener noreferrer");
 }
 
+/* ---------- Étape 9 : listes, carnet, statistiques ---------- */
+function controlesListes() {
+  const m = chargerMoteur();
+  const absent = etape9.fait ? [] : ["parcours de l'étape 9 non exécuté (jsdom)"];
+  const D = (id, numero, titre, client, statut, total, creeLe) => ({ id, numero, titre, client, statut, total, creeLe, lieu: "" });
+  const devis = [
+    D("a", "BP-2026-0001", "Villa R+1 Ouaga 2000", "Société Dupont & Fils", "accepte", 500000, "2026-10-02T10:00:00"),
+    D("b", "BP-2026-0002", "Rénovation tableau", "Mme Sawadogo Aminata", "envoye", 120000, "2026-10-10T10:00:00"),
+    D("c", "BP-2026-0003", "Éclairage boutique", "société dupont & fils", "paye", 80000, "2026-09-05T10:00:00"),
+    D("d", "BP-2026-0004", "Studio Gounghin", "M. Kaboré", "refuse", 80000, "2026-09-20T10:00:00"),
+    D("e", "BP-2026-0005", "Studio Gounghin bis", "M. Kaboré", "brouillon", 0, "2026-10-14T10:00:00")
+  ];
+  const ids = (liste) => liste.map((d) => d.id).join("");
+
+  /* ㊶ recherche, filtre et tri (fonctions pures + parcours réel) */
+  const recherche = [...absent, ...etape9.recherche];
+  const cas = [
+    [{}, "ebadc"], [{ tri: "montant-desc" }, "abdce"], [{ tri: "montant-asc" }, "edcba"], [{ tri: "anciens" }, "cdabe"],
+    [{ requete: "ECLAIRAGE" }, "c"], [{ requete: "fils  DUPONT" }, "ac"], [{ requete: "bp-2026-0004" }, "d"], [{ requete: "payé" }, "c"],
+    [{ requete: "kabore", statut: "refuse" }, "d"], [{ statut: "accepte" }, "a"], [{ statut: "__proto__", tri: "constructor" }, "ebadc"],
+    [{ requete: "x".repeat(500) }, ""], [{ requete: "   " }, "ebadc"], [null, "ebadc"]
+  ];
+  cas.forEach(([options, attendu]) => {
+    const obtenu = ids(m.filtrerDevis(devis, options));
+    if (obtenu !== attendu) recherche.push("filtrerDevis(" + JSON.stringify(options) + ") = " + obtenu + " (attendu " + attendu + ")");
+  });
+  if (JSON.stringify(m.comptesParStatut([...devis, { statut: "<b>" }, null])) !== JSON.stringify({ tous: 5, brouillon: 1, envoye: 1, accepte: 1, refuse: 1, paye: 1 })) recherche.push("comptesParStatut");
+  if (!m.correspondRecherche(["Hôtel Laïco"], "laico HOTEL") || m.correspondRecherche(["Hôtel"], "laico")) recherche.push("correspondRecherche (accents, ordre des mots)");
+  controle("㊶", "la recherche filtre correctement", recherche.length === 0,
+    recherche.join(" ; ") || "sans accents ni majuscules, tous les mots, numéro/titre/client/lieu/statut ; filtre par statut (puces avec compteurs) ; tri date ↑↓ et montant ↑↓, égalité → plus récent ; options piégées ignorées ; parcours réel : Mes devis, Mes chantiers, Mes clients (nom et numéro), « Ses devis », requête HTML affichée en texte");
+
+  /* ㊵ supprimer : confirmation + annulation 5 s */
+  const supprimer = [...absent, ...etape9.supprimer];
+  controle("㊵", "supprimer demande confirmation et permet d'annuler", supprimer.length === 0,
+    supprimer.join(" ; ") || "devis, chantier, brouillon et client : modale (« Garder » ne touche à rien), bandeau 5 s avec décompte, « Annuler » remet l'élément à sa place exacte dans le stockage, passé 5 s la suppression est définitive ; « Réinitialiser » Mes prix : double confirmation ; Dupliquer (devis → nouveau numéro, brouillon ; chantier → « (copie) ») ; rouvrir une étude");
+
+  /* ㊷ comparaison des fournisseurs */
+  const fournisseurs = [...absent, ...etape9.fournisseurs];
+  controle("㊷", "la comparaison de fournisseurs indique le bon", fournisseurs.length === 0,
+    fournisseurs.join(" ; ") || "badge « Le moins cher » recalculé à chaque saisie : 1 500/1 200/1 800 → n°2 ; 900 → n°3 ; égalité 900/900 → le premier ; prix vides ou invalides ignorés ; aucun badge avec un seul fournisseur ; prix retenu enregistré et affiché");
+
+  /* CL carnet de clients */
+  const clients = [...absent, ...etape9.clients];
+  const carnet = m.carnetClients(
+    [{ id: "c1", nom: "M. Kaboré", telephone: "+22605608608" }, { id: "c2", nom: "Nouveau client", telephone: "" }, { id: "c3", nom: "Faux", telephone: "05 60" }, null, "x"],
+    [...devis, { ...devis[1], id: "f", client: "mme  SAWADOGO aminata", clientTelephone: "+22670123456", creeLe: "2026-10-08T10:00:00", total: 30000 }],
+    [{ client: { nom: "Hôtel Laïco", telephone: "+22625000000" }, modifieLe: "2026-10-01T00:00:00" }, { client: { nom: "M. Kaboré", telephone: "+22699999999" }, modifieLe: "2026-10-03T00:00:00" }, { client: null }]);
+  const vu = carnet.map((c) => [c.nom, c.telephone, c.nombreDevis, c.total, c.nombreChantiers].join("|")).join(" / ");
+  const attenduCarnet = "Faux||0|0|0 / Hôtel Laïco|+22625000000|0|0|1 / M. Kaboré|+22605608608|2|80000|1 / Mme Sawadogo Aminata|+22670123456|2|150000|0 / Nouveau client||0|0|0 / Société Dupont & Fils||2|580000|0";
+  if (vu !== attenduCarnet) clients.push("carnetClients : " + vu);
+  if (m.filtrerClients(carnet, "70 12").length !== 1 || m.filtrerClients(carnet, "kabore").length !== 1) clients.push("filtrerClients");
+  controle("CL", "carnet de clients : depuis les devis + ajout manuel, appeler, WhatsApp", clients.length === 0,
+    clients.join(" ; ") || "un client par nom (sans accents ni casse), nb de devis et total, téléphone : saisi > devis récent > chantier ; Appeler tel:+…, WhatsApp wa.me (rel noopener) ; sans numéro → boutons désactivés ; ajout manuel (nom piégé affiché en texte, numéro normalisé E.164, invalide refusé, même nom = mise à jour) ; Modifier le téléphone ; suppression réservée aux clients sans document ; données d'un autre compte conservées");
+
+  /* ST statistiques */
+  const stats = [...absent, ...etape9.stats];
+  const s = m.statistiquesDetaillees(devis, new Date("2026-10-15T12:00:00"), 2);
+  if (s.total !== 5 || s.montant !== 780000 || s.acceptes !== 2 || s.montantAccepte !== 580000 || s.taux !== 40 || s.clients !== 3) stats.push("totaux : " + JSON.stringify([s.total, s.montant, s.acceptes, s.montantAccepte, s.taux, s.clients]));
+  if (s.parClient.length !== 3 || s.parClient[2].nom !== "1 autre client" || !s.parClient[2].autres || s.parClient.reduce((t, c) => t + c.montant, 0) !== s.montant) stats.push("montant par client : " + JSON.stringify(s.parClient));
+  if (s.mois.jours.length !== 31 || s.mois.nombre !== 3 || s.mois.montant !== 620000 || s.mois.jours[1].montant !== 500000 || s.mois.cumuls[30] !== 620000) stats.push("mois en cours : " + JSON.stringify([s.mois.nombre, s.mois.montant, s.mois.jours.length]));
+  if (s.moisPrecedent.nombre !== 2 || s.moisPrecedent.montantMemeJour !== 80000 || s.variation !== 675) stats.push("comparaison au mois précédent : " + JSON.stringify(s.moisPrecedent) + " " + s.variation);
+  const bornes = m.statistiquesDetaillees([D("g", "", "", "A", "accepte", 10, "2026-09-30T23:59:00"), D("h", "", "", "A", "envoye", 20, "2026-10-01T00:00:00")], new Date("2026-10-01T08:00:00"), 8);
+  if (bornes.mois.nombre !== 1 || bornes.moisPrecedent.nombre !== 1 || bornes.mois.jours[0].montant !== 20) stats.push("limite de mois (23 h 59 / 0 h 00, heure locale)");
+  const vide = m.statistiquesDetaillees([], new Date("2026-02-10T12:00:00"), 8);
+  if (vide.taux !== null || vide.variation !== null || vide.mois.jours.length !== 28 || vide.montant !== 0) stats.push("aucun devis : " + JSON.stringify([vide.taux, vide.variation, vide.mois.jours.length]));
+  controle("ST", "statistiques : chiffre devisé, taux, montant par client, évolution du mois", stats.length === 0,
+    stats.join(" ; ") || "une seule fonction pour l'accueil, le profil et l'écran Statistiques (mêmes chiffres vérifiés à l'écran) ; payé compté comme accepté ; clients au-delà de 8 regroupés « N autres clients » ; histogramme du mois en SVG (jours à venir distincts) ; comparaison à date égale avec le mois précédent ; bornes de mois en heure locale ; aucun devis → « — »");
+}
+
 /* ---------- Rapport ---------- */
 await controlesExecution();
 controlesMoteur();
 controlesResultat();
 controlesDevis();
 controlesFeuille();
+controlesListes();
 controleCapacitor();
 controleGitignore();
 controlesSecurite();
 controlesIdentite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);

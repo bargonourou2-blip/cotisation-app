@@ -33,6 +33,7 @@ import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chargerMoteur } from "./chantiers-types.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const OUTILS = process.env.OUTILS || RACINE;
@@ -649,6 +650,80 @@ async function main() {
     controle("㊱", "fiche devis et Mes prix : rien ne déborde ni n'est coupé (360 et 1440)", fautes36.length === 0,
       fautes36.length ? fautes36.slice(0, 3).join(" | ")
         : vues36 + " vues (fiche devis créée depuis l'étude, ligne supprimée, Mes prix tout déplié, clair et sombre), " + mots36.toLocaleString("fr-FR") + " mots mesurés, montants à 13 chiffres et 5 fournisseurs aux noms longs sur une ligne, rien sous le menu fixe");
+  }
+
+  /* LI Mes devis, Mes chantiers, Mes clients, Statistiques : devis aux montants géants et noms longs,
+     brouillon, client saisi à la main ; bandeau « Annuler » ; 360 et 1440 px, clair et sombre. */
+  {
+    const fautesLI = [];
+    let vuesLI = 0;
+    let motsLI = 0;
+    const moteurLI = chargerMoteur();
+    const catalogueLI = Object.fromEntries(Object.entries(moteurLI.CATALOGUE_DEFAUT).map(([r, a]) => [r, { ...a }]));
+    const chantiersLI = JSON.parse(avecEtudes36.bp_v1_chantiers);
+    const annee = new Date().getFullYear();
+    const jour = 86400000;
+    const devisLI = [
+      ["Installation électrique complète villa R+2 Ouaga 2000 — famille Compaoré-Ouédraogo", "Société Immobilière du Kadiogo et Associés", "accepte", 0, chantiersLI[0], "+22605608608"],
+      ["Hôtel 3 étages Koulouba", "Hôtel Laïco", "envoye", 1, chantiersLI[1], ""],
+      ["Rénovation tableau général et prises", "Mme Sawadogo Aminata", "paye", 3, chantiersLI[1], "+22670123456"],
+      ["Éclairage atelier", "M. Ilboudo", "refuse", 35, chantiersLI[0], ""],
+      ["Studio Gounghin", "M. Kaboré Issouf", "brouillon", 2, chantiersLI[1], ""]
+    ].map(([titre, client, statut, age, chantier, telephone], i) => ({
+      ...moteurLI.devisDepuisChiffrage(moteurLI.chiffrerChantier(chantier, catalogueLI, "XOF", null)),
+      id: "li" + i, compteId, numero: "BP-" + annee + "-00" + (10 + i), statut, titre, client, clientTelephone: telephone, lieu: "Ouaga 2000, Ouagadougou",
+      chantierId: null, conditions: "", note: "", creeLe: new Date(Date.now() - age * jour).toISOString(), modifieLe: new Date(Date.now() - age * jour).toISOString()
+    }));
+    devisLI.push({ id: "ancien1", compteId, titre: "Ancien devis d'avant la mise à jour", client: "M. Ilboudo", total: 99999999, statut: "accepte", creeLe: new Date(Date.now() - 400 * jour).toISOString() });
+    const brouillonLI = { [compteId]: { ...chantiersLI[0], id: "brouillon-li-0001", nom: "Immeuble R+4 avenue Kwame-Nkrumah — saisie en cours", statut: "brouillon", etape: 3, etapeMax: 3 } };
+    const clientsLI = [{ id: "cli1", compteId, nom: "Entreprise Générale de Construction du Burkina", telephone: "+22676543210", creeLe: new Date().toISOString(), modifieLe: new Date().toISOString() }];
+    const etatLI = { ...avecEtudes36, bp_v1_devis: JSON.stringify(devisLI), bp_v1_brouillon_chantier: JSON.stringify(brouillonLI), bp_v1_clients: JSON.stringify(clientsLI) };
+    for (const [largeur, hauteur, sombre] of [[360, 640, false], [360, 640, true], [1440, 900, false], [1440, 900, true]]) {
+      const { page, contexte, nom } = await nouvellePage(largeur, hauteur, sombre, true, etatLI);
+      await pause(1800);
+      const mesurer = async (vue, selecteurs) => {
+        const t = await page.evaluate(mesurerTextes, selecteurs || [".ecran.actif", ".entete", largeur > 1024 ? "#tiroir" : ".onglets"]);
+        vuesLI++;
+        motsLI += t.mots;
+        if (t.motsCoupes.length || t.rognes.length || t.deborde.length || t.defileX) fautesLI.push(nom + " " + vue + " " + JSON.stringify(t));
+        if (largeur > 1024) {
+          const m = await page.evaluate(mesurerSousMenu);
+          if (m.total) fautesLI.push(nom + " " + vue + " sous le menu " + JSON.stringify(m));
+        }
+        await capturer(page, nom + "-" + vue, true);
+      };
+      const aller = async (ecran) => {
+        await page.evaluate((e) => (document.querySelector("#tiroir-menu [data-ecran='" + e + "']") || document.querySelector("#carte-stats [data-ecran='" + e + "']")).click(), ecran);
+        await pause(600);
+        return page.evaluate(() => document.querySelector(".ecran.actif").id);
+      };
+      for (const ecran of ["devis", "chantiers", "clients", "stats"]) {
+        const actif = await aller(ecran);
+        if (actif !== "ecran-" + ecran) { fautesLI.push(nom + " " + ecran + " : écran " + actif); continue; }
+        await mesurer(ecran);
+      }
+      /* Bandeau « Annuler » après une suppression confirmée. */
+      await aller("devis");
+      await page.evaluate(() => document.querySelector("#liste-devis [data-supprimer-devis='li0']").click());
+      await pause(300);
+      await page.evaluate(() => document.getElementById("bouton-modale-ok").click());
+      await pause(600);
+      const bandeau = await page.evaluate(() => {
+        const b = document.getElementById("annulation");
+        const r = b.getBoundingClientRect();
+        const onglets = document.querySelector(".onglets");
+        const o = onglets && onglets.getClientRects().length ? onglets.getBoundingClientRect() : null;
+        return { visible: !b.hidden && r.width > 0, gauche: Math.round(r.left), droite: Math.round(r.right), bas: Math.round(r.bottom), hautOnglets: o ? Math.round(o.top) : null, largeur: window.innerWidth };
+      });
+      if (!bandeau.visible || bandeau.gauche < 0 || bandeau.droite > bandeau.largeur || (bandeau.hautOnglets !== null && bandeau.bas > bandeau.hautOnglets)) fautesLI.push(nom + " bandeau Annuler " + JSON.stringify(bandeau));
+      const t = await page.evaluate(mesurerTextes, ["#annulation"]);
+      if (t.motsCoupes.length || t.rognes.length || t.deborde.length) fautesLI.push(nom + " bandeau Annuler " + JSON.stringify(t));
+      await capturer(page, nom + "-annulation");
+      await contexte.close();
+    }
+    controle("LI", "Mes devis, chantiers, clients, statistiques : rien ne déborde ni n'est coupé (360 et 1440)", fautesLI.length === 0,
+      fautesLI.length ? fautesLI.slice(0, 3).join(" | ")
+        : vuesLI + " vues (4 écrans, clair et sombre), " + motsLI.toLocaleString("fr-FR") + " mots mesurés, montants à 13 chiffres et noms longs sur une ligne, boutons d'action sur 360 px, bandeau « Annuler » au-dessus des onglets, rien sous le menu fixe");
   }
 
   /* A4 feuille du devis dans le vrai moteur d'impression : studio sur 1 page, villa aux montants

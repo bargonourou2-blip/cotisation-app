@@ -28,7 +28,8 @@ const CLES_STOCKAGE = Object.freeze({
   chantiers: "bp_v1_chantiers",
   brouillonChantier: "bp_v1_brouillon_chantier",
   catalogue: "bp_v1_catalogue",
-  numerosDevis: "bp_v1_numeros_devis"
+  numerosDevis: "bp_v1_numeros_devis",
+  clients: "bp_v1_clients"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -59,6 +60,7 @@ const NAVIGATION = Object.freeze([
   { ecran: "devis", libelle: "Mes devis", icone: "i-devis" },
   { ecran: "chantiers", libelle: "Mes chantiers", icone: "i-chantier" },
   { ecran: "clients", libelle: "Mes clients", icone: "i-clients" },
+  { ecran: "stats", libelle: "Statistiques", icone: "i-graphique" },
   { ecran: "prix", libelle: "Mes prix", icone: "i-prix" },
   { ecran: "profil", libelle: "Profil", icone: "i-profil" },
   { ecran: "abonnement", libelle: "Abonnement", icone: "i-abonnement" },
@@ -233,8 +235,7 @@ const ASTUCES = Object.freeze([
 ]);
 
 /* ---------- Recherche (en-tête) : écrans et rubriques ----------
-   Une entrée n'est proposée que si son écran existe. Les devis, chantiers et
-   clients s'ajouteront quand leurs écrans existeront. */
+   Une entrée n'est proposée que si son écran existe (masquerLiensAbsents). */
 const RECHERCHE = Object.freeze([
   { libelle: "Accueil", detail: "Tableau de bord", ecran: "accueil", mots: "tableau bord compteurs astuce" },
   { libelle: "Nouveau chantier", detail: "Étude NF C 15-100 en 5 étapes", ecran: "nouveau-chantier", mots: "chantier etude nouveau pieces prises circuits tableau norme calcul" },
@@ -245,7 +246,10 @@ const RECHERCHE = Object.freeze([
   { libelle: "Logo de l'entreprise", detail: "Mon profil", ecran: "profil", cible: "carte-logo", mots: "logo entreprise image devis" },
   { libelle: "Conditions par défaut", detail: "Mon profil", ecran: "profil", cible: "carte-conditions", mots: "conditions acompte validite paiement" },
   { libelle: "Changer le code secret", detail: "Mon profil", ecran: "profil", cible: "carte-code", mots: "code secret mot passe securite" },
-  { libelle: "Mes statistiques", detail: "Mon profil", ecran: "profil", cible: "carte-stats", mots: "statistiques chiffres montant" },
+  { libelle: "Mes devis", detail: "Historique, recherche, filtre par statut", ecran: "devis", mots: "devis historique liste numero statut envoye accepte refuse paye brouillon dupliquer imprimer supprimer" },
+  { libelle: "Mes chantiers", detail: "Études enregistrées et brouillon", ecran: "chantiers", mots: "chantiers etudes liste dupliquer supprimer rouvrir" },
+  { libelle: "Mes clients", detail: "Carnet, appeler, WhatsApp", ecran: "clients", mots: "clients carnet contact telephone appeler whatsapp ajouter" },
+  { libelle: "Statistiques", detail: "Chiffre devisé, taux d'acceptation, évolution", ecran: "stats", mots: "statistiques chiffres montant taux acceptation evolution mois client graphique" },
   { libelle: "Sauvegarde", detail: "Exporter ou importer", ecran: "profil", cible: "carte-sauvegarde", mots: "sauvegarde export import fichier" },
   { libelle: "Changer de compte", detail: "Mon profil", ecran: "profil", cible: "carte-session", mots: "compte deconnexion changer" },
   { libelle: "À propos", detail: "BâtiPlus et BRG Électro+", ecran: "a-propos", mots: "propos version concepteur brg contact whatsapp" },
@@ -415,6 +419,25 @@ const SIGNATURES_DEVIS = Object.freeze([
 /* PDF : feuille A4 en points (1 pt = 1/72 pouce), marges de 12 mm. */
 /* Largeur d'une feuille A4 à l'écran (210 mm à 96 ppp) : base de la réduction de l'aperçu. */
 const LARGEUR_A4_PX = 794;
+
+/* ==========================================================================
+   Clients, historique, statistiques (étape 9)
+   ========================================================================== */
+/* clientsMax : borne de sécurité du stockage local. Les plafonds par formule
+   (200 en gratuit, 5 000 en Pro) sont appliqués en ligne, à la synchronisation (étapes 11 et 14). */
+const BORNES_LISTES = Object.freeze({ clientsMax: 5000, rechercheMax: 60, clientsGraphique: 8 });
+/* Délai pendant lequel une suppression peut être annulée (ms). */
+const DUREE_ANNULATION = 5000;
+const TRIS_DEVIS = Object.freeze({
+  recents: "Plus récents d'abord",
+  anciens: "Plus anciens d'abord",
+  "montant-desc": "Montant : du plus élevé au plus bas",
+  "montant-asc": "Montant : du plus bas au plus élevé"
+});
+const STATUTS_CHANTIER = Object.freeze({
+  brouillon: { libelle: "Brouillon en cours", ton: "verifier" },
+  etudie: { libelle: "Étude prête", ton: "info" }
+});
 const PDF_A4 = Object.freeze({ largeur: 595.28, hauteur: 841.89, marge: 34.02 });
 /* Largeurs des caractères des polices standard du PDF (Helvetica et Helvetica-Bold,
    en millièmes de la taille), codes 32 à 255 de l'encodage WinAnsi. Aucune police

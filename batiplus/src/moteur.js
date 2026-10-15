@@ -273,6 +273,10 @@ function preparerEcran(id) {
   else if (id === "fiche-devis") ouvrirFicheDevis();
   else if (id === "prix") ouvrirMesPrix();
   else if (id === "feuille") ouvrirFeuille();
+  else if (id === "devis") ouvrirMesDevis();
+  else if (id === "chantiers") ouvrirMesChantiers();
+  else if (id === "clients") ouvrirMesClients();
+  else if (id === "stats") ouvrirStats();
 }
 
 /* Un seul écouteur pour tous les éléments [data-ecran] (menu, onglets, raccourcis…). */
@@ -1579,22 +1583,11 @@ async function prochainNumeroDevis(compteId, existants) {
   return prefixe + String(suivant).padStart(4, "0");
 }
 
+/* Compteurs de l'accueil et du profil : mêmes définitions que l'écran Statistiques
+   (une seule fonction de calcul, statistiquesDetaillees). */
 function statistiques(devis) {
-  const maintenant = new Date();
-  const duMois = devis.filter((d) => {
-    const date = new Date(d.creeLe);
-    return date.getFullYear() === maintenant.getFullYear() && date.getMonth() === maintenant.getMonth();
-  });
-  /* Un devis payé a forcément été accepté. */
-  const acceptes = devis.filter((d) => d.statut === "accepte" || d.statut === "paye").length;
-  return {
-    total: devis.length,
-    mois: duMois.length,
-    acceptes,
-    montant: devis.reduce((somme, d) => somme + d.total, 0),
-    clients: new Set(devis.map((d) => normaliser(d.client)).filter(Boolean)).size,
-    taux: devis.length ? Math.round((acceptes / devis.length) * 100) : null
-  };
+  const s = statistiquesDetaillees(devis, new Date(), 0);
+  return { total: s.total, mois: s.mois.nombre, acceptes: s.acceptes, montant: s.montant, clients: s.clients, taux: s.taux };
 }
 
 /* ---------- Tableau de bord ---------- */
@@ -3564,6 +3557,186 @@ function assemblerPdf(modele, logo, mise) {
   return resultat;
 }
 /* ==== FIN DU DOCUMENT ==== */
+
+/* ==== LISTES ET STATISTIQUES ==== */
+/* Fonctions pures de l'étape 9 (aucun accès à l'écran ni au stockage) : recherche,
+   filtre et tri des devis, carnet de clients, statistiques. Testées hors navigateur. */
+
+/* Texte comparable : sans accents, en minuscules, espaces simples. */
+function cleTexte(texte) {
+  return String(texte || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/* Tous les mots de la requête doivent se trouver dans l'un des champs (ordre libre). */
+function correspondRecherche(champs, requete) {
+  const mots = cleTexte(texteBorne(String(requete || ""), BORNES_LISTES.rechercheMax)).split(" ").filter(Boolean);
+  if (!mots.length) return true;
+  const texte = cleTexte(champs.filter((c) => typeof c === "string").join(" "));
+  return mots.every((mot) => texte.includes(mot));
+}
+
+function champsRechercheDevis(d) {
+  return [d.numero, d.titre, d.client, d.lieu, STATUTS_DEVIS[d.statut] ? STATUTS_DEVIS[d.statut].libelle : ""];
+}
+
+/* Devis affichés : recherche (numéro, titre, client, lieu, statut), filtre de statut, tri.
+   Le tri est stable : à égalité, le plus récent d'abord, puis le numéro. */
+function filtrerDevis(devis, options) {
+  const o = options && typeof options === "object" ? options : {};
+  const statut = Object.prototype.hasOwnProperty.call(STATUTS_DEVIS, o.statut) ? o.statut : "tous";
+  const tri = Object.prototype.hasOwnProperty.call(TRIS_DEVIS, o.tri) ? o.tri : "recents";
+  const date = (d) => Date.parse(d.creeLe) || 0;
+  const departage = (a, b) => (date(b) - date(a)) || String(b.numero).localeCompare(String(a.numero));
+  const comparateurs = {
+    recents: departage,
+    anciens: (a, b) => (date(a) - date(b)) || String(a.numero).localeCompare(String(b.numero)),
+    "montant-desc": (a, b) => (b.total - a.total) || departage(a, b),
+    "montant-asc": (a, b) => (a.total - b.total) || departage(a, b)
+  };
+  return (Array.isArray(devis) ? devis : [])
+    .filter((d) => d && (statut === "tous" || d.statut === statut))
+    .filter((d) => correspondRecherche(champsRechercheDevis(d), o.requete))
+    .sort(comparateurs[tri]);
+}
+
+/* Nombre de devis par statut (pour les puces du filtre). */
+function comptesParStatut(devis) {
+  const comptes = { tous: 0 };
+  Object.keys(STATUTS_DEVIS).forEach((s) => { comptes[s] = 0; });
+  (Array.isArray(devis) ? devis : []).forEach((d) => {
+    if (!d || !Object.prototype.hasOwnProperty.call(STATUTS_DEVIS, d.statut)) return;
+    comptes.tous += 1;
+    comptes[d.statut] += 1;
+  });
+  return comptes;
+}
+
+function estAccepte(d) {
+  /* Un devis payé a forcément été accepté. */
+  return d.statut === "accepte" || d.statut === "paye";
+}
+
+/* Carnet de clients construit depuis les devis et les chantiers, plus les clients ajoutés à la main.
+   Un client = un nom (comparé sans accents ni majuscules). Téléphone : celui saisi à la main,
+   sinon celui du devis le plus récent, sinon celui du chantier le plus récent. */
+function carnetClients(manuels, devis, chantiers) {
+  const carnet = new Map();
+  const entree = (nom) => {
+    const propre = texteBorne(nom, BORNES.texteMax);
+    const cle = cleTexte(propre);
+    if (!cle) return null;
+    if (!carnet.has(cle)) {
+      carnet.set(cle, { cle, nom: propre, telephone: "", manuelId: null, nombreDevis: 0, total: 0, totalAccepte: 0, nombreChantiers: 0, dernier: "" });
+    }
+    return carnet.get(cle);
+  };
+  const plusRecent = (a, b) => (Date.parse(b) || 0) - (Date.parse(a) || 0);
+  const telephoneValideE164 = (t) => typeof t === "string" && /^\+\d{6,15}$/.test(t);
+  /* Ordre : devis (du plus récent au plus ancien), chantiers, puis clients saisis à la main.
+     Le nom affiché est donc celui du devis le plus récent (dernière orthographe utilisée). */
+  const telephonesAuto = new Map();
+  [...(Array.isArray(devis) ? devis : [])].filter(Boolean).sort((a, b) => plusRecent(a.creeLe, b.creeLe)).forEach((d) => {
+    const c = entree(d.client);
+    if (!c) return;
+    c.nombreDevis += 1;
+    c.total += Number.isFinite(d.total) ? d.total : 0;
+    if (estAccepte(d)) c.totalAccepte += Number.isFinite(d.total) ? d.total : 0;
+    if (!c.dernier || plusRecent(d.creeLe, c.dernier) < 0) c.dernier = d.creeLe;
+    if (!telephonesAuto.has(c.cle) && telephoneValideE164(d.clientTelephone)) telephonesAuto.set(c.cle, d.clientTelephone);
+  });
+  [...(Array.isArray(chantiers) ? chantiers : [])].filter(Boolean).sort((a, b) => plusRecent(a.modifieLe, b.modifieLe)).forEach((ch) => {
+    const client = ch.client && typeof ch.client === "object" ? ch.client : {};
+    const c = entree(client.nom);
+    if (!c) return;
+    c.nombreChantiers += 1;
+    if (!c.dernier || plusRecent(ch.modifieLe, c.dernier) < 0) c.dernier = ch.modifieLe;
+    if (!telephonesAuto.has(c.cle) && telephoneValideE164(client.telephone)) telephonesAuto.set(c.cle, client.telephone);
+  });
+  (Array.isArray(manuels) ? manuels : []).forEach((m) => {
+    if (!m || typeof m !== "object") return;
+    const c = entree(m.nom);
+    if (!c) return;
+    c.manuelId = typeof m.id === "string" ? m.id : null;
+    /* Le numéro saisi à la main est prioritaire. */
+    if (telephoneValideE164(m.telephone)) c.telephone = m.telephone;
+    if (m.creeLe && (!c.dernier || plusRecent(m.creeLe, c.dernier) < 0)) c.dernier = m.creeLe;
+  });
+  carnet.forEach((c) => { if (!c.telephone && telephonesAuto.has(c.cle)) c.telephone = telephonesAuto.get(c.cle); });
+  return [...carnet.values()].sort((a, b) => a.nom.localeCompare(b.nom, "fr", { sensitivity: "base" }));
+}
+
+function filtrerClients(clients, requete) {
+  return clients.filter((c) => correspondRecherche([c.nom, c.telephone, c.telephone.replace(/\D/g, "")], requete));
+}
+
+/* Statistiques de l'écran « Statistiques » (et des compteurs de l'accueil et du profil).
+   maintenant : date de référence (le mois en cours est celui de cette date, heure locale). */
+function statistiquesDetaillees(devis, maintenant, nombreClientsMax) {
+  const liste = (Array.isArray(devis) ? devis : []).filter((d) => d && Number.isFinite(d.total));
+  /* Pas d'instanceof : une date venue d'un autre contexte JavaScript reste acceptée. */
+  const temps = maintenant && typeof maintenant.getTime === "function" ? maintenant.getTime() : NaN;
+  const ref = Number.isFinite(temps) ? new Date(temps) : new Date();
+  const annee = ref.getFullYear();
+  const mois = ref.getMonth();
+  const jourCourant = ref.getDate();
+  const joursDansMois = new Date(annee, mois + 1, 0).getDate();
+  const debutPrecedent = new Date(annee, mois - 1, 1);
+  const joursPrecedent = new Date(annee, mois, 0).getDate();
+  const parJour = Array.from({ length: joursDansMois }, () => ({ montant: 0, nombre: 0 }));
+  const precedent = { montant: 0, nombre: 0, montantMemeJour: 0 };
+  const dansMois = { montant: 0, nombre: 0 };
+  liste.forEach((d) => {
+    const date = new Date(d.creeLe);
+    if (Number.isNaN(date.getTime())) return;
+    if (date.getFullYear() === annee && date.getMonth() === mois) {
+      const jour = parJour[date.getDate() - 1];
+      jour.montant += d.total;
+      jour.nombre += 1;
+      dansMois.montant += d.total;
+      dansMois.nombre += 1;
+    } else if (date.getFullYear() === debutPrecedent.getFullYear() && date.getMonth() === debutPrecedent.getMonth()) {
+      precedent.montant += d.total;
+      precedent.nombre += 1;
+      /* Comparaison juste : le mois dernier jusqu'au même jour (borné à sa longueur). */
+      if (date.getDate() <= Math.min(jourCourant, joursPrecedent)) precedent.montantMemeJour += d.total;
+    }
+  });
+  let cumul = 0;
+  const cumuls = parJour.map((j) => { cumul += j.montant; return cumul; });
+  const acceptes = liste.filter(estAccepte);
+  const montant = liste.reduce((s, d) => s + d.total, 0);
+  const montantAccepte = acceptes.reduce((s, d) => s + d.total, 0);
+  const parClientMap = new Map();
+  liste.forEach((d) => {
+    const nom = texteBorne(d.client, BORNES.texteMax) || "Sans nom de client";
+    const cle = cleTexte(nom);
+    if (!parClientMap.has(cle)) parClientMap.set(cle, { nom, montant: 0, nombre: 0, accepte: 0 });
+    const c = parClientMap.get(cle);
+    c.montant += d.total;
+    c.nombre += 1;
+    if (estAccepte(d)) c.accepte += d.total;
+  });
+  const tousClients = [...parClientMap.values()].sort((a, b) => (b.montant - a.montant) || a.nom.localeCompare(b.nom, "fr"));
+  const limite = Number.isInteger(nombreClientsMax) && nombreClientsMax > 0 ? nombreClientsMax : tousClients.length;
+  const premiers = tousClients.slice(0, limite);
+  const reste = tousClients.slice(limite);
+  const autres = reste.length ? { nom: reste.length === 1 ? "1 autre client" : reste.length + " autres clients", montant: reste.reduce((s, c) => s + c.montant, 0), nombre: reste.reduce((s, c) => s + c.nombre, 0), autres: true } : null;
+  const variation = precedent.montantMemeJour > 0 ? Math.round(((dansMois.montant - precedent.montantMemeJour) / precedent.montantMemeJour) * 100) : null;
+  return {
+    total: liste.length,
+    montant,
+    acceptes: acceptes.length,
+    montantAccepte,
+    taux: liste.length ? Math.round((acceptes.length / liste.length) * 100) : null,
+    parStatut: comptesParStatut(liste),
+    clients: new Set(liste.map((d) => cleTexte(d.client)).filter(Boolean)).size,
+    parClient: autres ? [...premiers, autres] : premiers,
+    mois: { annee, mois, jourCourant, jours: parJour, cumuls, montant: dansMois.montant, nombre: dansMois.nombre },
+    moisPrecedent: precedent,
+    variation
+  };
+}
+/* ==== FIN DES LISTES ==== */
 
 /* ---------- Assistant Nouveau chantier (5 étapes, brouillon automatique) ---------- */
 
@@ -5781,6 +5954,12 @@ async function surReinitialiserPrix() {
   if (!etat.compte) return;
   const ok = await demanderConfirmation("Revenir aux prix de départ ?", "Tous vos articles, fournisseurs et prix de main-d'œuvre seront remplacés par les prix de départ. Les devis déjà faits ne changent pas.", "Réinitialiser", "Annuler");
   if (!ok) return;
+  /* Double confirmation : l'action ne peut pas être annulée. */
+  const nombre = mesPrix.catalogue ? mesPrix.catalogue.articles.length : 0;
+  const sur = await demanderConfirmation("Vraiment tout réinitialiser ?",
+    "Dernière vérification : " + accorderNombre(nombre, "article", "articles") + ", leurs fournisseurs et vos prix de main-d'œuvre seront remplacés. Cette action ne peut pas être annulée.",
+    "Oui, tout réinitialiser", "Non, garder mes prix");
+  if (!sur) return;
   clearTimeout(mesPrix.minuterie);
   mesPrix.minuterie = 0;
   const reussi = await ecrireCatalogue(null);
@@ -6743,6 +6922,782 @@ function surPartagerPdf() {
   });
 }
 
+/* ==========================================================================
+   Mes devis, Mes chantiers, Mes clients, Statistiques (étape 9).
+   Toutes les listes sont construites avec createElement/textContent. Une suppression
+   demande toujours confirmation, puis peut être annulée pendant 5 secondes.
+   ========================================================================== */
+
+const listes = {
+  compteId: null,
+  devis: { requete: "", statut: "tous", tri: "recents" },
+  chantiersRequete: "",
+  clientsRequete: "",
+  clientEdite: null,
+  cacheDevis: [],
+  cacheChantiers: [],
+  cacheClients: []
+};
+const annulation = { minuterie: 0, restaurer: null, compteId: null };
+
+/* Filtres remis à zéro quand le compte change (un autre électricien sur le même téléphone). */
+function preparerListes() {
+  if (listes.compteId === etat.compte.id) return;
+  listes.compteId = etat.compte.id;
+  listes.devis = { requete: "", statut: "tous", tri: "recents" };
+  listes.chantiersRequete = "";
+  listes.clientsRequete = "";
+  listes.clientEdite = null;
+  terminerAnnulation();
+}
+
+function construireListes() {
+  $("devis-tri").replaceChildren(...Object.entries(TRIS_DEVIS).map(([valeur, libelle]) => {
+    const option = document.createElement("option");
+    option.value = valeur;
+    option.textContent = libelle;
+    return option;
+  }));
+}
+
+function dateListe(iso) {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" }).format(date);
+}
+
+/* Bouton d'action d'une ligne : icône + libellé visible ; aria-label précise l'élément visé. */
+function boutonListe(icone, libelle, etiquette, donnees, classe) {
+  const bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.className = "action-liste" + (classe ? " " + classe : "");
+  Object.entries(donnees).forEach(([cle, valeur]) => { bouton.dataset[cle] = valeur; });
+  bouton.setAttribute("aria-label", etiquette);
+  const texte = document.createElement("span");
+  texte.textContent = libelle;
+  bouton.append(creerIcone(icone), texte);
+  return bouton;
+}
+
+/* Lien d'action (tel:, wa.me) : l'adresse est vérifiée avant d'être posée. */
+function lienListe(icone, libelle, etiquette, adresse, classe) {
+  const valide = /^tel:\+\d{6,15}$/.test(adresse) || /^https:\/\/wa\.me\/\d*\?text=[A-Za-z0-9%._~!*'()-]*$/.test(adresse);
+  if (!valide) {
+    const inactif = boutonListe(icone, libelle, etiquette + " (aucun numéro)", {}, classe);
+    inactif.disabled = true;
+    return inactif;
+  }
+  const lien = document.createElement("a");
+  lien.className = "action-liste" + (classe ? " " + classe : "");
+  lien.href = adresse;
+  if (adresse.startsWith("https:")) {
+    lien.target = "_blank";
+    lien.rel = "noopener noreferrer";
+  }
+  lien.setAttribute("aria-label", etiquette);
+  const texte = document.createElement("span");
+  texte.textContent = libelle;
+  lien.append(creerIcone(icone), texte);
+  return lien;
+}
+
+/* Corps d'une ligne : titre, deux lignes de détails, montant et pastille à droite. */
+function corpsElement(ouvrir, titre, details, montant, statut) {
+  const corps = document.createElement(ouvrir ? "button" : "div");
+  corps.className = "element-corps";
+  if (ouvrir) {
+    corps.type = "button";
+    Object.entries(ouvrir.donnees).forEach(([cle, valeur]) => { corps.dataset[cle] = valeur; });
+    corps.setAttribute("aria-label", ouvrir.etiquette);
+  }
+  const texte = document.createElement("span");
+  texte.className = "element-texte";
+  texte.appendChild(ecrireInsecable(document.createElement("strong"), titre));
+  details.filter(Boolean).forEach((ligne) => texte.appendChild(ecrireInsecable(document.createElement("span"), ligne)));
+  const droite = document.createElement("span");
+  droite.className = "element-droite";
+  if (montant) {
+    const valeur = document.createElement("span");
+    valeur.className = "element-montant";
+    valeur.textContent = montant;
+    if (montant.length > 18) valeur.dataset.longueur = "long";
+    droite.appendChild(valeur);
+  }
+  if (statut) {
+    const pastille = document.createElement("span");
+    pastille.className = "statut";
+    pastille.dataset.ton = statut.ton;
+    pastille.textContent = statut.libelle;
+    droite.appendChild(pastille);
+  }
+  corps.append(texte, droite);
+  return corps;
+}
+
+function reperElement(liste, cle) {
+  const element = [...$(liste).querySelectorAll("[data-element]")].find((li) => li.dataset.element === cle);
+  if (element) reperer(element);
+}
+
+/* ---------- Annulation d'une suppression (5 s) ---------- */
+
+function proposerAnnulation(texte, restaurer) {
+  terminerAnnulation();
+  $("toast").hidden = true;
+  annulation.restaurer = restaurer;
+  annulation.compteId = etat.compte ? etat.compte.id : null;
+  ecrireInsecable($("annulation-texte"), texte);
+  const barre = $("annulation-barre");
+  barre.classList.remove("decompte");
+  void barre.offsetWidth;
+  barre.classList.add("decompte");
+  $("annulation").hidden = false;
+  annulation.minuterie = setTimeout(terminerAnnulation, DUREE_ANNULATION);
+}
+
+function terminerAnnulation() {
+  clearTimeout(annulation.minuterie);
+  annulation.minuterie = 0;
+  annulation.restaurer = null;
+  $("annulation").hidden = true;
+}
+
+async function surAnnulerSuppression() {
+  const restaurer = annulation.restaurer;
+  const memeCompte = Boolean(etat.compte) && etat.compte.id === annulation.compteId;
+  terminerAnnulation();
+  if (!restaurer || !memeCompte) return;
+  const reussi = await restaurer();
+  await rafraichirEcranListe();
+  afficherToast(reussi ? "Suppression annulée : l'élément est revenu." : "Restauration impossible : mémoire de l'appareil indisponible.");
+}
+
+async function rafraichirEcranListe() {
+  const ecran = montrer.ecranCourant;
+  if (ecran === "devis") await afficherMesDevis();
+  else if (ecran === "chantiers") await afficherMesChantiers();
+  else if (ecran === "clients") await afficherMesClients();
+  else if (ecran === "accueil") await afficherAccueil();
+}
+
+/* Retire un objet d'une liste stockée et rend la fonction qui le remet à sa place. */
+async function retirerDuStockage(cle, test) {
+  const brut = await lireJson(cle);
+  const liste = Array.isArray(brut) ? brut : [];
+  const index = liste.findIndex((x) => x && typeof x === "object" && test(x));
+  if (index < 0) return null;
+  const [retire] = liste.splice(index, 1);
+  if (!await ecrireValeur(cle, JSON.stringify(liste))) return null;
+  return async () => {
+    const actuel = await lireJson(cle);
+    const nouvelle = Array.isArray(actuel) ? actuel : [];
+    if (nouvelle.some((x) => x && typeof x === "object" && x.id === retire.id && x.compteId === retire.compteId)) return true;
+    nouvelle.splice(Math.min(index, nouvelle.length), 0, retire);
+    return ecrireValeur(cle, JSON.stringify(nouvelle));
+  };
+}
+
+/* ---------- Mes devis ---------- */
+
+async function ouvrirMesDevis() {
+  if (!etat.compte) return;
+  preparerListes();
+  $("devis-recherche").value = listes.devis.requete;
+  $("devis-tri").value = listes.devis.tri;
+  await afficherMesDevis();
+}
+
+async function afficherMesDevis() {
+  if (!etat.compte) return;
+  listes.cacheDevis = await lireDevis(etat.compte.id);
+  remplirFiltreStatuts();
+  rafraichirListeDevis();
+}
+
+function remplirFiltreStatuts() {
+  const comptes = comptesParStatut(listes.cacheDevis);
+  const choix = [["tous", "Tous"], ...Object.entries(STATUTS_DEVIS).map(([cle, s]) => [cle, s.libelle])];
+  $("devis-filtre-statut").replaceChildren(...choix.map(([valeur, libelle]) => {
+    const label = document.createElement("label");
+    label.className = "puce";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "filtre-statut";
+    radio.value = valeur;
+    radio.dataset.filtreStatut = valeur;
+    radio.checked = listes.devis.statut === valeur;
+    const texte = document.createElement("span");
+    texte.textContent = libelle + "\u00A0(" + comptes[valeur] + ")";
+    label.append(radio, texte);
+    return label;
+  }));
+}
+
+function rafraichirListeDevis() {
+  const tous = listes.cacheDevis;
+  const affiches = filtrerDevis(tous, listes.devis);
+  $("liste-devis").replaceChildren(...affiches.map(creerElementDevis));
+  $("devis-compte").textContent = affiches.length === tous.length
+    ? accorderNombre(tous.length, "devis", "devis")
+    : formaterEntier(affiches.length) + " sur " + accorderNombre(tous.length, "devis", "devis");
+  const vide = $("devis-vide");
+  vide.hidden = affiches.length > 0;
+  vide.textContent = tous.length ? "Aucun devis ne correspond à la recherche ou au filtre." : "Aucun devis pour l'instant. Créez un chantier, puis « Créer le devis » depuis le résultat de l'étude.";
+}
+
+function creerElementDevis(d) {
+  const li = document.createElement("li");
+  li.className = "element carte";
+  li.dataset.element = d.id;
+  const nom = d.numero ? "le devis " + d.numero : "le devis « " + (d.titre || "Devis") + " »";
+  const details = [[d.numero, d.client].filter(Boolean).join(" · "), [dateListe(d.creeLe), d.lieu].filter(Boolean).join(" · ")];
+  const ouvrir = d.complet ? { donnees: { ouvrirDevis: d.id }, etiquette: "Ouvrir " + nom + " : " + (d.titre || "Devis") + (d.client ? ", " + d.client : "") } : null;
+  li.appendChild(corpsElement(ouvrir, d.titre || "Devis", details, formaterMontant(d.total, deviseCompte()), STATUTS_DEVIS[d.statut]));
+  const actions = document.createElement("div");
+  actions.className = "element-actions";
+  if (d.complet) {
+    const envoyer = lienListe("i-whatsapp", "Envoyer", "Envoyer " + nom + " par WhatsApp", "https://wa.me/?text=", "action-whatsapp");
+    envoyer.dataset.envoyerDevis = d.id;
+    actions.append(
+      boutonListe("i-copier", "Dupliquer", "Dupliquer " + nom, { dupliquerDevis: d.id }),
+      boutonListe("i-imprimer", "Imprimer", "Imprimer " + nom + " ou en faire un PDF", { imprimerDevis: d.id }),
+      envoyer,
+      boutonListe("i-poubelle", "Supprimer", "Supprimer " + nom, { supprimerDevis: d.id }, "action-danger")
+    );
+  } else {
+    const note = document.createElement("p");
+    note.className = "element-note";
+    note.textContent = "Ancien devis : gardé pour l'historique et les statistiques.";
+    actions.append(note, boutonListe("i-poubelle", "Supprimer", "Supprimer " + nom, { supprimerDevis: d.id }, "action-danger"));
+  }
+  li.appendChild(actions);
+  return li;
+}
+
+async function surClicListeDevis(evenement) {
+  const cible = evenement.target.closest("[data-ouvrir-devis], [data-dupliquer-devis], [data-imprimer-devis], [data-envoyer-devis], [data-supprimer-devis]");
+  if (!cible || !etat.compte) return;
+  const ds = cible.dataset;
+  if (ds.envoyerDevis) {
+    preparerEnvoiDevis(cible, ds.envoyerDevis);
+    return;
+  }
+  vibrer();
+  if (ds.ouvrirDevis) ouvrirDevis(ds.ouvrirDevis);
+  else if (ds.dupliquerDevis) await dupliquerDevis(ds.dupliquerDevis);
+  else if (ds.imprimerDevis) {
+    feuille.id = ds.imprimerDevis;
+    montrer("feuille");
+  } else if (ds.supprimerDevis) await supprimerDevisListe(ds.supprimerDevis);
+}
+
+/* Le lien WhatsApp est calculé au moment du toucher (message à jour, aucun calcul inutile). */
+function preparerEnvoiDevis(lien, id) {
+  const devis = listes.cacheDevis.find((d) => d.complet && d.id === id);
+  if (!devis) return;
+  majLienWhatsApp(lien, document.createElement("span"), devis, modeleDuDevis(devis));
+}
+
+async function dupliquerDevis(id) {
+  const compte = etat.compte;
+  const tous = await lireDevis(compte.id);
+  const source = tous.find((d) => d.complet && d.id === id);
+  if (!source) return;
+  const numero = await prochainNumeroDevis(compte.id, tous);
+  const maintenant = new Date().toISOString();
+  const { complet, total, ...contenu } = JSON.parse(JSON.stringify(source));
+  const copie = devisValide({ ...contenu, id: "d" + identifiantCourt().slice(1), numero, statut: "brouillon", creeLe: maintenant, modifieLe: maintenant }, deviseCompte());
+  if (!copie) return;
+  const { complet: completCopie, ...stocke } = copie;
+  const reussi = completCopie && await ecrireValeur(CLES_STOCKAGE.devis, JSON.stringify([...(await lireDevisBruts()), stocke]));
+  if (!reussi) {
+    afficherToast("Copie impossible : mémoire de l'appareil indisponible.");
+    return;
+  }
+  if (listes.devis.statut !== "tous" && listes.devis.statut !== "brouillon") listes.devis.statut = "tous";
+  await afficherMesDevis();
+  reperElement("liste-devis", copie.id);
+  afficherToast("Copie créée : devis " + numero + " (brouillon), copie de " + source.numero + ".");
+}
+
+async function supprimerDevisListe(id) {
+  const compte = etat.compte;
+  const devis = (await lireDevis(compte.id)).find((d) => d.id === id);
+  if (!devis) return;
+  const nom = devis.numero ? "Le devis " + devis.numero : "Le devis « " + (devis.titre || "Devis") + " »";
+  const ok = await demanderConfirmation("Supprimer ce devis ?",
+    nom + (devis.client ? " de " + devis.client : "") + " sera supprimé de cet appareil. Vous pourrez annuler pendant 5 secondes. Son numéro ne sera jamais réutilisé.",
+    "Supprimer", "Garder le devis");
+  if (!ok) return;
+  const restaurer = await retirerDuStockage(CLES_STOCKAGE.devis, (x) => x.id === id && x.compteId === compte.id);
+  if (!restaurer) {
+    afficherToast("Suppression impossible : mémoire de l'appareil indisponible.");
+    return;
+  }
+  await rafraichirEcranListe();
+  proposerAnnulation(nom + " a été supprimé.", restaurer);
+}
+
+/* ---------- Mes chantiers ---------- */
+
+async function ouvrirMesChantiers() {
+  if (!etat.compte) return;
+  preparerListes();
+  $("chantiers-recherche").value = listes.chantiersRequete;
+  await afficherMesChantiers();
+}
+
+async function afficherMesChantiers() {
+  const compte = etat.compte;
+  if (!compte) return;
+  const chantiers = (await lireChantiers(compte.id)).filter((c) => c.statut === "etudie")
+    .sort((a, b) => Date.parse(b.modifieLe) - Date.parse(a.modifieLe));
+  const brouillon = await lireBrouillon(compte.id);
+  const devis = await lireDevis(compte.id);
+  const catalogue = chantiers.length ? await lireCatalogue() : null;
+  const elements = chantiers.map((c) => {
+    const chiffrage = chiffrerChantier(c, catalogue.articles, deviseCompte(), catalogue.mainOeuvre);
+    return { chantier: c, brouillon: false, surface: chiffrage.etude.surfaceTotale, circuits: chiffrage.etude.circuits.length,
+      total: chiffrage.total.totalGeneral, devis: devis.filter((d) => d.chantierId === c.id).length };
+  });
+  if (brouillon) {
+    const surface = brouillon.pieces.reduce((s, p) => s + p.surface, 0);
+    elements.unshift({ chantier: brouillon, brouillon: true, surface, circuits: 0, total: null, devis: 0 });
+  }
+  listes.cacheChantiers = elements;
+  rafraichirListeChantiers();
+}
+
+function rafraichirListeChantiers() {
+  const tous = listes.cacheChantiers;
+  const affiches = tous.filter((e) => correspondRecherche([e.chantier.nom, e.chantier.client.nom, e.chantier.lieu, TYPES_CHANTIER[e.chantier.type]], listes.chantiersRequete));
+  $("liste-chantiers").replaceChildren(...affiches.map(creerElementChantier));
+  $("chantiers-compte").textContent = affiches.length === tous.length
+    ? accorderNombre(tous.length, "chantier", "chantiers")
+    : formaterEntier(affiches.length) + " sur " + accorderNombre(tous.length, "chantier", "chantiers");
+  $("chantiers-vide").hidden = affiches.length > 0;
+  $("chantiers-vide-texte").textContent = tous.length ? "Aucun chantier ne correspond à la recherche." : "Aucun chantier pour l'instant. Lancez votre première étude NF C 15-100.";
+}
+
+function creerElementChantier(e) {
+  const c = e.chantier;
+  const li = document.createElement("li");
+  li.className = "element carte" + (e.brouillon ? " element-brouillon" : "");
+  li.dataset.element = (e.brouillon ? "brouillon-" : "") + c.id;
+  const nom = c.nom || "Chantier sans nom";
+  const mesures = [c.client.nom, e.surface ? formaterDecimal(e.surface) + "\u00A0m²" : "", e.brouillon ? "" : accorderNombre(e.circuits, "circuit", "circuits")];
+  const dates = [(e.brouillon ? "Étape " + c.etape + " sur " + ETAPES_CHANTIER.length : "Modifié le " + dateListe(c.modifieLe)), c.lieu,
+    e.devis ? accorderNombre(e.devis, "devis", "devis") : ""];
+  const ouvrir = { donnees: e.brouillon ? { reprendreChantier: c.id } : { ouvrirChantier: c.id },
+    etiquette: (e.brouillon ? "Reprendre le brouillon « " : "Ouvrir l'étude « ") + nom + " »" };
+  li.appendChild(corpsElement(ouvrir, nom, [mesures.filter(Boolean).join(" · "), dates.filter(Boolean).join(" · ")],
+    e.total === null ? "" : formaterMontant(e.total, deviseCompte()), STATUTS_CHANTIER[e.brouillon ? "brouillon" : "etudie"]));
+  const actions = document.createElement("div");
+  actions.className = "element-actions";
+  if (!e.brouillon) actions.appendChild(boutonListe("i-copier", "Dupliquer", "Dupliquer le chantier « " + nom + " »", { dupliquerChantier: c.id }));
+  actions.appendChild(boutonListe("i-poubelle", e.brouillon ? "Effacer" : "Supprimer", (e.brouillon ? "Effacer le brouillon « " : "Supprimer le chantier « ") + nom + " »",
+    e.brouillon ? { effacerBrouillonChantier: c.id } : { supprimerChantier: c.id }, "action-danger"));
+  li.appendChild(actions);
+  return li;
+}
+
+async function surClicListeChantiers(evenement) {
+  const cible = evenement.target.closest("[data-ouvrir-chantier], [data-reprendre-chantier], [data-dupliquer-chantier], [data-supprimer-chantier], [data-effacer-brouillon-chantier]");
+  if (!cible || !etat.compte) return;
+  const ds = cible.dataset;
+  vibrer();
+  if (ds.ouvrirChantier) ouvrirEtude(ds.ouvrirChantier);
+  else if (ds.reprendreChantier) montrer("nouveau-chantier");
+  else if (ds.dupliquerChantier) await dupliquerChantier(ds.dupliquerChantier);
+  else if (ds.supprimerChantier) await supprimerChantierListe(ds.supprimerChantier);
+  else if (ds.effacerBrouillonChantier) await effacerBrouillonListe();
+}
+
+async function dupliquerChantier(id) {
+  const compte = etat.compte;
+  const source = (await lireChantiers(compte.id)).find((c) => c.id === id);
+  if (!source) return;
+  const maintenant = new Date().toISOString();
+  const copie = chantierValide({ ...JSON.parse(JSON.stringify(source)), id: identifiantAleatoire(),
+    nom: texteBorne((source.nom || "Chantier") + " (copie)", BORNES.texteMax), creeLe: maintenant, modifieLe: maintenant }, compte.id);
+  if (!copie) return;
+  const reussi = await ecrireValeur(CLES_STOCKAGE.chantiers, JSON.stringify([...(await lireChantiersBruts()), copie]));
+  if (!reussi) {
+    afficherToast("Copie impossible : mémoire de l'appareil indisponible.");
+    return;
+  }
+  await afficherMesChantiers();
+  reperElement("liste-chantiers", copie.id);
+  afficherToast("Chantier dupliqué : « " + copie.nom + " ».");
+}
+
+async function supprimerChantierListe(id) {
+  const compte = etat.compte;
+  const chantier = (await lireChantiers(compte.id)).find((c) => c.id === id);
+  if (!chantier) return;
+  const nom = chantier.nom || "Chantier sans nom";
+  const ok = await demanderConfirmation("Supprimer ce chantier ?",
+    "« " + nom + " » sera supprimé de cet appareil. Les devis déjà faits à partir de cette étude sont conservés. Vous pourrez annuler pendant 5 secondes.",
+    "Supprimer", "Garder le chantier");
+  if (!ok) return;
+  const restaurer = await retirerDuStockage(CLES_STOCKAGE.chantiers, (x) => x.id === id && x.compteId === compte.id);
+  if (!restaurer) {
+    afficherToast("Suppression impossible : mémoire de l'appareil indisponible.");
+    return;
+  }
+  if (resultat.id === id) resultat.id = null;
+  await rafraichirEcranListe();
+  proposerAnnulation("Chantier « " + nom + " » supprimé.", restaurer);
+}
+
+async function effacerBrouillonListe() {
+  const compte = etat.compte;
+  const brouillon = await lireBrouillon(compte.id);
+  if (!brouillon) return;
+  const nom = brouillon.nom || "Chantier sans nom";
+  const ok = await demanderConfirmation("Effacer ce brouillon ?",
+    "La saisie en cours de « " + nom + " » sera effacée. Les chantiers déjà enregistrés ne sont pas touchés. Vous pourrez annuler pendant 5 secondes.",
+    "Effacer", "Garder le brouillon");
+  if (!ok) return;
+  clearTimeout(assistant.minuterie);
+  assistant.minuterie = 0;
+  if (!await ecrireBrouillon(null)) {
+    afficherToast("Suppression impossible : mémoire de l'appareil indisponible.");
+    return;
+  }
+  if (assistant.chantier && assistant.chantier.compteId === compte.id) assistant.chantier = null;
+  await rafraichirEcranListe();
+  proposerAnnulation("Brouillon « " + nom + " » effacé.", async () => {
+    if (await lireBrouillon(compte.id)) return true;
+    assistant.chantier = null;
+    return ecrireBrouillon(brouillon);
+  });
+}
+
+/* ---------- Mes clients ---------- */
+
+function clientManuelValide(source, compteId) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+  if (typeof source.id !== "string" || !MOTIF_ID.test(source.id) || source.compteId !== compteId) return null;
+  const nom = texteBorne(source.nom, BORNES.texteMax);
+  if (!nom) return null;
+  return {
+    id: source.id, compteId, nom,
+    telephone: typeof source.telephone === "string" && /^\+\d{6,15}$/.test(source.telephone) ? source.telephone : "",
+    creeLe: dateIsoValide(source.creeLe) ? source.creeLe : new Date().toISOString(),
+    modifieLe: dateIsoValide(source.modifieLe) ? source.modifieLe : new Date().toISOString()
+  };
+}
+
+async function lireClientsBruts() {
+  const liste = await lireJson(CLES_STOCKAGE.clients);
+  return Array.isArray(liste) ? liste.filter((c) => c && typeof c === "object" && !Array.isArray(c)) : [];
+}
+
+async function lireClientsManuels(compteId) {
+  return (await lireClientsBruts()).map((c) => clientManuelValide(c, compteId)).filter(Boolean).slice(0, BORNES_LISTES.clientsMax);
+}
+
+async function ouvrirMesClients() {
+  if (!etat.compte) return;
+  preparerListes();
+  $("clients-recherche").value = listes.clientsRequete;
+  quitterModificationClient();
+  await afficherMesClients();
+}
+
+async function afficherMesClients() {
+  const compte = etat.compte;
+  if (!compte) return;
+  listes.cacheClients = carnetClients(await lireClientsManuels(compte.id), await lireDevis(compte.id), await lireChantiers(compte.id));
+  rafraichirListeClients();
+}
+
+function rafraichirListeClients() {
+  const tous = listes.cacheClients;
+  const affiches = filtrerClients(tous, listes.clientsRequete);
+  $("liste-clients").replaceChildren(...affiches.map(creerElementClient));
+  $("clients-compte").textContent = affiches.length === tous.length
+    ? accorderNombre(tous.length, "client", "clients")
+    : formaterEntier(affiches.length) + " sur " + accorderNombre(tous.length, "client", "clients");
+  const vide = $("clients-vide");
+  vide.hidden = affiches.length > 0;
+  vide.textContent = tous.length ? "Aucun client ne correspond à la recherche." : "Aucun client pour l'instant. Ils apparaissent ici dès votre premier devis, ou ajoutez-les ci-dessous.";
+}
+
+function creerElementClient(c) {
+  const li = document.createElement("li");
+  li.className = "element carte element-client";
+  li.dataset.element = c.cle;
+  const tete = document.createElement("div");
+  tete.className = "element-corps";
+  const pastille = document.createElement("span");
+  pastille.className = "avatar avatar-client";
+  pastille.setAttribute("aria-hidden", "true");
+  pastille.textContent = initialesDe(c.nom);
+  const texte = document.createElement("span");
+  texte.className = "element-texte";
+  texte.appendChild(ecrireInsecable(document.createElement("strong"), c.nom));
+  const telephone = document.createElement("span");
+  telephone.className = c.telephone ? "insecable" : "";
+  telephone.textContent = c.telephone ? telephoneAffiche(c.telephone) : "Pas de numéro";
+  const resume = [c.nombreDevis ? accorderNombre(c.nombreDevis, "devis", "devis") : "Aucun devis",
+    c.nombreDevis ? formaterMontant(c.total, deviseCompte()) : "", c.manuelId && !c.nombreDevis ? "ajouté à la main" : ""].filter(Boolean).join(" · ");
+  texte.append(telephone, ecrireInsecable(document.createElement("span"), resume));
+  tete.append(pastille, texte);
+  const actions = document.createElement("div");
+  actions.className = "element-actions";
+  const chiffres = c.telephone.replace(/\D/g, "");
+  actions.append(
+    lienListe("i-telephone", "Appeler", "Appeler " + c.nom, c.telephone ? "tel:+" + chiffres : ""),
+    lienListe("i-whatsapp", "WhatsApp", "Écrire à " + c.nom + " sur WhatsApp", c.telephone ? lienWhatsApp(c.telephone, "Bonjour " + c.nom + ",") : "", "action-whatsapp")
+  );
+  const sesDevis = boutonListe("i-devis", "Ses devis", "Voir les devis de " + c.nom, { devisClient: c.cle });
+  sesDevis.disabled = c.nombreDevis === 0;
+  actions.append(sesDevis, boutonListe("i-crayon", "Modifier", "Modifier le téléphone de " + c.nom, { modifierClient: c.cle }));
+  /* Seul un client ajouté à la main, sans devis ni chantier, peut être supprimé : les autres
+     viennent de vos documents et réapparaîtraient aussitôt. */
+  if (c.manuelId && !c.nombreDevis && !c.nombreChantiers) {
+    actions.appendChild(boutonListe("i-poubelle", "Supprimer", "Supprimer " + c.nom + " du carnet", { supprimerClient: c.manuelId }, "action-danger"));
+  }
+  li.append(tete, actions);
+  return li;
+}
+
+async function surClicListeClients(evenement) {
+  const cible = evenement.target.closest("[data-devis-client], [data-modifier-client], [data-supprimer-client]");
+  if (!cible || cible.disabled || !etat.compte) return;
+  const ds = cible.dataset;
+  const client = listes.cacheClients.find((c) => c.cle === (ds.devisClient || ds.modifierClient));
+  if (ds.devisClient && client) {
+    listes.devis = { requete: client.nom, statut: "tous", tri: "recents" };
+    montrer("devis");
+  } else if (ds.modifierClient && client) {
+    commencerModificationClient(client);
+  } else if (ds.supprimerClient) {
+    await supprimerClientListe(ds.supprimerClient);
+  }
+}
+
+function commencerModificationClient(client) {
+  listes.clientEdite = client.cle;
+  ["client-nom", "client-telephone"].forEach((id) => effacerErreur($(id)));
+  message("msg-client", "");
+  $("client-nom").value = client.nom;
+  $("client-nom").readOnly = true;
+  $("client-telephone").value = client.telephone ? telephoneAffiche(client.telephone) : "";
+  $("titre-form-client").textContent = "Modifier le téléphone de " + client.nom;
+  $("aide-form-client").textContent = "Le nom vient de vos devis et ne change pas ici. Le numéro saisi sera proposé pour appeler et pour WhatsApp.";
+  $("libelle-client-enregistrer").textContent = "Enregistrer le numéro";
+  $("bouton-client-annuler").hidden = false;
+  $("form-client").scrollIntoView({ block: "center", behavior: defilementDoux() });
+  $("client-telephone").focus({ preventScroll: true });
+}
+
+function quitterModificationClient() {
+  listes.clientEdite = null;
+  ["client-nom", "client-telephone"].forEach((id) => effacerErreur($(id)));
+  $("client-nom").value = "";
+  $("client-nom").readOnly = false;
+  $("client-telephone").value = "";
+  $("titre-form-client").textContent = "Ajouter un client";
+  $("aide-form-client").textContent = "Un client qui porte déjà ce nom est mis à jour, jamais dupliqué.";
+  $("libelle-client-enregistrer").textContent = "Ajouter le client";
+  $("bouton-client-annuler").hidden = true;
+}
+
+function surAnnulerModificationClient() {
+  quitterModificationClient();
+  message("msg-client", "");
+}
+
+/* Lecture stricte du téléphone (vide accepté). Rend undefined si invalide (erreur affichée). */
+function lireTelephoneFormulaireClient() {
+  const saisie = $("client-telephone").value.trim();
+  if (!saisie) return "";
+  const analyse = analyserTelephone(saisie, etat.compte.pays);
+  if (telephoneValide(analyse)) return versE164(analyse);
+  afficherErreur("client-telephone", messageTelephone(analyse));
+  return undefined;
+}
+
+function surChangementTelephoneClient(evenement) {
+  const entree = evenement.currentTarget;
+  if (!entree.value.trim()) {
+    effacerErreur(entree);
+    return;
+  }
+  const analyse = analyserTelephone(entree.value, etat.compte.pays);
+  if (telephoneValide(analyse)) {
+    entree.value = telephoneAffiche(versE164(analyse));
+    effacerErreur(entree);
+  } else {
+    afficherErreur("client-telephone", messageTelephone(analyse));
+  }
+}
+
+async function surEnregistrerClient(evenement) {
+  evenement.preventDefault();
+  const compte = etat.compte;
+  if (!compte) return;
+  ["client-nom", "client-telephone"].forEach((id) => effacerErreur($(id)));
+  message("msg-client", "");
+  const nom = nettoyerTexte($("client-nom").value);
+  if (!texteValide(nom, true)) {
+    afficherErreur("client-nom", "Indiquez le nom du client (" + BORNES.texteMin + " à " + BORNES.texteMax + " caractères).");
+    $("client-nom").focus();
+    return;
+  }
+  const telephone = lireTelephoneFormulaireClient();
+  if (telephone === undefined) {
+    $("client-telephone").focus();
+    return;
+  }
+  const cle = cleTexte(nom);
+  const bruts = await lireClientsBruts();
+  const index = bruts.findIndex((x) => clientManuelValide(x, compte.id) && cleTexte(x.nom) === cle);
+  const existe = index >= 0 || listes.cacheClients.some((c) => c.cle === cle);
+  const maintenant = new Date().toISOString();
+  if (index >= 0) {
+    bruts[index] = { ...clientManuelValide(bruts[index], compte.id), telephone, modifieLe: maintenant };
+  } else {
+    if ((await lireClientsManuels(compte.id)).length >= BORNES_LISTES.clientsMax) {
+      message("msg-client", "Carnet plein : " + formaterEntier(BORNES_LISTES.clientsMax) + " clients au maximum sur cet appareil.");
+      return;
+    }
+    bruts.push({ id: "c" + identifiantCourt().slice(1), compteId: compte.id, nom, telephone, creeLe: maintenant, modifieLe: maintenant });
+  }
+  if (!await ecrireValeur(CLES_STOCKAGE.clients, JSON.stringify(bruts))) {
+    message("msg-client", "Enregistrement impossible : mémoire de l'appareil indisponible.");
+    return;
+  }
+  const modification = Boolean(listes.clientEdite);
+  quitterModificationClient();
+  await afficherMesClients();
+  message("msg-client", modification || existe ? "Client « " + nom + " » mis à jour." : "Client « " + nom + " » ajouté.", true);
+  reperElement("liste-clients", cle);
+}
+
+async function supprimerClientListe(id) {
+  const compte = etat.compte;
+  const client = (await lireClientsManuels(compte.id)).find((c) => c.id === id);
+  if (!client) return;
+  const ok = await demanderConfirmation("Supprimer ce client ?",
+    client.nom + " sera retiré de votre carnet. Vous pourrez annuler pendant 5 secondes.", "Supprimer", "Garder le client");
+  if (!ok) return;
+  const restaurer = await retirerDuStockage(CLES_STOCKAGE.clients, (x) => x.id === id && x.compteId === compte.id);
+  if (!restaurer) {
+    afficherToast("Suppression impossible : mémoire de l'appareil indisponible.");
+    return;
+  }
+  await rafraichirEcranListe();
+  proposerAnnulation(client.nom + " a été retiré du carnet.", restaurer);
+}
+
+/* ---------- Statistiques ---------- */
+
+async function ouvrirStats() {
+  const compte = etat.compte;
+  if (!compte) return;
+  const s = statistiquesDetaillees(await lireDevis(compte.id), new Date(), BORNES_LISTES.clientsGraphique);
+  const devise = deviseCompte();
+  ecrireMontantFort("stats-montant", s.montant);
+  $("stats-montant-detail").textContent = s.total ? accorderNombre(s.total, "devis", "devis") + " au total" : "Aucun devis pour l'instant";
+  $("stats-taux").textContent = s.taux === null ? "—" : s.taux + "\u00A0%";
+  $("stats-taux-detail").textContent = s.total ? accorderNombre(s.acceptes, "devis accepté ou payé", "devis acceptés ou payés") + " sur " + formaterEntier(s.total) : "";
+  ecrireMontantFort("stats-accepte", s.montantAccepte);
+  $("stats-accepte-detail").textContent = "Devis acceptés et payés";
+
+  const nomMois = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(new Date(s.mois.annee, s.mois.mois, 1));
+  ecrireInsecable($("stats-mois-texte"), nomMois.charAt(0).toLocaleUpperCase("fr-FR") + nomMois.slice(1) + " : "
+    + (s.mois.nombre ? accorderNombre(s.mois.nombre, "devis", "devis") + " pour " + formaterMontant(s.mois.montant, devise) + "." : "aucun devis pour l'instant."));
+  const p = s.moisPrecedent;
+  let comparaison = "Aucun devis le mois dernier : pas de comparaison possible.";
+  if (s.variation !== null) {
+    comparaison = "Le mois dernier à la même date : " + formaterMontant(p.montantMemeJour, devise) + " ("
+      + (s.variation > 0 ? "+\u00A0" : s.variation < 0 ? "−\u00A0" : "") + Math.abs(s.variation) + "\u00A0% ce mois-ci).";
+  } else if (p.nombre) {
+    comparaison = "Le mois dernier : " + accorderNombre(p.nombre, "devis", "devis") + " pour " + formaterMontant(p.montant, devise) + ", tous après le " + formaterEntier(s.mois.jourCourant) + ".";
+  }
+  ecrireInsecable($("stats-mois-comparaison"), comparaison);
+  dessinerEvolution(s.mois, devise, $("stats-mois-texte").textContent);
+
+  const max = s.parClient.reduce((m, c) => Math.max(m, c.montant), 0);
+  $("stats-clients").replaceChildren(...s.parClient.map((c) => {
+    const li = document.createElement("li");
+    li.className = "stats-barre" + (c.autres ? " stats-autres" : "");
+    const tete = document.createElement("div");
+    tete.className = "stats-barre-tete";
+    const nom = ecrireInsecable(document.createElement("span"), c.nom + " · " + accorderNombre(c.nombre, "devis", "devis"));
+    nom.className = "stats-barre-nom";
+    const montant = document.createElement("strong");
+    montant.className = "stats-barre-montant";
+    montant.textContent = formaterMontant(c.montant, devise);
+    tete.append(nom, montant);
+    const piste = document.createElement("div");
+    piste.className = "stats-piste";
+    piste.setAttribute("aria-hidden", "true");
+    const remplissage = document.createElement("span");
+    remplissage.style.width = (max > 0 ? Math.max(2, Math.round((c.montant / max) * 100)) : 0) + "%";
+    piste.appendChild(remplissage);
+    li.append(tete, piste);
+    return li;
+  }));
+  $("stats-clients-vide").hidden = s.parClient.length > 0;
+
+  $("stats-statuts").replaceChildren(...Object.entries(STATUTS_DEVIS).map(([cle, statut]) => {
+    const li = document.createElement("li");
+    const pastille = document.createElement("span");
+    pastille.className = "statut";
+    pastille.dataset.ton = statut.ton;
+    pastille.textContent = statut.libelle;
+    const nombre = document.createElement("strong");
+    nombre.textContent = formaterEntier(s.parStatut[cle]);
+    li.append(pastille, nombre);
+    return li;
+  }));
+}
+
+/* Histogramme du mois en SVG : un bâton par jour (montant devisé ce jour-là), aujourd'hui en
+   jaune cerclé de violet, jours à venir en simple trait. Le résumé texte est lu par les lecteurs d'écran. */
+function dessinerEvolution(mois, devise, resume) {
+  const L = 360;
+  const H = 168;
+  const gauche = 8;
+  const droite = 8;
+  const haut = 26;
+  const bas = 22;
+  const largeurUtile = L - gauche - droite;
+  const pas = largeurUtile / mois.jours.length;
+  const max = mois.jours.reduce((m, j) => Math.max(m, j.montant), 0);
+  const svg = svgElement("svg", { viewBox: "0 0 " + L + " " + H, role: "img", class: "graphique-mois", "aria-label": resume });
+  const titre = svgElement("title", {});
+  titre.textContent = resume;
+  svg.appendChild(titre);
+  svg.appendChild(svgElement("line", { x1: gauche, y1: H - bas, x2: L - droite, y2: H - bas, class: "graphique-axe" }));
+  const legende = svgElement("text", { x: gauche, y: 14, class: "graphique-texte" });
+  legende.textContent = max > 0 ? "Plus forte journée : " + formaterMontant(max, devise) : "Aucun montant ce mois-ci";
+  svg.appendChild(legende);
+  mois.jours.forEach((jour, index) => {
+    const x = gauche + index * pas + pas * 0.18;
+    const largeur = Math.max(1.5, pas * 0.64);
+    const numero = index + 1;
+    const hauteurBaton = max > 0 && jour.montant > 0 ? Math.max(3, ((H - haut - bas) * jour.montant) / max) : 0;
+    if (numero > mois.jourCourant) {
+      svg.appendChild(svgElement("rect", { x, y: H - bas - 3, width: largeur, height: 3, rx: 1, class: "graphique-futur" }));
+    } else if (hauteurBaton > 0) {
+      svg.appendChild(svgElement("rect", { x, y: H - bas - hauteurBaton, width: largeur, height: hauteurBaton, rx: Math.min(3, largeur / 2),
+        class: numero === mois.jourCourant ? "graphique-baton graphique-aujourdhui" : "graphique-baton" }));
+    }
+    /* 1, 5, 10… et le dernier jour ; un multiple de 5 trop proche du dernier est omis (30/31). */
+    if (numero === 1 || numero === mois.jours.length || (numero % 5 === 0 && mois.jours.length - numero >= 3)) {
+      const etiquette = svgElement("text", { x: gauche + index * pas + pas / 2, y: H - 6, class: "graphique-texte graphique-jour" });
+      etiquette.textContent = String(numero);
+      svg.appendChild(etiquette);
+    }
+  });
+  $("stats-graphique").replaceChildren(svg);
+}
+
 function surClicDevisAccueil(evenement) {
   const bouton = evenement.target.closest("[data-devis]");
   if (bouton) ouvrirDevis(bouton.dataset.devis);
@@ -6874,6 +7829,22 @@ function brancherEvenements() {
   $("feuille-bouton-pdf").addEventListener("click", surEnregistrerPdf);
   $("feuille-bouton-partager").addEventListener("click", surPartagerPdf);
   window.addEventListener("resize", ajusterApercuFeuille);
+  $("devis-recherche").addEventListener("input", (e) => { listes.devis.requete = e.currentTarget.value; rafraichirListeDevis(); });
+  $("devis-filtre-statut").addEventListener("change", (e) => {
+    if (!e.target.dataset.filtreStatut) return;
+    listes.devis.statut = e.target.value;
+    rafraichirListeDevis();
+  });
+  $("devis-tri").addEventListener("change", (e) => { listes.devis.tri = e.currentTarget.value; rafraichirListeDevis(); });
+  $("liste-devis").addEventListener("click", surClicListeDevis);
+  $("chantiers-recherche").addEventListener("input", (e) => { listes.chantiersRequete = e.currentTarget.value; rafraichirListeChantiers(); });
+  $("liste-chantiers").addEventListener("click", surClicListeChantiers);
+  $("clients-recherche").addEventListener("input", (e) => { listes.clientsRequete = e.currentTarget.value; rafraichirListeClients(); });
+  $("liste-clients").addEventListener("click", surClicListeClients);
+  $("form-client").addEventListener("submit", surEnregistrerClient);
+  $("bouton-client-annuler").addEventListener("click", surAnnulerModificationClient);
+  $("client-telephone").addEventListener("change", surChangementTelephoneClient);
+  $("bouton-annuler-suppression").addEventListener("click", surAnnulerSuppression);
   const ecranPrix = $("ecran-prix");
   ecranPrix.addEventListener("input", (evenement) => {
     if (evenement.target.type !== "radio" && evenement.target.tagName !== "SELECT") surSaisieMesPrix(evenement);
@@ -6920,6 +7891,7 @@ function preparerInterface() {
   construireResultat();
   construireFicheDevis();
   construireMesPrix();
+  construireListes();
   construireNavigation();
   masquerLiensAbsents();
   remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);

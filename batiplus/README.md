@@ -25,7 +25,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 6 | Résultat de l'étude : circuits, schéma du tableau, conformité | ✔ livrée |
 | 7 | Le devis : catalogue lié, lignes modifiables, main-d'œuvre 4 modes | ✔ livrée |
 | 8 | Feuille A4 imprimable, PDF natif, partage WhatsApp | ✔ livrée |
-| 9 | Clients, chantiers, historique des devis, statistiques | à venir |
+| 9 | Clients, chantiers, historique des devis, statistiques | ✔ livrée |
 | 10 | Sécurité du front (XSS, CSP, chiffrement, verrouillage) | à venir |
 | 11 | Abonnement : 5 formules, limite de 5 devis, relances | à venir |
 | 12 | Paiement automatique : adaptateurs d'agrégateur, webhook, idempotence | à venir |
@@ -269,6 +269,33 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   PDF téléchargé), ㊳ (pied et logo selon les 5 formules), ㊴ (encodage du lien, numéros piégés,
   message complet) dans `npm run verifier` ; A4 dans `npm run verifier:navigateur` (impression
   Chromium réelle : studio sur 1 page, seule la feuille imprimée).
+
+### Mes devis, Mes chantiers, Mes clients, Statistiques (étape 9)
+
+- **Fonctions pures** (section `LISTES ET STATISTIQUES` de `moteur.js`, testées hors navigateur) :
+  `filtrerDevis` (recherche sans accents ni majuscules, tous les mots, sur numéro/titre/client/lieu/statut ;
+  filtre par statut ; tri date ↑↓ ou montant ↑↓, égalité → plus récent), `carnetClients`, `filtrerClients`,
+  `statistiquesDetaillees`. L'accueil, le profil et l'écran Statistiques utilisent **la même** fonction.
+- **Mes devis** : recherche, puces de statut avec compteurs, tri. Par devis : Ouvrir, Dupliquer
+  (nouveau numéro, brouillon), Imprimer (feuille A4), Envoyer (lien WhatsApp calculé au toucher),
+  Supprimer. Un devis d'avant l'étape 7 reste listé (historique, statistiques) mais ne s'ouvre pas.
+- **Mes chantiers** : brouillon en cours en premier (Reprendre, Effacer), puis les études (Ouvrir,
+  Dupliquer « (copie) », Supprimer ; les devis déjà faits sont conservés).
+- **Mes clients** (`bp_v1_clients`) : carnet construit depuis les devis et les chantiers (un client par
+  nom, comparé sans accents ni casse ; nom du devis le plus récent), plus ajout à la main. Nombre de
+  devis, total, Appeler (`tel:+…`), WhatsApp (`wa.me`, `rel="noopener noreferrer"`), Ses devis, Modifier
+  le téléphone (prioritaire sur celui des documents). Seul un client ajouté à la main et sans document
+  peut être supprimé.
+- **Suppression** : toujours une confirmation, puis un bandeau « Annuler » de 5 s (barre de décompte,
+  statique si mouvement réduit) qui remet l'élément **à sa place exacte** dans le stockage. Un numéro
+  de devis supprimé n'est jamais réutilisé. « Réinitialiser » dans Mes prix demande **deux**
+  confirmations.
+- **Statistiques** : chiffre devisé, taux d'acceptation (payé compté comme accepté), montant accepté,
+  histogramme SVG du mois (jour par jour) avec comparaison au mois précédent **à date égale**, montant
+  par client (8 premiers, puis « N autres clients »), répartition par statut.
+- **Contrôles** : ㊵ (confirmation + annulation sur devis, chantier, brouillon, client), ㊶ (recherche,
+  filtre, tri), ㊷ (badge « Le moins cher »), CL, ST dans `npm run verifier` ; LI dans
+  `npm run verifier:navigateur` (4 écrans, 360 et 1440 px, clair et sombre).
 
 ## Structure
 

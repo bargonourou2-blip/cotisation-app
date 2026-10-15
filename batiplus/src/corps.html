@@ -317,12 +317,18 @@
         </section>
 
         <section class="bloc carte cascade" data-rang="5" id="bloc-etudes" aria-labelledby="titre-etudes" hidden>
-          <h2 class="bloc-titre" id="titre-etudes">Dernières études</h2>
+          <div class="bloc-tete">
+            <h2 class="bloc-titre" id="titre-etudes">Dernières études</h2>
+            <button type="button" class="lien-tous" data-ecran="chantiers">Voir tous mes chantiers</button>
+          </div>
           <ul class="liste-devis liste-etudes" id="accueil-etudes"></ul>
         </section>
 
         <section class="bloc carte cascade" data-rang="5" aria-labelledby="titre-derniers">
-          <h2 class="bloc-titre" id="titre-derniers">Derniers devis</h2>
+          <div class="bloc-tete">
+            <h2 class="bloc-titre" id="titre-derniers">Derniers devis</h2>
+            <button type="button" class="lien-tous" data-ecran="devis">Voir tous mes devis</button>
+          </div>
           <ul class="liste-devis" id="accueil-devis"></ul>
           <p class="vide" id="accueil-devis-vide">Aucun devis pour l'instant. Vos trois derniers devis s'afficheront ici.</p>
         </section>
@@ -866,6 +872,139 @@
       </div>
     </section>
 
+    <section class="ecran" id="ecran-devis" aria-labelledby="titre-devis">
+      <div class="resultat listes">
+        <div class="resultat-titres">
+          <p class="surtitre">Historique</p>
+          <h1 class="titre-ecran" id="titre-devis">Mes devis</h1>
+          <p class="aide">Tous vos devis : recherchez, filtrez par statut, triez par date ou par montant.</p>
+        </div>
+
+        <div class="carte outils-liste">
+          <div class="champ">
+            <label for="devis-recherche">Rechercher un numéro, un titre, un client ou un lieu</label>
+            <input id="devis-recherche" type="text" inputmode="search" autocomplete="off" maxlength="60" placeholder="Ex. : BP-2026-0004, Kaboré, villa…">
+          </div>
+          <div class="champ">
+            <label for="devis-tri">Trier</label>
+            <select id="devis-tri"></select>
+          </div>
+          <fieldset class="filtre-statuts">
+            <legend>Statut</legend>
+            <div class="puces" id="devis-filtre-statut"></div>
+          </fieldset>
+          <p class="aide" id="devis-compte" aria-live="polite"></p>
+        </div>
+
+        <ul class="liste-elements" id="liste-devis"></ul>
+        <p class="vide carte" id="devis-vide" hidden></p>
+      </div>
+    </section>
+
+    <section class="ecran" id="ecran-chantiers" aria-labelledby="titre-chantiers">
+      <div class="resultat listes">
+        <div class="resultat-titres">
+          <p class="surtitre">Études</p>
+          <h1 class="titre-ecran" id="titre-chantiers">Mes chantiers</h1>
+          <p class="aide">Vos études enregistrées et le chantier en cours de saisie. Rouvrez, dupliquez pour un chantier semblable, ou supprimez.</p>
+        </div>
+
+        <div class="carte outils-liste">
+          <div class="champ">
+            <label for="chantiers-recherche">Rechercher un chantier, un client ou un lieu</label>
+            <input id="chantiers-recherche" type="text" inputmode="search" autocomplete="off" maxlength="60" placeholder="Ex. : villa, Ouaga 2000, Kaboré…">
+          </div>
+          <p class="aide" id="chantiers-compte" aria-live="polite"></p>
+        </div>
+
+        <ul class="liste-elements" id="liste-chantiers"></ul>
+        <div class="vide carte vide-action" id="chantiers-vide" hidden>
+          <p id="chantiers-vide-texte"></p>
+          <button type="button" class="bouton bouton-principal" data-ecran="nouveau-chantier"><svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg><span class="bouton-libelle">Nouveau chantier</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="ecran" id="ecran-clients" aria-labelledby="titre-clients">
+      <div class="resultat listes">
+        <div class="resultat-titres">
+          <p class="surtitre">Carnet</p>
+          <h1 class="titre-ecran" id="titre-clients">Mes clients</h1>
+          <p class="aide">Construit automatiquement depuis vos devis et vos chantiers. Ajoutez aussi vos clients à la main.</p>
+        </div>
+
+        <div class="carte outils-liste">
+          <div class="champ">
+            <label for="clients-recherche">Rechercher un nom ou un numéro</label>
+            <input id="clients-recherche" type="text" inputmode="search" autocomplete="off" maxlength="60" placeholder="Ex. : Kaboré, 70 12…">
+          </div>
+          <p class="aide" id="clients-compte" aria-live="polite"></p>
+        </div>
+
+        <ul class="liste-elements" id="liste-clients"></ul>
+        <p class="vide carte" id="clients-vide" hidden></p>
+
+        <form class="carte formulaire" id="form-client" novalidate aria-labelledby="titre-form-client">
+          <h2 class="bloc-titre" id="titre-form-client">Ajouter un client</h2>
+          <p class="aide" id="aide-form-client">Un client qui porte déjà ce nom est mis à jour, jamais dupliqué.</p>
+          <div class="duo">
+            <div class="champ">
+              <label for="client-nom">Nom du client</label>
+              <input id="client-nom" type="text" autocomplete="off" maxlength="80" placeholder="Ex. : M. Kaboré Issouf" aria-describedby="err-client-nom">
+              <p class="champ-erreur" id="err-client-nom"></p>
+            </div>
+            <div class="champ">
+              <label for="client-telephone">Téléphone <span class="facultatif">(facultatif)</span></label>
+              <input id="client-telephone" type="text" inputmode="tel" autocomplete="off" maxlength="22" placeholder="Ex. : 70 12 34 56" aria-describedby="err-client-telephone">
+              <p class="champ-erreur" id="err-client-telephone"></p>
+            </div>
+          </div>
+          <p class="message-formulaire" id="msg-client" role="status" aria-live="polite"></p>
+          <div class="actions-ligne">
+            <button type="submit" class="bouton bouton-principal" id="bouton-client-enregistrer">
+              <svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg>
+              <span class="bouton-libelle" id="libelle-client-enregistrer">Ajouter le client</span>
+            </button>
+            <button type="button" class="bouton bouton-discret" id="bouton-client-annuler" hidden><span class="bouton-libelle">Annuler la modification</span></button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="ecran" id="ecran-stats" aria-labelledby="titre-stats">
+      <div class="resultat listes">
+        <div class="resultat-titres">
+          <p class="surtitre">Mon activité</p>
+          <h1 class="titre-ecran" id="titre-stats">Statistiques</h1>
+          <p class="aide">Calculées sur tous vos devis enregistrés sur cet appareil.</p>
+        </div>
+
+        <ul class="stats-chiffres" aria-label="Chiffres clés">
+          <li class="carte stats-chiffre stats-large"><span class="stats-libelle">Chiffre devisé</span><strong class="stats-valeur insecable" id="stats-montant">0</strong><span class="stats-detail" id="stats-montant-detail"></span></li>
+          <li class="carte stats-chiffre"><span class="stats-libelle">Taux d'acceptation</span><strong class="stats-valeur insecable" id="stats-taux">—</strong><span class="stats-detail" id="stats-taux-detail"></span></li>
+          <li class="carte stats-chiffre"><span class="stats-libelle">Montant accepté</span><strong class="stats-valeur insecable" id="stats-accepte">0</strong><span class="stats-detail" id="stats-accepte-detail"></span></li>
+        </ul>
+
+        <section class="carte panneau" aria-labelledby="titre-stats-mois">
+          <h2 class="bloc-titre" id="titre-stats-mois">Évolution sur le mois</h2>
+          <p class="stats-resume" id="stats-mois-texte"></p>
+          <div class="stats-graphique" id="stats-graphique"></div>
+          <p class="aide" id="stats-mois-comparaison"></p>
+        </section>
+
+        <section class="carte panneau" aria-labelledby="titre-stats-clients">
+          <h2 class="bloc-titre" id="titre-stats-clients">Montant par client</h2>
+          <ol class="stats-barres" id="stats-clients"></ol>
+          <p class="vide" id="stats-clients-vide" hidden>Aucun devis pour l'instant.</p>
+        </section>
+
+        <section class="carte panneau" aria-labelledby="titre-stats-statuts">
+          <h2 class="bloc-titre" id="titre-stats-statuts">Devis par statut</h2>
+          <ul class="stats-statuts" id="stats-statuts"></ul>
+        </section>
+      </div>
+    </section>
+
     <section class="ecran" id="ecran-prix" aria-labelledby="titre-prix">
       <div class="resultat mes-prix">
         <div class="resultat-titres">
@@ -1075,6 +1214,7 @@
             <li class="etat-ligne"><span>Montant total devisé</span><strong class="insecable" id="stat-montant">0</strong></li>
             <li class="etat-ligne"><span>Clients</span><strong id="stat-clients">0</strong></li>
           </ul>
+          <button type="button" class="bouton bouton-secondaire" data-ecran="stats"><svg class="icone" aria-hidden="true"><use href="#i-graphique"/></svg><span class="bouton-libelle">Voir toutes les statistiques</span></button>
         </div>
 
         <div class="carte cascade" data-rang="7" id="carte-sauvegarde">
@@ -1193,6 +1333,11 @@
 <nav class="onglets" id="onglets" aria-label="Navigation rapide"></nav>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div class="annulation" id="annulation" role="status" aria-live="polite" hidden>
+  <span class="annulation-texte" id="annulation-texte"></span>
+  <button type="button" class="annulation-bouton" id="bouton-annuler-suppression">Annuler</button>
+  <span class="annulation-barre" id="annulation-barre" aria-hidden="true"></span>
+</div>
 <div id="modale" hidden>
   <div class="modale-boite carte" role="dialog" aria-modal="true" aria-labelledby="modale-titre">
     <div class="modale-tete">
