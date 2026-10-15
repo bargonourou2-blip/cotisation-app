@@ -24,7 +24,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 5 | Assistant Nouveau chantier (5 étapes) et moteur de calcul NF C 15-100 | ✔ livrée |
 | 6 | Résultat de l'étude : circuits, schéma du tableau, conformité | ✔ livrée |
 | 7 | Le devis : catalogue lié, lignes modifiables, main-d'œuvre 4 modes | ✔ livrée |
-| 8 | Feuille A4 imprimable, PDF natif, partage WhatsApp | à venir |
+| 8 | Feuille A4 imprimable, PDF natif, partage WhatsApp | ✔ livrée |
 | 9 | Clients, chantiers, historique des devis, statistiques | à venir |
 | 10 | Sécurité du front (XSS, CSP, chiffrement, verrouillage) | à venir |
 | 11 | Abonnement : 5 formules, limite de 5 devis, relances | à venir |
@@ -236,8 +236,39 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   `prixMainOeuvreHabituel()`, `tarifJourneeHabituel()` ; le jsdom compare la fiche à `calculerDevis()`
   après chaque modification (㉟).
 - **Stockage** : `bp_v1_devis`, chaque devis validé champ par champ à la lecture ; les devis des étapes
-  précédentes (sans lignes) restent listés mais ne s'ouvrent pas. Imprimer et WhatsApp : étape 8 ;
-  limite de devis par formule : étape 11.
+  précédentes (sans lignes) restent listés mais ne s'ouvrent pas. Limite de devis par formule : étape 11.
+
+### Feuille A4, PDF et WhatsApp (étape 8)
+
+- **Écran `feuille`** (« Imprimer ou PDF » depuis la fiche devis) : aperçu fidèle de la feuille A4
+  (210 mm, mise à l'échelle à l'écran), construite uniquement avec `textContent`. Contenu : en-tête
+  (logo de l'électricien pour un abonné, sinon initiales), bloc client et chantier, tableaux Matériel et
+  Main-d'œuvre (Désignation, Unité, Qté, Prix unitaire, Montant ; en-tête violet répété, lignes
+  alternées, deux sous-totaux), totaux, TOTAL GÉNÉRAL en bloc violet, montant **en lettres**
+  (« Arrêté le présent devis à la somme de … »), note, conditions, deux signatures, mention de
+  responsabilité. Les montants et les mots composés ne sont jamais coupés.
+- **Pied de page** : « Devis réalisé avec BâtiPlus — application conçue par BRG Électro+ · … » en
+  filigrane (opacité 0,22) pour la formule gratuite, **absent** pour un abonné. Une seule fonction pure
+  décide : `formulePayante()`.
+- **Impression** : `@page { size: A4; margin: 12mm }`, `print-color-adjust: exact`,
+  `thead { display: table-header-group }` ; seule la feuille sort (`body[data-ecran-actif="feuille"]`).
+- **PDF** : produit dans l'application par `creerPdfDevis()` (PDF 1.4, Helvetica WinAnsi, aucune
+  bibliothèque externe). Mise en page en deux passes : si le devis dépasse une page, une version plus
+  serrée est essayée et la plus courte est gardée. Nom : `Devis_BP-AAAA-NNNN_Client.pdf` (accents et
+  signes retirés).
+  - Android : `Filesystem` écrit dans `Documents/BatiPlus/` (repli sur le cache si refusé), puis
+    « Partager » ouvre le partage natif (`Share`). Permission de stockage limitée à Android ≤ 10
+    (`maxSdkVersion="29"`).
+  - Navigateur : téléchargement ; partage de fichier si le navigateur le permet.
+  - Échec : message clair, puis l'impression s'ouvre (« Enregistrer au format PDF »).
+- **WhatsApp** : `https://wa.me/<chiffres>?text=<encodeURIComponent(message)>`, lien avec
+  `rel="noopener noreferrer"`. Message : client, numéro et objet du devis, résumé (circuits, prises,
+  points lumineux), total, acompte, nom et téléphone de l'électricien, « Devis réalisé avec BâtiPlus ».
+  Le téléphone du client (fiche devis) est validé ; sans numéro valide, WhatsApp demande le contact.
+- **Contrôles** : ㊲ (pages, xref du PDF, montants géants, montant en lettres, parcours réel jusqu'au
+  PDF téléchargé), ㊳ (pied et logo selon les 5 formules), ㊴ (encodage du lien, numéros piégés,
+  message complet) dans `npm run verifier` ; A4 dans `npm run verifier:navigateur` (impression
+  Chromium réelle : studio sur 1 page, seule la feuille imprimée).
 
 ## Structure
 

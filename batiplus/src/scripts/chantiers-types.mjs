@@ -23,11 +23,19 @@ export function sectionMoteur() {
 
 /* Charge le moteur. Le contexte ne contient ni window, ni document, ni localStorage :
    la moindre lecture du DOM lèverait une erreur. */
+export function sectionDocument() {
+  const source = readFileSync(join(RACINE, "src", "moteur.js"), "utf8");
+  const debut = source.indexOf("/* ==== DOCUMENT DEVIS ==== */");
+  const fin = source.indexOf("/* ==== FIN DU DOCUMENT ==== */");
+  if (debut < 0 || fin < debut) throw new Error("section DOCUMENT DEVIS introuvable dans src/moteur.js");
+  return source.slice(debut, fin);
+}
+
 export function chargerMoteur() {
   const donnees = readFileSync(join(RACINE, "src", "donnees.js"), "utf8");
-  const section = sectionMoteur();
+  const section = sectionMoteur() + "\n" + sectionDocument();
   const contexte = vm.createContext({});
-  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { etudierChantier, chiffrerChantier, calculerTotal, calculerDevis, devisDepuisChiffrage, ajusterMainOeuvre, calculerMainOeuvre, verifierConformite, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS, CATALOGUE_DEFAUT, TVA_MAX };", contexte, { filename: "moteur-nfc15100.js" });
+  vm.runInContext(donnees + "\n" + section + "\nglobalThis.__moteur = { etudierChantier, chiffrerChantier, calculerTotal, calculerDevis, devisDepuisChiffrage, ajusterMainOeuvre, calculerMainOeuvre, verifierConformite, propositionPiece, normaliserPieces, surfaceValide, BORNES_CHANTIER, TYPES_PIECES, APPAREILS, REGLES_CIRCUITS, MAIN_OEUVRE_POINTS, CATALOGUE_DEFAUT, TVA_MAX, montantEnLettres, nombreEnLettres, modeleFeuille, chainePdf, messageWhatsApp, lienWhatsApp, nomFichierDevis, creerPdfDevis, resumeDevis, formulePayante, couperPdf, largeurPdf, FORMULES, PIED_DEVIS, OPACITE_FILIGRANE };", contexte, { filename: "moteur-nfc15100.js" });
   return contexte.__moteur;
 }
 

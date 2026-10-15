@@ -688,9 +688,14 @@
               <input id="devis-client" type="text" autocomplete="off" maxlength="120" data-devis-champ="client">
             </div>
             <div class="champ">
-              <label for="devis-lieu">Lieu du chantier</label>
-              <input id="devis-lieu" type="text" autocomplete="off" maxlength="120" data-devis-champ="lieu">
+              <label for="devis-client-telephone">Téléphone du client <span class="facultatif">(facultatif)</span></label>
+              <input id="devis-client-telephone" type="tel" inputmode="tel" autocomplete="off" maxlength="22" data-devis-champ="clientTelephone" aria-describedby="err-devis-client-telephone">
+              <p class="champ-erreur" id="err-devis-client-telephone"></p>
             </div>
+          </div>
+          <div class="champ">
+            <label for="devis-lieu">Lieu du chantier</label>
+            <input id="devis-lieu" type="text" autocomplete="off" maxlength="120" data-devis-champ="lieu">
           </div>
         </section>
 
@@ -807,11 +812,56 @@
         </section>
 
         <div class="barre-devis">
-          <button type="button" class="bouton bouton-principal" id="devis-bouton-enregistrer">
-            <svg class="icone" aria-hidden="true"><use href="#i-coche"/></svg>
-            <span class="bouton-libelle">Enregistrer</span>
-          </button>
+          <div class="actions-fiche">
+            <button type="button" class="bouton bouton-principal" id="devis-bouton-enregistrer">
+              <svg class="icone" aria-hidden="true"><use href="#i-coche"/></svg>
+              <span class="bouton-libelle">Enregistrer</span>
+            </button>
+            <button type="button" class="bouton bouton-secondaire" id="devis-bouton-imprimer">
+              <svg class="icone" aria-hidden="true"><use href="#i-imprimer"/></svg>
+              <span class="bouton-libelle">Imprimer ou PDF</span>
+            </button>
+            <a class="bouton bouton-whatsapp" id="devis-lien-whatsapp" href="https://wa.me/" target="_blank" rel="noopener noreferrer">
+              <svg class="icone" aria-hidden="true"><use href="#i-whatsapp"/></svg>
+              <span class="bouton-libelle">WhatsApp</span>
+            </a>
+          </div>
+          <p class="aide aide-whatsapp" id="devis-aide-whatsapp"></p>
           <p class="brouillon-etat" id="etat-devis" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="ecran" id="ecran-feuille" aria-labelledby="titre-feuille">
+      <div class="feuille-ecran">
+        <div class="feuille-tete">
+          <p class="surtitre">Feuille A4</p>
+          <h1 class="titre-ecran" id="titre-feuille">Devis</h1>
+          <p class="aide">Aperçu fidèle de la feuille imprimée et du PDF. Pour modifier un montant, revenez au devis.</p>
+          <p class="encadre-alerte" id="feuille-a-completer" role="status" hidden></p>
+          <div class="actions-feuille">
+            <button type="button" class="bouton bouton-principal" id="feuille-bouton-imprimer">
+              <svg class="icone" aria-hidden="true"><use href="#i-imprimer"/></svg>
+              <span class="bouton-libelle">Imprimer</span>
+            </button>
+            <button type="button" class="bouton bouton-secondaire" id="feuille-bouton-pdf">
+              <svg class="icone" aria-hidden="true"><use href="#i-document"/></svg>
+              <span class="bouton-libelle" id="libelle-feuille-pdf">Télécharger le PDF</span>
+            </button>
+            <button type="button" class="bouton bouton-secondaire" id="feuille-bouton-partager">
+              <svg class="icone" aria-hidden="true"><use href="#i-partager"/></svg>
+              <span class="bouton-libelle">Partager</span>
+            </button>
+            <a class="bouton bouton-whatsapp" id="feuille-lien-whatsapp" href="https://wa.me/" target="_blank" rel="noopener noreferrer">
+              <svg class="icone" aria-hidden="true"><use href="#i-whatsapp"/></svg>
+              <span class="bouton-libelle">WhatsApp</span>
+            </a>
+          </div>
+          <p class="aide aide-whatsapp" id="feuille-aide-whatsapp"></p>
+          <p class="brouillon-etat" id="etat-feuille" role="status" aria-live="polite"></p>
+        </div>
+        <div class="feuille-cadre" id="feuille-cadre">
+          <article class="feuille-a4" id="feuille-a4" aria-label="Feuille A4 du devis"></article>
         </div>
       </div>
     </section>

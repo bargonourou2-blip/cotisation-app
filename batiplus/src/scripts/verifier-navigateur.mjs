@@ -14,6 +14,7 @@
      SV schéma SVG du tableau : textes dans leurs modules, aucun chevauchement, taille lisible
      RE écran Résultat : 6 onglets, 360 et 1440 px, clair et sombre, rien de coupé
      ㊱ fiche devis et Mes prix : 360 et 1440 px, clair et sombre, rien de coupé
+     A4 feuille du devis : impression réelle (studio 1 page, villa ≤ 2), seule la feuille sort
      ㉒ tous les logos chargent et sont détourés, aucune image cassée, photo absente
         remplacée par l'illustration de repli
      ㉓ icônes maskable (navigateur et Android) : le pictogramme reste dans la zone sûre
@@ -649,6 +650,69 @@ async function main() {
       fautes36.length ? fautes36.slice(0, 3).join(" | ")
         : vues36 + " vues (fiche devis créée depuis l'étude, ligne supprimée, Mes prix tout déplié, clair et sombre), " + mots36.toLocaleString("fr-FR") + " mots mesurés, montants à 13 chiffres et 5 fournisseurs aux noms longs sur une ligne, rien sous le menu fixe");
   }
+
+  /* A4 feuille du devis dans le vrai moteur d'impression : studio sur 1 page, villa aux montants
+     géants sur 2 pages au plus ; à l'impression seule la feuille sort ; aperçu 360/1440 sans coupure. */
+  {
+    const fautesA4 = [];
+    const pagesA4 = {};
+    const quand = new Date().toISOString();
+    const studio = {
+      compteId, creeLe: quand, modifieLe: quand, statut: "etudie", etape: 5, etapeMax: 5, id: "studio-etude-0003",
+      client: { nom: "M. Kaboré Issouf", telephone: "+22670123456" }, nom: "Studio 25 m² — séjour, salle d'eau, WC", lieu: "Gounghin, Ouagadougou", type: "appartement", alimentation: "mono",
+      pieces: [{ id: "s1", type: "sejour", surface: 18, prises: null, points: null }, { id: "s2", type: "salle-eau", surface: 4, prises: null, points: null }, { id: "s3", type: "wc", surface: 3, prises: null, points: null }],
+      appareils: {}, options: { distance: 0, hauteur: 2.8, parafoudre: false, terreNeuve: false, tableauARemplacer: false },
+      mainOeuvre: { points: {}, forfait: 0, journees: { ouvriers: 0, jours: 0, tarif: null }, libres: [] }
+    };
+    const chantiersA4 = JSON.parse(avecEtudes36.bp_v1_chantiers).concat([studio]);
+    const etatA4 = { ...avecEtudes36, bp_v1_chantiers: JSON.stringify(chantiersA4) };
+    const compter = (pdf) => (Buffer.from(pdf).toString("latin1").match(/\/Type\s*\/Page\b(?!s)/g) || []).length;
+    for (const [largeur, hauteur] of [[360, 640], [1440, 900]]) {
+      const { page, contexte, nom } = await nouvellePage(largeur, hauteur, false, true, etatA4);
+      await pause(1800);
+      for (const [cle, id, maximum] of [["studio", "studio-etude-0003", 1], ["villa", "villa-etude-0001", 2]]) {
+        await page.evaluate(() => document.querySelector("#tiroir-menu [data-ecran='accueil']").click());
+        await pause(400);
+        await page.evaluate((i) => document.querySelector("#accueil-etudes [data-chantier='" + i + "']").click(), id);
+        await pause(500);
+        await page.evaluate(() => (document.getElementById("bouton-ouvrir-devis").hidden ? document.getElementById("bouton-creer-devis") : document.getElementById("bouton-ouvrir-devis")).click());
+        await pause(900);
+        await page.evaluate(() => document.getElementById("devis-bouton-imprimer").click());
+        await pause(700);
+        const actif = await page.evaluate(() => document.querySelector(".ecran.actif").id);
+        if (actif !== "ecran-feuille") { fautesA4.push(nom + " " + cle + " : écran " + actif); continue; }
+        const t = await page.evaluate(mesurerTextes, [".ecran.actif", ".entete"]);
+        if (t.motsCoupes.length || t.rognes.length || t.deborde.length || t.defileX) fautesA4.push(nom + " " + cle + " aperçu " + JSON.stringify(t));
+        await capturer(page, nom + "-feuille-" + cle, true);
+        await page.emulateMediaType("print");
+        const imprime = await page.evaluate(() => {
+          const visible = (s) => [...document.querySelectorAll(s)].some((el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden");
+          const feuille = document.getElementById("feuille-a4");
+          return {
+            autres: [".entete", "#tiroir", ".onglets", ".actions-feuille", "#feuille-a-completer"].filter((s) => visible(s)),
+            feuille: visible("#feuille-a4"), zoom: getComputedStyle(feuille).zoom, largeur: Math.round(feuille.getBoundingClientRect().width)
+          };
+        });
+        /* Mots mesurés à l'impression seulement quand la fenêtre est au moins aussi large qu'une
+           page A4 : à 360 px, l'émulation « print » met la feuille en page dans la fenêtre, ce
+           qu'une vraie impression ne fait jamais (elle utilise la largeur de la page). */
+        const t2 = largeur >= 794 ? await page.evaluate(mesurerTextes, ["#feuille-a4"]) : { motsCoupes: [], rognes: [] };
+        if (t2.motsCoupes.length || t2.rognes.length) fautesA4.push(nom + " " + cle + " impression " + JSON.stringify(t2));
+        if (imprime.autres.length || !imprime.feuille || String(imprime.zoom) !== "1") fautesA4.push(nom + " " + cle + " impression : " + JSON.stringify(imprime));
+        if (largeur === 1440) await capturer(page, "impression-" + cle, true);
+        const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+        await page.emulateMediaType(null);
+        const n = compter(pdf);
+        pagesA4[cle] = n;
+        if (n < 1 || n > maximum) fautesA4.push(nom + " " + cle + " : " + n + " page(s) A4 imprimée(s), attendu ≤ " + maximum);
+      }
+      await contexte.close();
+    }
+    controle("A4", "feuille A4 imprimée : studio sur 1 page, seule la feuille sort", fautesA4.length === 0,
+      fautesA4.length ? fautesA4.slice(0, 3).join(" | ")
+        : "impression Chromium (@page A4, marges 12 mm) : studio " + pagesA4.studio + " page, villa aux montants géants " + pagesA4.villa + " pages ; en-tête, menu, boutons et alerte masqués, zoom 1 ; aperçu 360 et 1440 px sans mot ni montant coupé");
+  }
+
 
   /* I images réelles : photo et logo redessinés, fichiers piégés refusés */
   {

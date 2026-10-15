@@ -257,6 +257,7 @@ function montrer(id, options) {
   fermerTiroir();
   window.scrollTo({ top: 0, behavior: "auto" });
   montrer.ecranCourant = destination;
+  document.body.dataset.ecranActif = destination;
   preparerEcran(destination);
   return true;
 }
@@ -271,6 +272,7 @@ function preparerEcran(id) {
   else if (id === "resultat") ouvrirResultat();
   else if (id === "fiche-devis") ouvrirFicheDevis();
   else if (id === "prix") ouvrirMesPrix();
+  else if (id === "feuille") ouvrirFeuille();
 }
 
 /* Un seul écouteur pour tous les éléments [data-ecran] (menu, onglets, raccourcis…). */
@@ -770,15 +772,6 @@ function surFinGlisse() {
 
 /* ---------- Pays, devises et téléphone ---------- */
 
-function formaterMontant(montant, codeDevise) {
-  const devise = DEVISES[codeDevise] || DEVISES.XOF;
-  const nombre = new Intl.NumberFormat("fr-FR", {
-    minimumFractionDigits: devise.decimales,
-    maximumFractionDigits: devise.decimales
-  }).format(montant);
-  return nombre + "\u00A0" + devise.libelle;
-}
-
 function paysDepuisIndicatif(indicatif, isoPrefere) {
   const candidats = PAYS.filter((p) => p.indicatif === indicatif);
   return candidats.find((p) => p.iso === isoPrefere) || candidats[0];
@@ -1065,9 +1058,11 @@ function cryptoDisponible() {
   return Boolean(window.isSecureContext && window.crypto && window.crypto.subtle && window.crypto.getRandomValues);
 }
 
+/* Par tranches de 32 Ko : un PDF de plusieurs centaines de Ko ne sature pas la pile. */
 function versBase64(octets) {
+  const tableau = octets instanceof Uint8Array ? octets : Uint8Array.from(octets);
   let binaire = "";
-  octets.forEach((octet) => { binaire += String.fromCharCode(octet); });
+  for (let i = 0; i < tableau.length; i += 0x8000) binaire += String.fromCharCode.apply(null, tableau.subarray(i, i + 0x8000));
   return btoa(binaire);
 }
 
@@ -1426,10 +1421,7 @@ function prenom(nom) {
 }
 
 function initiales(nom) {
-  const lettres = String(nom || "").split(" ").filter(Boolean)
-    .map((mot) => (mot.match(/\p{L}|\p{N}/u) || [""])[0])
-    .filter(Boolean);
-  return (lettres.slice(0, 2).join("") || "?").toLocaleUpperCase("fr-FR");
+  return initialesDe(nom);
 }
 
 /* Formule : le front ne lit JAMAIS la formule dans le stockage local (on ne peut
@@ -3001,6 +2993,578 @@ function etudierChantier(chantier, codeDevise, habituels) {
 }
 /* ==== FIN DU MOTEUR ==== */
 
+/* ==== DOCUMENT DEVIS ==== */
+/* Fonctions pures de l'étape 8 : montant en lettres, modèle de la feuille A4 (partagé par
+   l'aperçu, l'impression et le PDF), message et lien WhatsApp, nom du fichier, PDF.
+   Aucune lecture du DOM ni du stockage : testées hors de la page (verifier.mjs). */
+
+function formaterMontant(montant, codeDevise) {
+  const devise = DEVISES[codeDevise] || DEVISES.XOF;
+  const nombre = new Intl.NumberFormat("fr-FR", {
+    minimumFractionDigits: devise.decimales,
+    maximumFractionDigits: devise.decimales
+  }).format(montant);
+  return nombre + "\u00A0" + devise.libelle;
+}
+
+function formaterDecimal(nombre) {
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2, useGrouping: false }).format(nombre);
+}
+
+/* Quantité affichée : séparateur de milliers insécable, virgule décimale (2,5 jours). */
+function formaterQuantite(nombre) {
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(nombre);
+}
+
+/* Un nombre et son unité restent sur la même ligne (10 A, 30 mA, 1,5 mm², 25 m). */
+function lierUnites(texte) {
+  return String(texte).replace(/(\d) (?=(A|mA|mm²|m|m²|modules)(?![\wÀ-ÿ]))/g, "$1\u00A0");
+}
+
+/* ----- Montant en lettres (orthographe traditionnelle) ----- */
+
+const UNITES_LETTRES = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix",
+  "onze", "douze", "treize", "quatorze", "quinze", "seize"];
+const DIZAINES_LETTRES = ["", "dix", "vingt", "trente", "quarante", "cinquante", "soixante"];
+
+function moinsDeCent(n, final) {
+  if (n <= 16) return UNITES_LETTRES[n];
+  if (n < 20) return "dix-" + UNITES_LETTRES[n - 10];
+  const dizaine = Math.floor(n / 10);
+  const unite = n % 10;
+  if (dizaine === 7 || dizaine === 9) {
+    const base = dizaine === 7 ? "soixante" : "quatre-vingt";
+    const reste = moinsDeCent(10 + unite, false);
+    return base + (dizaine === 7 && unite === 1 ? " et " : "-") + reste;
+  }
+  if (dizaine === 8) return unite === 0 ? (final ? "quatre-vingts" : "quatre-vingt") : "quatre-vingt-" + UNITES_LETTRES[unite];
+  const base = DIZAINES_LETTRES[dizaine];
+  if (unite === 0) return base;
+  return base + (unite === 1 ? " et un" : "-" + UNITES_LETTRES[unite]);
+}
+
+/* 1 à 999. final : rien ne suit, ou « million(s) / milliard(s) » (noms) → « deux cents »,
+   « quatre-vingts » ; devant « mille » (adjectif) ou un autre nombre → « deux cent », « quatre-vingt ». */
+function moinsDeMille(n, final) {
+  const centaines = Math.floor(n / 100);
+  const reste = n % 100;
+  const morceaux = [];
+  if (centaines === 1) morceaux.push("cent");
+  else if (centaines > 1) morceaux.push(UNITES_LETTRES[centaines] + (reste === 0 && final ? " cents" : " cent"));
+  if (reste > 0) morceaux.push(moinsDeCent(reste, final));
+  return morceaux.join(" ");
+}
+
+function nombreEnLettres(valeur) {
+  const n = Math.floor(Math.max(0, Number(valeur) || 0));
+  if (n === 0) return "zéro";
+  const morceaux = [];
+  const milliards = Math.floor(n / 1e9);
+  const millions = Math.floor((n % 1e9) / 1e6);
+  const milliers = Math.floor((n % 1e6) / 1e3);
+  const reste = n % 1e3;
+  if (milliards > 0) morceaux.push((milliards < 1000 ? moinsDeMille(milliards, true) : nombreEnLettres(milliards)) + (milliards > 1 ? " milliards" : " milliard"));
+  if (millions > 0) morceaux.push(moinsDeMille(millions, true) + (millions > 1 ? " millions" : " million"));
+  if (milliers > 0) morceaux.push(milliers === 1 ? "mille" : moinsDeMille(milliers, false) + " mille");
+  if (reste > 0) morceaux.push(moinsDeMille(reste, true));
+  return morceaux.join(" ");
+}
+
+/* « un million deux cent mille francs CFA », « un million de francs CFA »,
+   « mille deux cent cinquante euros et cinquante centimes ». */
+function montantEnLettres(montant, codeDevise) {
+  const devise = DEVISES[codeDevise] || DEVISES.XOF;
+  const [un, plusieurs, sousUn, sousPlusieurs] = devise.lettres;
+  const facteur = Math.pow(10, devise.decimales);
+  const total = Math.round(Math.max(0, Number(montant) || 0) * facteur);
+  const entier = Math.floor(total / facteur);
+  const fraction = total - entier * facteur;
+  const de = entier >= 1e6 && entier % 1e6 === 0 ? " de " : " ";
+  let texte = nombreEnLettres(entier) + de + (entier >= 2 ? plusieurs : un);
+  if (fraction > 0) texte += " et " + nombreEnLettres(fraction) + " " + (fraction >= 2 ? sousPlusieurs : sousUn);
+  return texte;
+}
+
+/* ----- Modèle de la feuille A4 ----- */
+
+function libelleTotal(base, valeur) {
+  return base + " (" + formaterDecimal(valeur) + "\u00A0%)";
+}
+
+/* Le seul endroit qui décide du pied de page et du logo : formule payante → pas de pied,
+   logo de l'électricien ; gratuite → pied en filigrane, initiales. */
+function formulePayante(formule) {
+  return Object.prototype.hasOwnProperty.call(FORMULES, formule) && FORMULES[formule].illimite === true;
+}
+
+/* emetteur = { nom, entreprise, telephone (affiché), ville, pays (nom) } ; clientTelephone affiché. */
+function modeleFeuille(devis, codeDevise, formule, emetteur, clientTelephone) {
+  const d = devis && typeof devis === "object" ? devis : {};
+  const e = emetteur && typeof emetteur === "object" ? emetteur : {};
+  const calcul = calculerDevis(d, codeDevise);
+  const montant = (valeur) => formaterMontant(valeur, codeDevise);
+  const payante = formulePayante(formule);
+  const materiel = calcul.lignes.filter((l) => !l.supprimee && l.quantite > 0).map((l) => ({
+    designation: texteBorne(l.designation, BORNES_CATALOGUE.designationMax) || "Article",
+    unite: Object.prototype.hasOwnProperty.call(UNITES, l.unite) ? UNITES[l.unite] : UNITES.u,
+    quantite: formaterQuantite(l.quantite), prix: montant(l.prix), montant: montant(l.montant), aCompleter: l.prix === 0
+  }));
+  const mo = calcul.mainOeuvre;
+  const mainOeuvre = mo.lignes.filter((l) => l.quantite > 0 && l.montant > 0).map((l) => ({
+    designation: /^(Pose|Dépose)/.test(l.libelle) ? l.libelle : "Pose : " + l.libelle.charAt(0).toLocaleLowerCase("fr-FR") + l.libelle.slice(1), unite: UNITES.u,
+    quantite: formaterQuantite(l.quantite), prix: montant(l.prix), montant: montant(l.montant)
+  }));
+  if (mo.forfait > 0) mainOeuvre.push({ designation: "Forfait main-d'œuvre", unite: UNITES.forfait, quantite: "1", prix: montant(mo.forfait), montant: montant(mo.forfait) });
+  if (mo.journees.total > 0) {
+    const j = mo.journees;
+    mainOeuvre.push({
+      designation: "Travail à la journée : " + j.ouvriers + (j.ouvriers > 1 ? " ouvriers" : " ouvrier") + " × " + formaterQuantite(j.jours) + (j.jours > 1 ? " jours" : " jour"),
+      unite: "jour", quantite: formaterQuantite(arrondi(j.ouvriers * j.jours, 2)), prix: montant(j.tarif), montant: montant(j.total)
+    });
+  }
+  mo.libres.filter((l) => l.montant > 0).forEach((l) => {
+    mainOeuvre.push({ designation: l.libelle || "Prestation", unite: UNITES.forfait, quantite: "1", prix: montant(l.montant), montant: montant(l.montant) });
+  });
+  const t = calcul.total;
+  const totaux = [
+    { libelle: "Total matériel", valeur: montant(t.materiel) },
+    { libelle: "Total main-d'œuvre", valeur: montant(t.mainOeuvre) }
+  ];
+  if (t.remise > 0 || t.tvaActive) totaux.push({ libelle: "Sous-total", valeur: montant(t.sousTotal) });
+  if (t.remise > 0) totaux.push({ libelle: t.typeRemise === "pourcent" ? libelleTotal("Remise", t.valeurRemise) : "Remise", valeur: "−\u00A0" + montant(t.remise) });
+  if (t.tvaActive) totaux.push({ libelle: libelleTotal("TVA", t.tauxTva), valeur: montant(t.tva) });
+  const titre = texteBorne(e.entreprise, BORNES.texteMax) || texteBorne(e.nom, BORNES.texteMax) || "Électricien";
+  const lignesEmetteur = [
+    texteBorne(e.entreprise, BORNES.texteMax) ? texteBorne(e.nom, BORNES.texteMax) : "",
+    texteBorne(e.telephone, 30) ? "Tél. : " + texteBorne(e.telephone, 30) : "",
+    [texteBorne(e.ville, BORNES.texteMax), texteBorne(e.pays, BORNES.texteMax)].filter(Boolean).join(", ")
+  ].filter(Boolean);
+  const date = Date.parse(d.creeLe);
+  return {
+    numero: typeof d.numero === "string" ? d.numero : "",
+    date: new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(Number.isFinite(date) ? new Date(date) : new Date(0)),
+    objet: texteBorne(d.titre, BORNES_DEVIS.titreMax) || "Installation électrique",
+    emetteur: { titre, lignes: lignesEmetteur, initiales: initialesDe(texteBorne(e.nom, BORNES.texteMax) || titre), logo: payante },
+    client: { nom: texteBorne(d.client, BORNES.texteMax), telephone: texteBorne(clientTelephone, 30), lieu: texteBorne(d.lieu, BORNES.texteMax) },
+    materiel, sousTotalMateriel: montant(calcul.totalMateriel),
+    mainOeuvre, sousTotalMainOeuvre: montant(mo.total),
+    totaux,
+    totalGeneral: montant(t.totalGeneral),
+    acompte: { libelle: libelleTotal("Acompte à la commande", t.tauxAcompte), valeur: montant(t.acompte) },
+    reste: { libelle: "Reste à payer", valeur: montant(t.reste) },
+    lettres: "Arrêté le présent devis à la somme de " + montantEnLettres(t.totalGeneral, codeDevise) + ".",
+    note: nettoyerTexteDocument(d.note, BORNES_DEVIS.noteMax),
+    conditions: nettoyerTexteDocument(d.conditions, BORNES.conditionsMax),
+    signatures: SIGNATURES_DEVIS,
+    mention: MENTION_ETUDE,
+    pied: payante ? null : PIED_DEVIS,
+    aCompleter: materiel.filter((l) => l.aCompleter).length,
+    resume: resumeDevis(calcul),
+    brut: { totalGeneral: t.totalGeneral, acompte: t.acompte, tauxAcompte: t.tauxAcompte }
+  };
+}
+
+function initialesDe(nom) {
+  const lettres = String(nom || "").split(" ").filter(Boolean)
+    .map((mot) => (mot.match(/\p{L}|\p{N}/u) || [""])[0]).filter(Boolean);
+  return (lettres.slice(0, 2).join("") || "?").toLocaleUpperCase("fr-FR");
+}
+
+function nettoyerTexteDocument(valeur, max) {
+  return String(typeof valeur === "string" ? valeur : "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, "")
+    .replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, max);
+}
+
+/* Résumé tiré des lignes du devis (donc juste même après modification) :
+   un disjoncteur divisionnaire par circuit, les prises (étanches comprises), les points lumineux. */
+function resumeDevis(calcul) {
+  const lignes = calcul.lignes.filter((l) => !l.supprimee);
+  const somme = (test) => lignes.filter((l) => typeof l.ref === "string" && test(l.ref)).reduce((s, l) => s + l.quantite, 0);
+  return {
+    circuits: somme((ref) => ref.startsWith("disjoncteur-")),
+    prises: somme((ref) => ref === "prise" || ref === "prise-etanche"),
+    points: somme((ref) => ref === "point")
+  };
+}
+
+/* ----- WhatsApp ----- */
+
+function accorderNombre(nombre, singulier, plurielTexte) {
+  return formaterQuantite(nombre) + " " + (nombre > 1 ? plurielTexte : singulier);
+}
+
+/* Texte brut : espaces insécables remplacées par des espaces simples (lisibles partout). */
+function messageWhatsApp(modele) {
+  const r = modele.resume;
+  const resume = [
+    r.circuits ? accorderNombre(r.circuits, "circuit", "circuits") : "",
+    r.prises ? accorderNombre(r.prises, "prise", "prises") : "",
+    r.points ? accorderNombre(r.points, "point lumineux", "points lumineux") : ""
+  ].filter(Boolean);
+  const e = modele.emetteur;
+  const signature = [e.titre, ...e.lignes.filter((l) => l.startsWith("Tél. : ")).map((l) => l.slice(7))].join(" — ");
+  return [
+    modele.client.nom ? "Bonjour " + modele.client.nom + "," : "Bonjour,",
+    "Voici votre devis " + modele.numero + " : " + modele.objet + ".",
+    resume.length ? "Résumé : " + resume.join(", ") + "." : "",
+    "Total : " + modele.totalGeneral,
+    modele.acompte.libelle + " : " + modele.acompte.valeur,
+    signature,
+    SIGNATURE_WHATSAPP
+  ].filter(Boolean).join("\n").replace(/[\u00A0\u202F\u2007\u2009]/g, " ");
+}
+
+/* Numéro nettoyé (chiffres uniquement) ; sans numéro valable, WhatsApp laisse choisir le contact.
+   Le texte passe TOUJOURS par encodeURIComponent. */
+function lienWhatsApp(telephone, message) {
+  const numero = String(telephone || "").replace(/[^0-9]/g, "");
+  const valable = numero.length >= 8 && numero.length <= 15;
+  return "https://wa.me/" + (valable ? numero : "") + "?text=" + encodeURIComponent(String(message || ""));
+}
+
+/* Devis_BP-2026-0042_Mme_Sawadogo_Aminata.pdf : lettres sans accents, chiffres, tirets. */
+function nomFichierDevis(numero, client) {
+  const propre = (texte) => String(texte || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9-]+/g, "_").replace(/^[_-]+|[_-]+$/g, "");
+  return "Devis_" + (propre(numero) || "BP") + "_" + (propre(client).slice(0, 40).replace(/[_-]+$/, "") || "Client") + ".pdf";
+}
+
+/* ----- PDF (polices standard Helvetica, encodage WinAnsi) ----- */
+
+function codeWinAnsi(caractere) {
+  const point = caractere.codePointAt(0);
+  if ((point >= 32 && point <= 126) || (point >= 160 && point <= 255)) return point;
+  if (Object.prototype.hasOwnProperty.call(WINANSI_SPECIAUX, point)) return WINANSI_SPECIAUX[point];
+  const simple = caractere.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const code = simple.length === 1 ? simple.codePointAt(0) : 0;
+  return code >= 32 && code <= 126 ? code : 63;
+}
+
+function codesPdf(texte) {
+  return Array.from(String(texte), codeWinAnsi);
+}
+
+function largeurPdf(texte, gras, taille) {
+  const table = gras ? POLICES_PDF.grasse : POLICES_PDF.normale;
+  return codesPdf(texte).reduce((s, code) => s + (table[code - 32] || 556), 0) * taille / 1000;
+}
+
+/* Chaîne littérale PDF entièrement ASCII : ( ) \ échappés, le reste en octal. */
+function chainePdf(texte) {
+  return "(" + codesPdf(texte).map((code) => {
+    if (code === 40 || code === 41 || code === 92) return "\\" + String.fromCharCode(code);
+    if (code < 32 || code > 126) return "\\" + code.toString(8).padStart(3, "0");
+    return String.fromCharCode(code);
+  }).join("") + ")";
+}
+
+/* Retour à la ligne aux espaces seulement : un montant, un mot composé ou « 16 A » n'est
+   jamais coupé. Un mot plus large que la colonne entière est le seul cas coupé. */
+function couperPdf(texte, largeurMax, gras, taille) {
+  const lignes = [];
+  lierUnites(String(texte || "")).split("\n").forEach((paragraphe) => {
+    let courante = "";
+    paragraphe.split(" ").filter(Boolean).forEach((mot) => {
+      const essai = courante ? courante + " " + mot : mot;
+      if (largeurPdf(essai, gras, taille) <= largeurMax) {
+        courante = essai;
+        return;
+      }
+      if (courante) lignes.push(courante);
+      let reste = mot;
+      while (reste.length > 1 && largeurPdf(reste, gras, taille) > largeurMax) {
+        let n = reste.length - 1;
+        while (n > 1 && largeurPdf(reste.slice(0, n), gras, taille) > largeurMax) n -= 1;
+        lignes.push(reste.slice(0, n));
+        reste = reste.slice(n);
+      }
+      courante = reste;
+    });
+    lignes.push(courante);
+  });
+  return lignes;
+}
+
+/* Taille de police réduite (jusqu'à 5 pt) pour qu'un montant tienne entier dans sa colonne. */
+function taillePourLargeur(texte, gras, taille, largeurMax) {
+  let t = taille;
+  while (t > 5 && largeurPdf(texte, gras, t) > largeurMax) t -= 0.25;
+  return t;
+}
+
+function logoJpegValide(logo) {
+  return Boolean(logo && typeof logo === "object" && ArrayBuffer.isView(logo.octets) && logo.octets.length > 4
+    && logo.octets[0] === 0xFF && logo.octets[1] === 0xD8
+    && Number.isInteger(logo.largeur) && Number.isInteger(logo.hauteur)
+    && logo.largeur > 0 && logo.hauteur > 0 && logo.largeur <= 4000 && logo.hauteur <= 4000);
+}
+
+/* PDF A4 du devis (octets). logo : { octets JPEG, largeur, hauteur } ou null.
+   Même contenu que la feuille imprimée ; en-tête de tableau répété à chaque page. */
+function creerPdfDevis(modele, logo) {
+  /* Deux passes : si le devis dépasse une page, une mise en page plus serrée (lignes et
+     espacements réduits, mêmes tailles de texte) est essayée ; la plus courte est gardée.
+     Ainsi un devis ne déborde jamais sur une page de plus pour quelques points. */
+  const normale = mettreEnPagePdf(modele, logo, false);
+  if (normale.pages.length === 1) return assemblerPdf(modele, logo, normale);
+  const serree = mettreEnPagePdf(modele, logo, true);
+  return assemblerPdf(modele, logo, serree.pages.length < normale.pages.length ? serree : normale);
+}
+
+function mettreEnPagePdf(modele, logo, serre) {
+  const W = PDF_A4.largeur;
+  const H = PDF_A4.hauteur;
+  const M = PDF_A4.marge;
+  const CW = W - 2 * M;
+  const BAS = H - M - 16;
+  const C = { violet: "#6A0DAD", doux: "#F3E9FD", texte: "#17131F", texte2: "#5F5870", ligne: "#DCD3EA", blanc: "#FFFFFF" };
+  const n = (v) => String(Math.round(v * 100) / 100);
+  const rgb = (hex) => [1, 3, 5].map((i) => n(parseInt(hex.slice(i, i + 2), 16) / 255)).join(" ");
+  const pas = serre ? 8.4 : 9.5;
+  const ligneBase = serre ? 8.2 : 9.5;
+  const hauteurEntete = serre ? 15 : 17;
+  const hauteurSignature = serre ? 44 : 52;
+  const pages = [];
+  let ops = [];
+  let y = M;
+  const nouvellePage = () => {
+    ops = [];
+    pages.push(ops);
+    y = M;
+  };
+  const rect = (x, haut, w, h, hex) => ops.push(rgb(hex) + " rg " + n(x) + " " + n(H - haut - h) + " " + n(w) + " " + n(h) + " re f");
+  const cadre = (x, haut, w, h, hex) => ops.push("0.8 w " + rgb(hex) + " RG " + n(x) + " " + n(H - haut - h) + " " + n(w) + " " + n(h) + " re S");
+  const trait = (x1, y1, x2, epaisseur, hex) => ops.push(n(epaisseur) + " w " + rgb(hex) + " RG " + n(x1) + " " + n(H - y1) + " m " + n(x2) + " " + n(H - y1) + " l S");
+  const ecrire = (texte, x, base, taille, gras, hex, alignement, boite) => {
+    const largeur = largeurPdf(texte, gras, taille);
+    const xx = alignement === "droite" ? x + boite - largeur : alignement === "centre" ? x + (boite - largeur) / 2 : x;
+    ops.push("BT /" + (gras ? "F2" : "F1") + " " + n(taille) + " Tf " + rgb(hex) + " rg " + n(xx) + " " + n(H - base) + " Td " + chainePdf(texte) + " Tj ET");
+  };
+  const cercle = (cx, cy, r, hex) => {
+    const k = 0.5523 * r;
+    const Y = H - cy;
+    ops.push(rgb(hex) + " rg " + n(cx + r) + " " + n(Y) + " m "
+      + [n(cx + r), n(Y + k), n(cx + k), n(Y + r), n(cx), n(Y + r)].join(" ") + " c "
+      + [n(cx - k), n(Y + r), n(cx - r), n(Y + k), n(cx - r), n(Y)].join(" ") + " c "
+      + [n(cx - r), n(Y - k), n(cx - k), n(Y - r), n(cx), n(Y - r)].join(" ") + " c "
+      + [n(cx + k), n(Y - r), n(cx + r), n(Y - k), n(cx + r), n(Y)].join(" ") + " c f");
+  };
+  const assurer = (hauteur) => {
+    if (y + hauteur > BAS && y > M + 1) nouvellePage();
+  };
+
+  nouvellePage();
+  /* En-tête : logo (abonné) ou initiales, émetteur, référence du devis. */
+  const e = modele.emetteur;
+  const avecLogo = e.logo && logoJpegValide(logo);
+  if (avecLogo) {
+    const echelle = Math.min(56 / logo.largeur, 56 / logo.hauteur);
+    const lw = logo.largeur * echelle;
+    const lh = logo.hauteur * echelle;
+    ops.push("q " + n(lw) + " 0 0 " + n(lh) + " " + n(M) + " " + n(H - y - lh) + " cm /Im1 Do Q");
+  } else {
+    cercle(M + 26, y + 26, 26, C.violet);
+    ecrire(e.initiales, M, y + 32, taillePourLargeur(e.initiales, true, 18, 44), true, C.blanc, "centre", 52);
+  }
+  const xInfo = M + 66;
+  const largeurInfo = CW - 66 - 180;
+  let yInfo = y + 12;
+  couperPdf(e.titre, largeurInfo, true, 12).forEach((ligne) => { ecrire(ligne, xInfo, yInfo, 12, true, C.texte); yInfo += 14; });
+  e.lignes.forEach((texte) => couperPdf(texte, largeurInfo, false, 8.5).forEach((ligne) => { ecrire(ligne, xInfo, yInfo, 8.5, false, C.texte2); yInfo += 11; }));
+  ecrire("DEVIS", M + CW - 180, y + 20, 22, true, C.violet, "droite", 180);
+  ecrire(modele.numero, M + CW - 180, y + 35, 10, true, C.texte, "droite", 180);
+  ecrire("Date : " + modele.date, M + CW - 180, y + 48, 8.5, false, C.texte2, "droite", 180);
+  y = Math.max(y + 54, yInfo) + 2;
+  trait(M, y, M + CW, 1.4, C.violet);
+  y += 13;
+  couperPdf("Objet : " + modele.objet, CW, true, 10.5).forEach((ligne) => { ecrire(ligne, M, y, 10.5, true, C.texte); y += 13; });
+  y += 2;
+
+  /* Client et chantier, côte à côte. */
+  const largeurBloc = (CW - 10) / 2;
+  const blocs = [
+    { titre: "CLIENT", lignes: [[modele.client.nom || "—", true]].concat(modele.client.telephone ? [["Tél. : " + modele.client.telephone, false]] : []) },
+    { titre: "CHANTIER", lignes: [[modele.client.lieu || "—", true]] }
+  ].map((bloc) => ({ ...bloc, coupees: bloc.lignes.flatMap(([texte, gras]) => couperPdf(texte, largeurBloc - 16, gras, 9.5).map((l) => [l, gras])) }));
+  const hauteurBloc = 22 + Math.max(...blocs.map((b) => b.coupees.length)) * 12;
+  blocs.forEach((bloc, i) => {
+    const x = M + i * (largeurBloc + 10);
+    rect(x, y, largeurBloc, hauteurBloc, C.doux);
+    ecrire(bloc.titre, x + 8, y + 12, 7, true, C.violet);
+    bloc.coupees.forEach(([ligne, gras], k) => ecrire(ligne, x + 8, y + 25 + k * 12, gras ? 9.5 : 8.5, gras, C.texte));
+  });
+  y += hauteurBloc + 12;
+
+  /* Tableaux Matériel et Main-d'œuvre : en-tête violet répété, lignes alternées, sous-total. */
+  const colonnes = [
+    { titre: "Désignation", largeur: CW - 280, alignement: "gauche" },
+    { titre: "Unité", largeur: 46, alignement: "gauche" },
+    { titre: "Qté", largeur: 44, alignement: "droite" },
+    { titre: "Prix unitaire", largeur: 92, alignement: "droite" },
+    { titre: "Montant", largeur: 98, alignement: "droite" }
+  ];
+  const entete = () => {
+    rect(M, y, CW, hauteurEntete, C.violet);
+    let x = M;
+    colonnes.forEach((c) => { ecrire(c.titre, x + 5, y + hauteurEntete - 5.5, 7.5, true, C.blanc, c.alignement, c.largeur - 10); x += c.largeur; });
+    y += hauteurEntete;
+  };
+  const tableau = (titre, lignes, libelleSousTotal, sousTotal) => {
+    assurer(13 + 17 + 16 + 18);
+    ecrire(titre, M, y + 9, 9, true, C.violet);
+    y += 13;
+    entete();
+    if (!lignes.length) {
+      ecrire("Aucune ligne", M + 5, y + 10, 8, false, C.texte2);
+      y += 15;
+    }
+    lignes.forEach((ligne, i) => {
+      const designation = couperPdf(ligne.designation, colonnes[0].largeur - 10, false, 8);
+      const hauteur = designation.length * pas + (serre ? 3 : 4.5);
+      if (y + hauteur > BAS) {
+        nouvellePage();
+        entete();
+      }
+      if (i % 2 === 1) rect(M, y, CW, hauteur, C.doux);
+      designation.forEach((texte, k) => ecrire(texte, M + 5, y + ligneBase + k * pas, 8, false, C.texte));
+      let x = M + colonnes[0].largeur;
+      [ligne.unite, ligne.quantite, ligne.prix, ligne.montant].forEach((valeur, j) => {
+        const c = colonnes[j + 1];
+        const gras = j === 3;
+        ecrire(valeur, x + 5, y + ligneBase, taillePourLargeur(valeur, gras, 8, c.largeur - 10), gras, C.texte, c.alignement, c.largeur - 10);
+        x += c.largeur;
+      });
+      y += hauteur;
+    });
+    if (y + 18 > BAS) nouvellePage();
+    trait(M, y, M + CW, 0.9, C.violet);
+    const lm = colonnes[4].largeur;
+    ecrire(libelleSousTotal, M, y + 12, 8.5, true, C.texte, "droite", CW - lm - 5);
+    ecrire(sousTotal, M + CW - lm, y + 12, taillePourLargeur(sousTotal, true, 9, lm - 5), true, C.violet, "droite", lm - 5);
+    y += serre ? 18 : 24;
+  };
+  tableau("MATÉRIEL", modele.materiel, "Sous-total matériel", modele.sousTotalMateriel);
+  tableau("MAIN-D'ŒUVRE", modele.mainOeuvre, "Sous-total main-d'œuvre", modele.sousTotalMainOeuvre);
+
+  /* Totaux à droite ; à gauche le montant en lettres, la note et les conditions.
+     Un seul bloc, jamais coupé. */
+  const largeurTotaux = 250;
+  const xTotaux = M + CW - largeurTotaux;
+  const largeurGauche = CW - largeurTotaux - 16;
+  const gauche = [];
+  [["MONTANT EN LETTRES", modele.lettres, 8.5], ["NOTE", modele.note, 8], ["CONDITIONS", modele.conditions, 8]].forEach(([titre, texte, taille]) => {
+    if (!texte) return;
+    gauche.push({ texte: titre, taille: 7, gras: true, hex: C.violet, avant: gauche.length ? 7 : 0, hauteur: 12 });
+    couperPdf(texte, largeurGauche, false, taille).forEach((ligne) => gauche.push({ texte: ligne, taille, gras: false, hex: C.texte, avant: 0, hauteur: taille + 2.5 }));
+  });
+  const hauteurTotaux = modele.totaux.length * 14 + 30 + 2 * 14 + 4;
+  const hauteurGauche = gauche.reduce((s, l) => s + l.avant + l.hauteur, 0);
+  assurer(Math.max(hauteurTotaux, hauteurGauche) + 8);
+  const debut = y;
+  let yGauche = y;
+  gauche.forEach((l) => {
+    yGauche += l.avant;
+    ecrire(l.texte, M, yGauche + l.taille + 1, l.taille, l.gras, l.hex);
+    yGauche += l.hauteur;
+  });
+  const ligneTotal = (libelle, valeur, gras, hex) => {
+    ecrire(libelle, xTotaux + 6, y + 10, 8.5, gras, hex);
+    ecrire(valeur, xTotaux + 120, y + 10, taillePourLargeur(valeur, gras, 8.5, largeurTotaux - 126), gras, hex, "droite", largeurTotaux - 126);
+    y += 14;
+  };
+  modele.totaux.forEach((t) => ligneTotal(t.libelle, t.valeur, false, C.texte));
+  y += 2;
+  rect(xTotaux, y, largeurTotaux, 26, C.violet);
+  ecrire("TOTAL GÉNÉRAL", xTotaux + 8, y + 16.5, 9.5, true, C.blanc);
+  ecrire(modele.totalGeneral, xTotaux + 96, y + 17, taillePourLargeur(modele.totalGeneral, true, 12, largeurTotaux - 104), true, C.blanc, "droite", largeurTotaux - 104);
+  y += 30;
+  ligneTotal(modele.acompte.libelle, modele.acompte.valeur, false, C.texte);
+  ligneTotal(modele.reste.libelle, modele.reste.valeur, true, C.texte);
+  y = Math.max(y, debut + hauteurGauche) + 12;
+
+  /* Deux signatures et la mention de responsabilité, ensemble. */
+  const mention = couperPdf(modele.mention, CW, false, 7.5);
+  assurer(hauteurSignature + 12 + mention.length * 9.5);
+  const largeurSignature = (CW - 16) / 2;
+  modele.signatures.forEach((s, i) => {
+    const x = M + i * (largeurSignature + 16);
+    cadre(x, y, largeurSignature, hauteurSignature, C.ligne);
+    ecrire(s.titre, x + 8, y + 13, 8.5, true, C.texte);
+    ecrire(s.aide, x + 8, y + 24, 7, false, C.texte2);
+  });
+  y += hauteurSignature + 6;
+  mention.forEach((ligne) => { ecrire(ligne, M, y + 7, 7.5, false, C.texte2); y += 9.5; });
+
+  /* Pied : filigrane discret (formule gratuite) et numéro de page si plusieurs pages. */
+  pages.forEach((page, index) => {
+    ops = page;
+    if (modele.pied) {
+      ops.push("q /GS1 gs");
+      ecrire(modele.pied, M, H - M + 2, taillePourLargeur(modele.pied, false, 7, CW - 70), false, C.texte, "centre", CW);
+      ops.push("Q");
+    }
+    if (pages.length > 1) ecrire("Page " + (index + 1) + " / " + pages.length, M, H - M + 2, 7, false, C.texte2, "droite", CW);
+  });
+  return { pages, avecLogo };
+}
+
+/* Assemblage : objets, table des positions (xref), trailer. */
+function assemblerPdf(modele, logo, mise) {
+  const W = PDF_A4.largeur;
+  const H = PDF_A4.hauteur;
+  const { pages, avecLogo } = mise;
+  const morceaux = [];
+  let taille = 0;
+  const positions = [];
+  const ajouter = (contenu) => {
+    const octets = typeof contenu === "string" ? Uint8Array.from(contenu, (c) => c.charCodeAt(0) & 255) : contenu;
+    morceaux.push(octets);
+    taille += octets.length;
+  };
+  const objet = (numero, dictionnaire, flux) => {
+    positions[numero] = taille;
+    if (flux === undefined) {
+      ajouter(numero + " 0 obj\n" + dictionnaire + "\nendobj\n");
+      return;
+    }
+    const longueur = typeof flux === "string" ? flux.length : flux.length;
+    ajouter(numero + " 0 obj\n" + dictionnaire.replace("«LONGUEUR»", String(longueur)) + "\nstream\n");
+    ajouter(flux);
+    ajouter("\nendstream\nendobj\n");
+  };
+  const premierePage = avecLogo ? 7 : 6;
+  const idsPages = pages.map((_, i) => premierePage + i * 2);
+  ajouter("%PDF-1.4\n");
+  ajouter(Uint8Array.from([37, 226, 227, 207, 211, 10]));
+  objet(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  objet(2, "<< /Type /Pages /Kids [" + idsPages.map((id) => id + " 0 R").join(" ") + "] /Count " + pages.length + " >>");
+  objet(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+  objet(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+  objet(5, "<< /Type /ExtGState /ca " + OPACITE_FILIGRANE + " /CA " + OPACITE_FILIGRANE + " >>");
+  if (avecLogo) {
+    objet(6, "<< /Type /XObject /Subtype /Image /Width " + logo.largeur + " /Height " + logo.hauteur
+      + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length «LONGUEUR» >>", Uint8Array.from(logo.octets));
+  }
+  const ressources = "<< /Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GS1 5 0 R >>" + (avecLogo ? " /XObject << /Im1 6 0 R >>" : "") + " >>";
+  pages.forEach((page, i) => {
+    const id = idsPages[i];
+    objet(id, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + H + "] /Resources " + ressources + " /Contents " + (id + 1) + " 0 R >>");
+    objet(id + 1, "<< /Length «LONGUEUR» >>", page.join("\n"));
+  });
+  const idInfo = premierePage + pages.length * 2;
+  objet(idInfo, "<< /Title " + chainePdf("Devis " + modele.numero) + " >>");
+  const debutXref = taille;
+  const total = idInfo + 1;
+  let xref = "xref\n0 " + total + "\n0000000000 65535 f \n";
+  for (let i = 1; i < total; i += 1) xref += String(positions[i]).padStart(10, "0") + " 00000 n \n";
+  ajouter(xref + "trailer\n<< /Size " + total + " /Root 1 0 R /Info " + idInfo + " 0 R >>\nstartxref\n" + debutXref + "\n%%EOF\n");
+  const resultat = new Uint8Array(taille);
+  let position = 0;
+  morceaux.forEach((m) => { resultat.set(m, position); position += m.length; });
+  return resultat;
+}
+/* ==== FIN DU DOCUMENT ==== */
+
 /* ---------- Assistant Nouveau chantier (5 étapes, brouillon automatique) ---------- */
 
 const assistant = { chantier: null, minuterie: 0, toast: 0, habituels: null };
@@ -3052,16 +3616,9 @@ function reglagesTotauxValides(source) {
   };
 }
 
-function formaterDecimal(nombre) {
-  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2, useGrouping: false }).format(nombre);
-}
 
 /* Écrit un texte dont les mots composés (« Chauffe-eau », « Va-et-vient ») ne sont jamais
    coupés au trait d'union : chacun est placé dans un span insécable. */
-/* Un nombre et son unité restent sur la même ligne (10 A, 30 mA, 1,5 mm², 25 m). */
-function lierUnites(texte) {
-  return String(texte).replace(/(\d) (?=(A|mA|mm²|m|m²|modules)(?![\wÀ-ÿ]))/g, "$1\u00A0");
-}
 
 function ecrireInsecable(element, texte) {
   element.replaceChildren(...lierUnites(texte).split(/(\s+)/).filter(Boolean).map((morceau) => {
@@ -5288,6 +5845,8 @@ function remplirFicheDevis() {
   $("devis-numero").textContent = "Devis " + d.numero;
   $("devis-titre").value = d.titre;
   $("devis-client").value = d.client;
+  $("devis-client-telephone").value = telephoneAffiche(d.clientTelephone);
+  effacerErreur($("devis-client-telephone"));
   $("devis-lieu").value = d.lieu;
   $("devis-statut").value = d.statut;
   $("devis-devise-forfait").textContent = "(" + (DEVISES[deviseCompte()] || DEVISES.XOF).libelle + ")";
@@ -5532,6 +6091,7 @@ function actualiserDevis() {
   $("devis-tot-acompte").textContent = montantTexte(total.acompte);
   $("devis-tot-reste").textContent = montantTexte(total.reste);
   ecrireMontantFort("devis-resume-total", total.totalGeneral);
+  majLienWhatsApp($("devis-lien-whatsapp"), $("devis-aide-whatsapp"), fiche.devis, modeleDuDevis(fiche.devis));
 }
 
 /* ----- Saisie ----- */
@@ -5576,6 +6136,12 @@ function lireSaisieDevis(cible) {
   } else if (ds.devisChamp === "titre" || ds.devisChamp === "client" || ds.devisChamp === "lieu") {
     d[ds.devisChamp] = texteBorne(valeur, ds.devisChamp === "titre" ? BORNES_DEVIS.titreMax : BORNES.texteMax);
     majEnteteDevis();
+  } else if (ds.devisChamp === "clientTelephone") {
+    /* Numéro retenu seulement s'il est complet (format international) ; sinon aucun numéro. */
+    const saisie = valeur.trim();
+    const analyse = analyserTelephone(saisie, etat.compte.pays);
+    d.clientTelephone = saisie && telephoneValide(analyse) ? versE164(analyse) : "";
+    if (!saisie || d.clientTelephone) effacerErreur(cible);
   } else if (ds.devisChamp === "conditions") d.conditions = valeur.slice(0, BORNES.conditionsMax);
   else if (ds.devisChamp === "note") d.note = valeur.slice(0, BORNES_DEVIS.noteMax);
   else return false;
@@ -5610,7 +6176,10 @@ function surChangementDevis(evenement) {
   else if (ds.devisTotal === "remise") cible.value = d.totaux.remise ? formaterDecimal(d.totaux.remise) : "";
   else if (ds.devisTotal === "tauxTva") cible.value = formaterDecimal(d.totaux.tauxTva);
   else if (ds.devisTotal === "acompte") cible.value = formaterDecimal(d.totaux.acompte);
-  else if (ds.ligneChamp === "designation") {
+  else if (ds.devisChamp === "clientTelephone") {
+    if (d.clientTelephone) cible.value = telephoneAffiche(d.clientTelephone);
+    else if (cible.value.trim()) afficherErreur(cible.id, messageTelephone(analyserTelephone(cible.value.trim(), etat.compte.pays)));
+  } else if (ds.ligneChamp === "designation") {
     const element = fiche.lignes.get(ds.ligne);
     const ligne = d.lignes.find((l) => l.id === ds.ligne);
     if (element && ligne) element.li.querySelector("[data-supprimer-ligne]").setAttribute("aria-label", "Supprimer la ligne « " + (ligne.designation || "ligne libre") + " »");
@@ -5828,6 +6397,352 @@ function surOuvrirDevisResultat() {
   if (id) ouvrirDevis(id);
 }
 
+/* ==========================================================================
+   Feuille A4, PDF et WhatsApp (étape 8). L'impression ne quitte jamais
+   l'application : elle remplit la feuille A4 de l'écran « feuille ». Le PDF est
+   construit sur l'appareil (creerPdfDevis) puis enregistré dans Documents/BatiPlus
+   (Android) ou téléchargé (navigateur) ; repli sur l'impression en cas d'échec.
+   ========================================================================== */
+
+const feuille = { id: null, devis: null, modele: null, pdf: null, uri: "" };
+
+function telephoneAffiche(e164) {
+  if (!e164) return "";
+  const analyse = analyserTelephone(e164, etat.compte.pays);
+  return analyse.pays ? formaterTelephone(e164, analyse.pays.iso) : e164;
+}
+
+function modeleDuDevis(devis) {
+  const compte = etat.compte;
+  const pays = PAYS_PAR_ISO.get(compte.pays);
+  return modeleFeuille(devis, deviseCompte(), etat.abonnement ? etat.abonnement.formule : FORMULE_DEFAUT, {
+    nom: compte.nom, entreprise: compte.entreprise || "", telephone: formaterTelephone(compte.telephone, compte.pays),
+    ville: compte.ville || "", pays: pays ? pays.nom : ""
+  }, telephoneAffiche(devis.clientTelephone));
+}
+
+/* Le lien ne peut être que https://wa.me/… (numéro en chiffres, texte encodé). */
+function majLienWhatsApp(lien, aide, devis, modele) {
+  const url = lienWhatsApp(devis.clientTelephone, messageWhatsApp(modele));
+  lien.href = /^https:\/\/wa\.me\/\d*\?text=[A-Za-z0-9%._~!*'()-]*$/.test(url) ? url : "https://wa.me/";
+  aide.textContent = devis.clientTelephone ? "" : "Sans numéro du client, WhatsApp vous laissera choisir le contact.";
+}
+
+async function surImprimerDevis() {
+  if (!fiche.devis) return;
+  await enregistrerDevis();
+  feuille.id = fiche.devis.id;
+  montrer("feuille");
+}
+
+async function ouvrirFeuille() {
+  if (!etat.compte) return;
+  const devis = (await lireDevis(etat.compte.id)).find((d) => d.complet && d.id === feuille.id);
+  if (!devis) {
+    montrer("accueil", { retour: true });
+    return;
+  }
+  feuille.devis = devis;
+  feuille.pdf = null;
+  feuille.uri = "";
+  feuille.modele = modeleDuDevis(devis);
+  ecrireInsecable($("titre-feuille"), "Devis " + devis.numero);
+  $("etat-feuille").textContent = "";
+  const manquants = feuille.modele.aCompleter;
+  $("feuille-a-completer").hidden = manquants === 0;
+  $("feuille-a-completer").textContent = manquants === 0 ? ""
+    : (manquants > 1 ? manquants + " lignes de matériel ont" : "1 ligne de matériel a") + " un prix à 0 : complétez-les dans le devis avant de l'envoyer.";
+  /* La vue web d'Android n'imprime pas : le PDF (puis l'impression depuis le PDF) la remplace. */
+  $("feuille-bouton-imprimer").hidden = estNatif();
+  $("libelle-feuille-pdf").textContent = estNatif() ? "Enregistrer le PDF" : "Télécharger le PDF";
+  const logo = feuille.modele.emetteur.logo && etat.compte.logo ? etat.compte.logo : "";
+  construireFeuille(feuille.modele, logo);
+  majLienWhatsApp($("feuille-lien-whatsapp"), $("feuille-aide-whatsapp"), devis, feuille.modele);
+  ajusterApercuFeuille();
+}
+
+function elementFeuille(balise, classe, texte) {
+  const element = document.createElement(balise);
+  if (classe) element.className = classe;
+  if (texte !== undefined) element.textContent = texte;
+  return element;
+}
+
+/* Montant d'une cellule : jamais coupé ; les très longs montants passent en plus petit. */
+function celluleMontant(texte, fort) {
+  const td = elementFeuille("td", "f-nombre" + (fort ? " f-fort" : ""), texte);
+  if (texte.length > 20) td.dataset.longueur = "xl";
+  else if (texte.length > 15) td.dataset.longueur = "l";
+  return td;
+}
+
+function tableauFeuille(titre, lignes, libelleSousTotal, sousTotal) {
+  const section = elementFeuille("section", "f-section");
+  section.appendChild(elementFeuille("h2", "f-titre", titre));
+  const table = elementFeuille("table", "f-table");
+  const colonnes = elementFeuille("colgroup");
+  ["f-c-designation", "f-c-unite", "f-c-qte", "f-c-prix", "f-c-montant"].forEach((classe) => colonnes.appendChild(elementFeuille("col", classe)));
+  const entete = elementFeuille("thead");
+  const rangee = elementFeuille("tr");
+  ["Désignation", "Unité", "Qté", "Prix unitaire", "Montant"].forEach((texte, index) => {
+    const th = elementFeuille("th", index > 1 ? "f-nombre" : "", texte);
+    th.scope = "col";
+    rangee.appendChild(th);
+  });
+  entete.appendChild(rangee);
+  const corps = elementFeuille("tbody");
+  if (!lignes.length) {
+    const vide = elementFeuille("tr");
+    const td = elementFeuille("td", "f-vide", "Aucune ligne");
+    td.colSpan = 5;
+    vide.appendChild(td);
+    corps.appendChild(vide);
+  }
+  lignes.forEach((ligne) => {
+    const tr = elementFeuille("tr", ligne.aCompleter ? "f-a-completer" : "");
+    tr.append(ecrireInsecable(elementFeuille("td", "f-designation"), ligne.designation), elementFeuille("td", "", ligne.unite),
+      elementFeuille("td", "f-nombre", ligne.quantite), celluleMontant(ligne.prix, false), celluleMontant(ligne.montant, true));
+    corps.appendChild(tr);
+  });
+  const total = elementFeuille("tr", "f-sous-total");
+  const libelle = elementFeuille("td", "", libelleSousTotal);
+  libelle.colSpan = 4;
+  total.append(libelle, celluleMontant(sousTotal, true));
+  corps.appendChild(total);
+  table.append(colonnes, entete, corps);
+  section.appendChild(table);
+  return section;
+}
+
+function ligneTotalFeuille(libelle, valeur, classe) {
+  const tr = elementFeuille("tr", classe || "");
+  const th = elementFeuille("th", "", libelle);
+  th.scope = "row";
+  tr.append(th, celluleMontant(valeur, Boolean(classe)));
+  return tr;
+}
+
+function construireFeuille(m, logo) {
+  const insecable = (texte) => String(texte).replace(/ /g, "\u00A0");
+  const tete = elementFeuille("header", "f-tete");
+  const emetteur = elementFeuille("div", "f-emetteur");
+  if (logo) {
+    const image = elementFeuille("img", "f-logo");
+    image.alt = "Logo de " + m.emetteur.titre;
+    image.src = logo;
+    emetteur.appendChild(image);
+  } else {
+    emetteur.appendChild(elementFeuille("span", "f-initiales", m.emetteur.initiales));
+  }
+  const infos = elementFeuille("div", "f-infos");
+  infos.appendChild(ecrireInsecable(elementFeuille("p", "f-entreprise"), m.emetteur.titre));
+  m.emetteur.lignes.forEach((ligne) => infos.appendChild(ecrireInsecable(elementFeuille("p", "f-ligne"), ligne.startsWith("Tél. : ") ? "Tél. : " + insecable(ligne.slice(7)) : ligne)));
+  emetteur.appendChild(infos);
+  const reference = elementFeuille("div", "f-ref");
+  reference.append(elementFeuille("p", "f-type", "DEVIS"), elementFeuille("p", "f-numero", m.numero), elementFeuille("p", "f-date", "Date : " + insecable(m.date)));
+  tete.append(emetteur, reference);
+
+  const objet = elementFeuille("p", "f-objet");
+  objet.append(elementFeuille("strong", "", "Objet : "), ecrireInsecable(elementFeuille("span"), m.objet));
+
+  const parties = elementFeuille("div", "f-parties");
+  const client = elementFeuille("section", "f-bloc");
+  client.append(elementFeuille("h2", "f-etiquette", "Client"), ecrireInsecable(elementFeuille("p", "f-nom"), m.client.nom || "—"));
+  if (m.client.telephone) client.appendChild(elementFeuille("p", "f-ligne", "Tél. : " + insecable(m.client.telephone)));
+  const chantier = elementFeuille("section", "f-bloc");
+  chantier.append(elementFeuille("h2", "f-etiquette", "Chantier"), ecrireInsecable(elementFeuille("p", "f-nom"), m.client.lieu || "—"));
+  parties.append(client, chantier);
+
+  const bas = elementFeuille("div", "f-bas");
+  const gauche = elementFeuille("div", "f-gauche");
+  gauche.append(elementFeuille("h2", "f-etiquette", "Montant en lettres"), ecrireInsecable(elementFeuille("p", "f-lettres"), m.lettres));
+  if (m.note) gauche.append(elementFeuille("h2", "f-etiquette", "Note"), ecrireInsecable(elementFeuille("p", "f-texte"), m.note));
+  if (m.conditions) gauche.append(elementFeuille("h2", "f-etiquette", "Conditions"), ecrireInsecable(elementFeuille("p", "f-texte"), m.conditions));
+  const totaux = elementFeuille("table", "f-totaux");
+  const corpsTotaux = elementFeuille("tbody");
+  m.totaux.forEach((t) => corpsTotaux.appendChild(ligneTotalFeuille(t.libelle, t.valeur)));
+  corpsTotaux.append(ligneTotalFeuille("TOTAL GÉNÉRAL", m.totalGeneral, "f-total-general"),
+    ligneTotalFeuille(m.acompte.libelle, m.acompte.valeur), ligneTotalFeuille(m.reste.libelle, m.reste.valeur, "f-reste"));
+  totaux.appendChild(corpsTotaux);
+  bas.append(gauche, totaux);
+
+  const signatures = elementFeuille("div", "f-signatures");
+  m.signatures.forEach((s) => {
+    const bloc = elementFeuille("div", "f-signature");
+    bloc.append(elementFeuille("p", "f-sig-titre", s.titre), elementFeuille("p", "f-sig-aide", s.aide));
+    signatures.appendChild(bloc);
+  });
+  const fin = elementFeuille("div", "f-fin");
+  fin.append(signatures, elementFeuille("p", "f-mention", m.mention));
+
+  const morceaux = [tete, objet, parties,
+    tableauFeuille("Matériel", m.materiel, "Sous-total matériel", m.sousTotalMateriel),
+    tableauFeuille("Main-d'œuvre", m.mainOeuvre, "Sous-total main-d'œuvre", m.sousTotalMainOeuvre),
+    bas, fin];
+  if (m.pied) morceaux.push(elementFeuille("footer", "f-pied f-filigrane", m.pied));
+  $("feuille-a4").replaceChildren(...morceaux);
+}
+
+/* Aperçu : la feuille garde sa vraie largeur (210 mm) et est réduite pour tenir dans l'écran. */
+function ajusterApercuFeuille() {
+  if (montrer.ecranCourant !== "feuille") return;
+  const cadre = $("feuille-cadre");
+  const largeur = cadre.clientWidth;
+  if (!largeur) return;
+  cadre.style.setProperty("--echelle", Math.min(1, largeur / LARGEUR_A4_PX).toFixed(4));
+}
+
+function imprimerFeuille() {
+  vibrer();
+  window.print();
+}
+
+/* Logo (WebP ou PNG en data:) redessiné en JPEG sur fond blanc pour le PDF. */
+function logoEnJpeg(source) {
+  return new Promise((resoudre) => {
+    const image = new Image();
+    const delai = setTimeout(() => resoudre(null), 5000);
+    image.onload = () => {
+      clearTimeout(delai);
+      try {
+        const echelle = Math.min(1, 400 / Math.max(image.naturalWidth, image.naturalHeight));
+        const toile = document.createElement("canvas");
+        toile.width = Math.max(1, Math.round(image.naturalWidth * echelle));
+        toile.height = Math.max(1, Math.round(image.naturalHeight * echelle));
+        const contexte = toile.getContext("2d");
+        contexte.fillStyle = "#FFFFFF";
+        contexte.fillRect(0, 0, toile.width, toile.height);
+        contexte.drawImage(image, 0, 0, toile.width, toile.height);
+        const donnees = toile.toDataURL("image/jpeg", 0.9);
+        resoudre(donnees.startsWith("data:image/jpeg;base64,")
+          ? { octets: depuisBase64(donnees.slice(23)), largeur: toile.width, hauteur: toile.height } : null);
+      } catch (erreur) {
+        resoudre(null);
+      }
+    };
+    image.onerror = () => {
+      clearTimeout(delai);
+      resoudre(null);
+    };
+    image.src = source;
+  });
+}
+
+async function pdfDuDevis() {
+  if (feuille.pdf) return feuille.pdf;
+  const logo = feuille.modele.emetteur.logo && etat.compte.logo ? await logoEnJpeg(etat.compte.logo) : null;
+  feuille.pdf = creerPdfDevis(feuille.modele, logo);
+  return feuille.pdf;
+}
+
+function nomPdfFeuille() {
+  return nomFichierDevis(feuille.devis.numero, feuille.devis.client);
+}
+
+/* Android : Documents/BatiPlus ; si le dossier est refusé (anciens Android), cache de l'application. */
+async function enregistrerPdfNatif(octets, nom) {
+  const fichiers = plugin("Filesystem");
+  if (!fichiers) throw new Error("Filesystem indisponible");
+  const data = versBase64(octets);
+  const chemin = DOSSIER_PDF + "/" + nom;
+  try {
+    const resultat = await fichiers.writeFile({ path: chemin, data, directory: "DOCUMENTS", recursive: true });
+    return { uri: resultat.uri, documents: true };
+  } catch (erreur) {
+    const resultat = await fichiers.writeFile({ path: chemin, data, directory: "CACHE", recursive: true });
+    return { uri: resultat.uri, documents: false };
+  }
+}
+
+function telechargerPdf(octets, nom) {
+  const url = URL.createObjectURL(new Blob([octets], { type: "application/pdf" }));
+  const lien = document.createElement("a");
+  lien.href = url;
+  lien.download = nom;
+  lien.rel = "noopener";
+  lien.hidden = true;
+  document.body.appendChild(lien);
+  lien.click();
+  lien.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+function echecPdf(erreur) {
+  journal("PDF impossible", erreur && erreur.message);
+  $("etat-feuille").textContent = "Le PDF n'a pas pu être créé. L'impression s'ouvre à la place : choisissez « Enregistrer au format PDF ».";
+  try {
+    window.print();
+  } catch (e) {
+    journal("impression impossible");
+  }
+}
+
+async function avecBouton(id, action) {
+  const bouton = $(id);
+  if (bouton.disabled) return;
+  bouton.disabled = true;
+  try {
+    await action();
+  } finally {
+    bouton.disabled = false;
+  }
+}
+
+function surEnregistrerPdf() {
+  return avecBouton("feuille-bouton-pdf", async () => {
+    if (!feuille.devis) return;
+    try {
+      const octets = await pdfDuDevis();
+      const nom = nomPdfFeuille();
+      if (estNatif()) {
+        const resultat = await enregistrerPdfNatif(octets, nom);
+        feuille.uri = resultat.uri;
+        $("etat-feuille").textContent = resultat.documents
+          ? "PDF enregistré dans Documents/" + DOSSIER_PDF + " : " + nom
+          : "PDF prêt (le dossier Documents est fermé sur ce téléphone) : touchez « Partager » pour l'envoyer.";
+      } else {
+        telechargerPdf(octets, nom);
+        $("etat-feuille").textContent = "PDF téléchargé : " + nom;
+      }
+      vibrer();
+    } catch (erreur) {
+      echecPdf(erreur);
+    }
+  });
+}
+
+function annulationPartage(erreur) {
+  return Boolean(erreur) && (erreur.name === "AbortError" || /cancel|annul/i.test(String(erreur.message || "")));
+}
+
+function surPartagerPdf() {
+  return avecBouton("feuille-bouton-partager", async () => {
+    if (!feuille.devis) return;
+    const titre = "Devis " + feuille.devis.numero;
+    const texte = (titre + " — " + feuille.modele.totalGeneral).replace(/[\u00A0\u202F]/g, " ");
+    try {
+      const octets = await pdfDuDevis();
+      const nom = nomPdfFeuille();
+      if (estNatif()) {
+        const partage = plugin("Share");
+        if (!partage) throw new Error("Share indisponible");
+        if (!feuille.uri) feuille.uri = (await enregistrerPdfNatif(octets, nom)).uri;
+        await partage.share({ title: titre, text: texte, files: [feuille.uri], dialogTitle: "Partager le devis" });
+        return;
+      }
+      const fichier = new File([octets], nom, { type: "application/pdf" });
+      if (navigator.canShare && navigator.share && navigator.canShare({ files: [fichier] })) {
+        await navigator.share({ files: [fichier], title: titre, text: texte });
+        return;
+      }
+      telechargerPdf(octets, nom);
+      $("etat-feuille").textContent = "Partage direct indisponible dans ce navigateur : le PDF a été téléchargé (" + nom + "), envoyez-le depuis vos fichiers.";
+    } catch (erreur) {
+      if (!annulationPartage(erreur)) echecPdf(erreur);
+    }
+  });
+}
+
 function surClicDevisAccueil(evenement) {
   const bouton = evenement.target.closest("[data-devis]");
   if (bouton) ouvrirDevis(bouton.dataset.devis);
@@ -5954,6 +6869,11 @@ function brancherEvenements() {
   $("devis-bouton-ajouter").addEventListener("click", ajouterLigneDevis);
   $("devis-ajouter-libre").addEventListener("click", ajouterLibreDevis);
   $("devis-bouton-enregistrer").addEventListener("click", surEnregistrerDevis);
+  $("devis-bouton-imprimer").addEventListener("click", surImprimerDevis);
+  $("feuille-bouton-imprimer").addEventListener("click", imprimerFeuille);
+  $("feuille-bouton-pdf").addEventListener("click", surEnregistrerPdf);
+  $("feuille-bouton-partager").addEventListener("click", surPartagerPdf);
+  window.addEventListener("resize", ajusterApercuFeuille);
   const ecranPrix = $("ecran-prix");
   ecranPrix.addEventListener("input", (evenement) => {
     if (evenement.target.type !== "radio" && evenement.target.tagName !== "SELECT") surSaisieMesPrix(evenement);

@@ -27,6 +27,29 @@ const etape5 = { fait: false, cas: [], persistance: [], nombres: [], bornes: [] 
 /* Constats de l'étape 6 (écran Résultat) relevés dans jsdom. */
 const etape6 = { fait: false, svg: [], contenu: [], total: [] };
 const etape7 = { fait: false, catalogue: [], deux: [], recalcul: [] };
+const etape8 = { fait: false, a4: [], filigrane: [], whatsapp: [], octetsPdf: 0 };
+
+/* Lecture d'un PDF produit par l'application : en-tête, table xref (chaque position
+   pointe bien sur son objet), nombre de pages déclaré = pages présentes, fin %%EOF. */
+function analyserPdf(octets) {
+  const texte = Array.from(octets, (o) => String.fromCharCode(o)).join("");
+  const erreurs = [];
+  if (!texte.startsWith("%PDF-1.4")) erreurs.push("en-tête %PDF absent");
+  if (!texte.trimEnd().endsWith("%%EOF")) erreurs.push("fin %%EOF absente");
+  const debut = Number((texte.match(/startxref\n(\d+)\n%%EOF/) || [])[1]);
+  if (!Number.isFinite(debut) || texte.slice(debut, debut + 4) !== "xref") erreurs.push("startxref ne pointe pas sur la table xref");
+  else {
+    const entrees = texte.slice(debut).split("\n").slice(3).filter((l) => / 00000 n $/.test(l));
+    entrees.forEach((l, i) => {
+      const position = Number(l.slice(0, 10));
+      if (!texte.startsWith((i + 1) + " 0 obj", position)) erreurs.push("objet " + (i + 1) + " mal placé");
+    });
+  }
+  const pages = (texte.match(/\/Type \/Page\b(?!s)/g) || []).length;
+  const declare = Number((texte.match(/\/Type \/Pages \/Kids \[[^\]]*\] \/Count (\d+)/) || [])[1]);
+  if (pages !== declare) erreurs.push(pages + " pages présentes pour " + declare + " déclarées");
+  return { texte, pages, erreurs };
+}
 
 function controle(numero, libelle, ok, detail) {
   resultats.push({ numero, libelle, ok: Boolean(ok), detail: detail || "" });
@@ -131,7 +154,7 @@ async function controlesExecution() {
   const { TextEncoder } = await import("node:util");
   const erreurs = [];
   const ignorees = [];
-  const surRejet = (e) => erreurs.push("Uncaught " + String((e && e.message) || e));
+  const surRejet = (e) => erreurs.push("Uncaught " + String((e && (e.stack || e.message)) || e));
   process.on("unhandledRejection", surRejet);
   process.on("uncaughtException", surRejet);
   const fenetres = [];
@@ -1337,6 +1360,97 @@ async function controlesExecution() {
             || !nb(priseF.querySelector("summary").textContent).includes("1 FCFA") || f.$("prix-mo-prise").value !== "2500" || f.$("prix-mo-journee").value !== "10000") etape7.catalogue.push("catalogue falsifié mal nettoyé (" + articlesF.length + " article(s), "
             + (priseF ? priseF.querySelectorAll(".ligne-fournisseur").length + " fournisseur(s), « " + nb(priseF.querySelector("summary").textContent) + " »" : "prise absente") + ", MO " + f.$("prix-mo-prise").value + "/" + f.$("prix-mo-journee").value + ")");
           f.w.close();
+
+          /* ---------- Étape 8 : feuille A4, PDF, WhatsApp (parcours réel) ---------- */
+          const g = ouvrirPage(stockageFinal);
+          await pause(1800);
+          let blobCapture = null;
+          g.w.URL.createObjectURL = (blob) => { blobCapture = blob; return "blob:https://batiplus.local/essai"; };
+          g.w.URL.revokeObjectURL = () => {};
+          const entreeD1 = g.doc.querySelector("#accueil-devis [data-devis='" + d1s.id + "']");
+          if (entreeD1) entreeD1.click();
+          await pause(400);
+          if (g.actif() !== "ecran-fiche-devis") etape8.a4.push("devis 0001 non ouvert (" + g.actif() + ")");
+          const clientPiege = "Dupont & Fils <b>#1</b> ? 100 % « é » ⚡";
+          g.remplir("devis-client", clientPiege);
+          g.remplir("devis-client-telephone", "70 12-34.56");
+          g.$("devis-client-telephone").dispatchEvent(new g.w.Event("change", { bubbles: true }));
+          await pause(50);
+          const lienFiche = g.$("devis-lien-whatsapp");
+          const href = lienFiche.getAttribute("href") || "";
+          const [baseWa, texteWa] = href.split("?text=");
+          let decode = "";
+          try { decode = decodeURIComponent(texteWa || ""); } catch { decode = ""; }
+          if (baseWa !== "https://wa.me/22670123456") etape8.whatsapp.push("numéro non nettoyé : « " + baseWa + " »");
+          if (!/^[A-Za-z0-9%._~!*'()-]+$/.test(texteWa || "")) etape8.whatsapp.push("texte non encodé (caractère brut dans le lien)");
+          if (lienFiche.getAttribute("rel") !== "noopener noreferrer" || lienFiche.getAttribute("target") !== "_blank") etape8.whatsapp.push("lien sans rel=\"noopener noreferrer\"");
+          if (g.$("devis-client-telephone").value !== "+226 70 12 34 56") etape8.whatsapp.push("téléphone du client non reformaté (« " + g.$("devis-client-telephone").value + " »)");
+          const attendusWa = ["Bonjour " + clientPiege + ",", "Voici votre devis BP-" + annee + "-0001", "Total : " + montant(g, "devis-tot-general"), "Acompte à la commande", nb(g.texte("devis-tot-acompte")), "Devis réalisé avec BâtiPlus"];
+          const manquentWa = attendusWa.filter((a) => !decode.includes(a));
+          if (manquentWa.length) etape8.whatsapp.push("message incomplet : " + manquentWa.join(" | "));
+          if (!/Résumé : \d+ circuits?, \d+ prises?, \d+ points? lumineux\./.test(decode)) etape8.whatsapp.push("résumé circuits/prises/points absent");
+          if (!decode.includes(nb(compte.nom).split(" ")[0]) && !decode.includes("+226")) etape8.whatsapp.push("nom ou téléphone de l'électricien absent");
+          g.remplir("devis-client-telephone", "12");
+          g.$("devis-client-telephone").dispatchEvent(new g.w.Event("change", { bubbles: true }));
+          await pause(50);
+          if (!(g.$("devis-lien-whatsapp").getAttribute("href") || "").startsWith("https://wa.me/?text=") || !g.texte("err-devis-client-telephone") || !g.texte("devis-aide-whatsapp")) etape8.whatsapp.push("numéro incomplet : lien, erreur ou aide incorrects");
+          g.remplir("devis-client-telephone", "+226 70 12 34 56");
+          g.$("devis-client-telephone").dispatchEvent(new g.w.Event("change", { bubbles: true }));
+          await pause(900);
+          const d1g = devisDe(g).find((d) => d.id === d1s.id) || {};
+          if (d1g.clientTelephone !== "+22670123456" || d1g.client !== clientPiege) etape8.whatsapp.push("téléphone ou client non enregistrés dans le devis");
+
+          /* Feuille A4 : tout vient du devis, rien n'est tronqué ni injecté. */
+          g.$("devis-bouton-imprimer").click();
+          await pause(600);
+          if (g.actif() !== "ecran-feuille") etape8.a4.push("« Imprimer ou PDF » n'ouvre pas la feuille A4 (" + g.actif() + ")");
+          const fa = g.$("feuille-a4");
+          const tables = fa.querySelectorAll(".f-table");
+          const entetes = [...fa.querySelectorAll(".f-table thead th")].map((th) => th.textContent).join("|");
+          if (tables.length !== 2 || entetes !== "Désignation|Unité|Qté|Prix unitaire|Montant|Désignation|Unité|Qté|Prix unitaire|Montant") etape8.a4.push("tableaux Matériel et Main-d'œuvre absents ou colonnes incorrectes");
+          const lignesAttendues = d1g.lignes.filter((l) => !l.supprimee && l.quantite > 0).length;
+          const lignesFeuille = tables[0] ? tables[0].querySelectorAll("tbody tr:not(.f-sous-total)").length : 0;
+          if (lignesFeuille !== lignesAttendues) etape8.a4.push(lignesFeuille + " lignes de matériel sur la feuille au lieu de " + lignesAttendues);
+          const calc8 = moteur.calculerDevis(d1g, "XOF");
+          const sousTotaux = [...fa.querySelectorAll(".f-sous-total td:last-child")].map((td) => nb(td.textContent));
+          if (sousTotaux[0] !== fcfa(calc8.totalMateriel) || sousTotaux[1] !== fcfa(calc8.mainOeuvre.total)) etape8.a4.push("sous-totaux ≠ devis (" + sousTotaux.join(" / ") + ")");
+          const tg = fa.querySelector(".f-total-general td");
+          if (!tg || nb(tg.textContent) !== fcfa(calc8.total.totalGeneral)) etape8.a4.push("TOTAL GÉNÉRAL ≠ devis");
+          if (nb(fa.querySelector(".f-lettres").textContent) !== nb("Arrêté le présent devis à la somme de " + moteur.montantEnLettres(calc8.total.totalGeneral, "XOF") + ".")) etape8.a4.push("montant en lettres incorrect");
+          if (fa.querySelectorAll(".f-signature").length !== 2 || !fa.querySelector(".f-mention") || !nb(fa.textContent).includes("Matériel garanti un an.")) etape8.a4.push("signatures, mention ou note absentes");
+          if (fa.querySelector("b, img[src='x']") || !fa.textContent.includes("<b>#1</b>")) etape8.a4.push("nom du client interprété comme du HTML");
+          if (!fa.querySelector(".f-initiales") || fa.querySelector(".f-logo")) etape8.a4.push("formule gratuite : initiales attendues, pas de logo");
+          if (!g.$("feuille-a-completer").hidden === (calc8.lignes.filter((l) => !l.supprimee && l.quantite > 0 && l.prix === 0).length === 0)) etape8.a4.push("alerte « prix à 0 » incohérente");
+          const pied = fa.querySelector(".f-pied");
+          const regleFiligrane = [...g.doc.styleSheets].flatMap((s) => [...s.cssRules]).find((r) => r.selectorText === ".f-filigrane");
+          if (!pied || !pied.classList.contains("f-filigrane") || pied.textContent !== moteur.PIED_DEVIS || !regleFiligrane || regleFiligrane.style.opacity !== "0.22") etape8.filigrane.push("formule gratuite : pied en filigrane (opacité 0,22) absent");
+          const styleLivre = g.doc.querySelector("head style").textContent;
+          const impression = styleLivre.slice(styleLivre.indexOf("@media print"));
+          if (!/@page\s*\{\s*size:\s*A4;\s*margin:\s*12mm;?\s*\}/.test(impression) || !/[^-]print-color-adjust:\s*exact/.test(impression) || !/\.f-table thead\s*\{\s*display:\s*table-header-group;?\s*\}/.test(styleLivre)) etape8.a4.push("règles d'impression A4 absentes (@page A4 12 mm, print-color-adjust, thead répété)");
+          const waFeuille = g.$("feuille-lien-whatsapp").getAttribute("href");
+          if (waFeuille !== g.$("devis-lien-whatsapp").getAttribute("href")) etape8.whatsapp.push("lien WhatsApp de la feuille ≠ lien du devis");
+
+          /* PDF téléchargé (navigateur) : nom, structure, une page, filigrane. */
+          g.$("feuille-bouton-pdf").click();
+          await pause(500);
+          const nomAttendu = moteur.nomFichierDevis("BP-" + annee + "-0001", clientPiege);
+          if (g.texte("etat-feuille") !== "PDF téléchargé : " + nomAttendu) etape8.a4.push("PDF : message « " + g.texte("etat-feuille") + " » (attendu " + nomAttendu + ")");
+          if (!blobCapture || blobCapture.type !== "application/pdf") etape8.a4.push("PDF non produit");
+          else {
+            const octets = await new Promise((resoudre) => {
+              const lecteur = new g.w.FileReader();
+              lecteur.onload = () => resoudre(new Uint8Array(lecteur.result));
+              lecteur.onerror = () => resoudre(new Uint8Array(0));
+              lecteur.readAsArrayBuffer(blobCapture);
+            });
+            const bilan = analyserPdf(octets);
+            if (process.env.ESSAI_PDF) (await import("node:fs")).writeFileSync(process.env.ESSAI_PDF, octets);
+            if (bilan.erreurs.length || bilan.pages !== 1) etape8.a4.push("PDF du devis : " + bilan.pages + " page(s) " + bilan.erreurs.join(", "));
+            if (!bilan.texte.includes("(TOTAL G\\311N\\311RAL)") || !bilan.texte.includes("/GS1 gs") || !bilan.texte.includes("BRG")) etape8.filigrane.push("PDF gratuit : total ou pied en filigrane absent");
+            etape8.octetsPdf = octets.length;
+          }
+          g.w.close();
+          etape8.fait = true;
           etape7.fait = true;
         }
       }
@@ -1428,7 +1542,16 @@ function controleCapacitor() {
   if (existsSync(gradle)) {
     const contenu = readFileSync(gradle, "utf8");
     if (!contenu.includes('applicationId "com.brgelectro.batiplus"')) problemes.push("applicationId Android");
-    android = "android/ présent, applicationId correct";
+    const manifeste = readFileSync(join(RACINE, "android", "app", "src", "main", "AndroidManifest.xml"), "utf8");
+    const permissions = [...manifeste.matchAll(/<uses-permission\s[^>]*>/g)].map((t) => t[0]);
+    const permises = new Set(["android.permission.INTERNET"]);
+    for (const p of permissions) {
+      const nom = (p.match(/android:name="([^"]+)"/) || [])[1];
+      const stockage = /EXTERNAL_STORAGE$/.test(nom || "");
+      if (!permises.has(nom) && !(stockage && /android:maxSdkVersion="29"/.test(p))) problemes.push("permission Android non justifiée : " + nom);
+    }
+    if (!/WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/.test(manifeste)) problemes.push("WRITE_EXTERNAL_STORAGE (maxSdkVersion 29) absente pour Documents/BatiPlus/");
+    android = "android/ présent, applicationId correct, " + permissions.length + " permissions (INTERNET, stockage limité à Android ≤ 10)";
   } else {
     problemes.push(android);
   }
@@ -1670,17 +1793,93 @@ function controlesDevis() {
     recalcul.join(" ; ") || "saisies successives (quantités piégées, ligne supprimée puis restaurée, désignation, main-d'œuvre, − 10 % / + 10 %, Prix habituels, forfait, journées, ligne libre, remise % et montant, TVA, acompte) : chaque total affiché = moteur seul ; statuts Accepté/Payé en badge ; enregistré 600 ms après, retrouvé après réouverture ; devis falsifié nettoyé, total recalculé");
 }
 
+/* ---------- Étape 8 : feuille A4, PDF et WhatsApp ---------- */
+function controlesFeuille() {
+  const m = chargerMoteur();
+  const absent = etape8.fait ? [] : ["parcours feuille A4 non exécuté (jsdom)"];
+  const pages = [...absent, ...etape8.a4];
+  const filigrane = [...absent, ...etape8.filigrane];
+  const whatsapp = [...absent, ...etape8.whatsapp];
+  const emetteur = { nom: "Marie-Christine Ouédraogo", entreprise: "Électricité Générale du Faso", telephone: "+226 05 60 86 08", ville: "Bobo-Dioulasso", pays: "Burkina Faso" };
+  const catalogue = Object.fromEntries(Object.entries(m.CATALOGUE_DEFAUT).map(([r, a]) => [r, { ...a }]));
+  const devisType = (t) => ({ ...m.devisDepuisChiffrage(m.chiffrerChantier(t.chantier, catalogue, "XOF", null)), numero: "BP-2026-0042", titre: t.titre,
+    client: "Société Dupont & Fils (Ouaga)", lieu: "Ouaga 2000", creeLe: "2026-10-15T10:00:00Z", conditions: "Validité 30 jours.\nAcompte de 40 % à la commande.", note: "Matériel garanti un an." });
+  const jpeg = { octets: Uint8Array.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xD9]), largeur: 4, hauteur: 3 };
+  const resume = [];
+
+  /* ㊲ Pages : Studio et Boutique sur 1 page, Villa sur 2 au plus ; 120 lignes → en-tête répété et « Page i / n ». */
+  const attendus = { studio: 1, boutique: 1, villa: 2 };
+  for (const t of CHANTIERS_TYPES) {
+    const bilan = analyserPdf(m.creerPdfDevis(m.modeleFeuille(devisType(t), "XOF", "gratuit", emetteur, "+226 70 12 34 56"), null));
+    resume.push(t.cle + " " + bilan.pages);
+    if (bilan.erreurs.length) pages.push(t.cle + " : " + bilan.erreurs.join(", "));
+    if (bilan.pages > attendus[t.cle]) pages.push(t.cle + " : " + bilan.pages + " pages (attendu ≤ " + attendus[t.cle] + ")");
+    if (bilan.pages > 1 && !bilan.texte.includes(m.chainePdf("Page " + bilan.pages + " / " + bilan.pages))) pages.push(t.cle + " : numéro de page absent");
+    if (bilan.pages === 1 && bilan.texte.includes("(Page 1 / 1)")) pages.push(t.cle + " : « Page 1 / 1 » inutile");
+  }
+  const studio = devisType(CHANTIERS_TYPES.find((t) => t.cle === "studio"));
+  const long = { ...studio, lignes: Array.from({ length: 120 }, (_, i) => ({ id: "x" + i, ref: "libre-" + i, designation: "Article de test numéro " + (i + 1) + (i % 7 === 0 ? " avec une désignation volontairement très longue pour vérifier le retour à la ligne aux espaces" : ""), unite: "u", categorie: "libre", quantite: 999999, prix: 99999999, fournisseur: "", supprimee: false })) };
+  const modLong = m.modeleFeuille(long, "XOF", "gratuit", emetteur, "");
+  const bilanLong = analyserPdf(m.creerPdfDevis(modLong, null));
+  const entetes = (bilanLong.texte.match(/\(D\\351signation\) Tj/g) || []).length;
+  if (bilanLong.erreurs.length || bilanLong.pages < 3 || entetes < bilanLong.pages - 1) pages.push("120 lignes : " + bilanLong.pages + " pages, " + entetes + " en-têtes " + bilanLong.erreurs.join(", "));
+  const manquantes = modLong.materiel.filter((l) => !bilanLong.texte.includes(m.chainePdf(l.montant))).length;
+  if (manquantes || !bilanLong.texte.includes(m.chainePdf(modLong.totalGeneral)) || !bilanLong.texte.includes(m.chainePdf("Page " + bilanLong.pages + " / " + bilanLong.pages))) pages.push("montants géants coupés ou absents du PDF (" + manquantes + ")");
+  const coupe = m.couperPdf("Disjoncteur différentiel 40 A 30 mA type A — Legrand", 60, false, 8);
+  const espaces = (s) => String(s).replace(/[\u00a0\u202f]/g, " ");
+  if (espaces(coupe.join(" ")) !== "Disjoncteur différentiel 40 A 30 mA type A — Legrand" || coupe.some((l, i) => i > 0 && /^(A|mA)\b/.test(l))) pages.push("désignation coupée au milieu d'un mot ou d'une valeur (" + coupe.join(" | ") + ")");
+  const lettres = [[80, "quatre-vingts"], [81, "quatre-vingt-un"], [71, "soixante et onze"], [200, "deux cents"], [201, "deux cent un"], [1000, "mille"], [80000, "quatre-vingt mille"], [1000000, "un million"], [200000000, "deux cents millions"], [197700, "cent quatre-vingt-dix-sept mille sept cents"]];
+  const fausses = lettres.filter(([v, t]) => m.nombreEnLettres(v) !== t).map(([v]) => v);
+  if (fausses.length || m.montantEnLettres(1000000, "XOF") !== "un million de francs CFA" || m.montantEnLettres(1250.5, "EUR") !== "mille deux cent cinquante euros et cinquante centimes") pages.push("montant en lettres faux : " + fausses.join(", "));
+  if (m.nomFichierDevis("BP-2026-0042", "Société Dupont & Fils (Ouaga)") !== "Devis_BP-2026-0042_Societe_Dupont_Fils_Ouaga.pdf" || !/^Devis_BP-2026-0042(_[A-Za-z0-9]+)*\.pdf$/.test(m.nomFichierDevis("BP-2026-0042", "../../<script>"))) pages.push("nom du fichier PDF non nettoyé");
+  controle("㊲", "devis A4 : une page pour un petit chantier, PDF valide", pages.length === 0,
+    pages.join(" ; ") || "PDF produit dans l'application (" + resume.join(", ") + " page(s)) : xref exacte, pages déclarées = présentes ; 120 lignes à 99 999 999 FCFA → " + bilanLong.pages + " pages, en-tête répété, « Page i / n », aucun montant coupé ; montant en lettres (80, 81, 71, 200, 80 000, 200 000 000…) ; nom Devis_BP-…_Client.pdf ; parcours réel : feuille = devis (lignes, sous-totaux, total, lettres, signatures), HTML du client affiché en texte, PDF téléchargé " + etape8.octetsPdf + " octets, 1 page");
+
+  /* ㊳ Filigrane : seulement la formule gratuite ; logo seulement pour un abonné. */
+  for (const formule of Object.keys(m.FORMULES)) {
+    const payante = m.formulePayante(formule);
+    const mod = m.modeleFeuille(studio, "XOF", formule, emetteur, "");
+    const texte = analyserPdf(m.creerPdfDevis(mod, jpeg)).texte;
+    const aPied = texte.includes("/GS1 gs") && texte.includes(m.chainePdf(m.PIED_DEVIS));
+    if (payante === (mod.pied !== null) || payante === aPied) filigrane.push(formule + " : pied " + (aPied ? "présent" : "absent"));
+    if (payante !== mod.emetteur.logo || payante !== texte.includes("/Im1 Do") || payante !== texte.includes("/DCTDecode")) filigrane.push(formule + " : logo " + (texte.includes("/Im1 Do") ? "présent" : "absent"));
+    if (!payante && !texte.includes("/ca " + m.OPACITE_FILIGRANE)) filigrane.push(formule + " : opacité du filigrane ≠ " + m.OPACITE_FILIGRANE);
+  }
+  if (m.OPACITE_FILIGRANE !== 0.22 || m.formulePayante("__proto__") || m.formulePayante("vie ") || !m.PIED_DEVIS.includes("+226 05 60 86 08") || !m.PIED_DEVIS.includes("+226 68 52 42 90")) filigrane.push("formule inconnue payante ou pied incomplet");
+  if (m.creerPdfDevis(m.modeleFeuille(studio, "XOF", "annuel", emetteur, ""), { ...jpeg, octets: Uint8Array.from([0x89, 0x50, 0x4E, 0x47, 0, 0]) }).length && analyserPdf(m.creerPdfDevis(m.modeleFeuille(studio, "XOF", "annuel", emetteur, ""), { ...jpeg, octets: Uint8Array.from([0x89, 0x50, 0x4E, 0x47, 0, 0]) })).texte.includes("/Im1 Do")) filigrane.push("logo non JPEG intégré");
+  controle("㊳", "pied BâtiPlus en filigrane pour la formule gratuite seulement", filigrane.length === 0,
+    filigrane.join(" ; ") || "5 formules : gratuit → pied « Devis réalisé avec BâtiPlus… » (2 numéros) en filigrane /ca 0,22 et initiales ; semaine, mensuel, annuel, vie → aucun pied, logo JPEG intégré ; formule inconnue = gratuite ; logo non JPEG refusé ; feuille HTML : .f-filigrane opacité 0,22");
+
+  /* ㊴ WhatsApp : lien wa.me encodé, chiffres seuls, aucun numéro → choix du contact. */
+  const piege = "Bonjour & bienvenue ? #1 100 % é ⚡\nligne 2 javascript:alert(1)";
+  const lien = m.lienWhatsApp("+226 70-12.34 56", piege);
+  const [base, texte] = lien.split("?text=");
+  if (base !== "https://wa.me/22670123456" || decodeURIComponent(texte) !== piege || !/^[A-Za-z0-9%._~!*'()-]+$/.test(texte)) whatsapp.push("lien mal encodé : " + lien.slice(0, 60));
+  for (const mauvais of ["javascript:alert(1)", "12", "+226 70 12 34 56 78 90 12 34", "", null, "+0 000"]) {
+    if (!m.lienWhatsApp(mauvais, "x").startsWith("https://wa.me/?text=")) whatsapp.push("numéro invalide accepté : « " + mauvais + " »");
+  }
+  const modS = m.modeleFeuille(studio, "XOF", "gratuit", emetteur, "+226 70 12 34 56");
+  const msg = m.messageWhatsApp(modS);
+  const r = m.resumeDevis(m.calculerDevis(studio, "XOF"));
+  for (const attendu of ["Bonjour Société Dupont & Fils (Ouaga),", "Voici votre devis BP-2026-0042", "Résumé : " + r.circuits + " circuits, " + r.prises + " prises, " + r.points + " points lumineux.", "Total : " + espaces(modS.totalGeneral), "Électricité Générale du Faso", "+226 05 60 86 08", "Devis réalisé avec BâtiPlus"]) {
+    if (!msg.includes(attendu)) whatsapp.push("message sans « " + attendu + " »");
+  }
+  controle("㊴", "partage WhatsApp : lien wa.me propre et message complet", whatsapp.length === 0,
+    whatsapp.join(" ; ") || "wa.me/<chiffres>?text= encodé (& ? # % é ⚡ retour à la ligne) et relu à l'identique ; 6 numéros invalides → wa.me/?text= (choix du contact) ; message : client, numéro, titre, résumé " + r.circuits + " circuits/" + r.prises + " prises/" + r.points + " points, total, acompte, électricien, « Devis réalisé avec BâtiPlus » ; parcours réel : téléphone reformaté +226 70 12 34 56, erreur si incomplet, lien identique fiche/feuille, rel=noopener noreferrer");
+}
+
 /* ---------- Rapport ---------- */
 await controlesExecution();
 controlesMoteur();
 controlesResultat();
 controlesDevis();
+controlesFeuille();
 controleCapacitor();
 controleGitignore();
 controlesSecurite();
 controlesIdentite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);

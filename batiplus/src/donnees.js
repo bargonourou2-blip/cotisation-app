@@ -107,21 +107,21 @@ const BORNES = Object.freeze({
 
 /* ---------- Devises ---------- */
 const DEVISES = Object.freeze({
-  XOF: { libelle: "FCFA", nom: "Franc CFA (UEMOA)", decimales: 0 },
-  XAF: { libelle: "FCFA", nom: "Franc CFA (CEMAC)", decimales: 0 },
-  GNF: { libelle: "GNF", nom: "Franc guinéen", decimales: 0 },
-  NGN: { libelle: "NGN", nom: "Naira nigérian", decimales: 2 },
-  GHS: { libelle: "GHS", nom: "Cedi ghanéen", decimales: 2 },
-  MRU: { libelle: "MRU", nom: "Ouguiya mauritanien", decimales: 2 },
-  CDF: { libelle: "CDF", nom: "Franc congolais", decimales: 2 },
-  KES: { libelle: "KES", nom: "Shilling kényan", decimales: 2 },
-  MAD: { libelle: "MAD", nom: "Dirham marocain", decimales: 2 },
-  DZD: { libelle: "DZD", nom: "Dinar algérien", decimales: 2 },
-  TND: { libelle: "TND", nom: "Dinar tunisien", decimales: 3 },
-  ZAR: { libelle: "ZAR", nom: "Rand sud-africain", decimales: 2 },
-  EUR: { libelle: "€", nom: "Euro", decimales: 2 },
-  CAD: { libelle: "$ CA", nom: "Dollar canadien", decimales: 2 },
-  USD: { libelle: "$ US", nom: "Dollar américain", decimales: 2 }
+  XOF: { libelle: "FCFA", nom: "Franc CFA (UEMOA)", decimales: 0, lettres: ["franc CFA", "francs CFA", "centime", "centimes"] },
+  XAF: { libelle: "FCFA", nom: "Franc CFA (CEMAC)", decimales: 0, lettres: ["franc CFA", "francs CFA", "centime", "centimes"] },
+  GNF: { libelle: "GNF", nom: "Franc guinéen", decimales: 0, lettres: ["franc guinéen", "francs guinéens", "centime", "centimes"] },
+  NGN: { libelle: "NGN", nom: "Naira nigérian", decimales: 2, lettres: ["naira", "nairas", "kobo", "kobos"] },
+  GHS: { libelle: "GHS", nom: "Cedi ghanéen", decimales: 2, lettres: ["cedi", "cedis", "pesewa", "pesewas"] },
+  MRU: { libelle: "MRU", nom: "Ouguiya mauritanien", decimales: 2, lettres: ["ouguiya", "ouguiyas", "khoum", "khoums"] },
+  CDF: { libelle: "CDF", nom: "Franc congolais", decimales: 2, lettres: ["franc congolais", "francs congolais", "centime", "centimes"] },
+  KES: { libelle: "KES", nom: "Shilling kényan", decimales: 2, lettres: ["shilling kényan", "shillings kényans", "cent", "cents"] },
+  MAD: { libelle: "MAD", nom: "Dirham marocain", decimales: 2, lettres: ["dirham", "dirhams", "centime", "centimes"] },
+  DZD: { libelle: "DZD", nom: "Dinar algérien", decimales: 2, lettres: ["dinar algérien", "dinars algériens", "centime", "centimes"] },
+  TND: { libelle: "TND", nom: "Dinar tunisien", decimales: 3, lettres: ["dinar tunisien", "dinars tunisiens", "millime", "millimes"] },
+  ZAR: { libelle: "ZAR", nom: "Rand sud-africain", decimales: 2, lettres: ["rand", "rands", "cent", "cents"] },
+  EUR: { libelle: "€", nom: "Euro", decimales: 2, lettres: ["euro", "euros", "centime", "centimes"] },
+  CAD: { libelle: "$ CA", nom: "Dollar canadien", decimales: 2, lettres: ["dollar canadien", "dollars canadiens", "cent", "cents"] },
+  USD: { libelle: "$ US", nom: "Dollar américain", decimales: 2, lettres: ["dollar américain", "dollars américains", "cent", "cents"] }
 });
 
 /* ---------- Pays : indicatif, devise, longueurs du numéro national ----------
@@ -398,6 +398,37 @@ const BORNES_DEVIS = Object.freeze({ lignesMax: 150, noteMax: 1000, titreMax: 12
 /* −10 % / +10 % sur toute la main-d'œuvre (prix au point, tarif journée, forfait, lignes libres). */
 const AJUSTEMENT_MAIN_OEUVRE = 0.1;
 const PREFIXE_NUMERO_DEVIS = "BP";
+
+/* ==========================================================================
+   Feuille A4, PDF et partage (étape 8)
+   ========================================================================== */
+/* Pied de page du devis : en filigrane discret pour la formule gratuite, absent pour un abonné. */
+const PIED_DEVIS = "Devis réalisé avec BâtiPlus — application conçue par BRG Électro+ · +226 05 60 86 08 · +226 68 52 42 90";
+const OPACITE_FILIGRANE = 0.22;
+const SIGNATURE_WHATSAPP = "Devis réalisé avec BâtiPlus";
+/* Android : Documents/BatiPlus/Devis_BP-2026-0042_NomClient.pdf */
+const DOSSIER_PDF = "BatiPlus";
+const SIGNATURES_DEVIS = Object.freeze([
+  Object.freeze({ titre: "L'électricien", aide: "Date et signature" }),
+  Object.freeze({ titre: "Le client", aide: "« Bon pour accord », date et signature" })
+]);
+/* PDF : feuille A4 en points (1 pt = 1/72 pouce), marges de 12 mm. */
+/* Largeur d'une feuille A4 à l'écran (210 mm à 96 ppp) : base de la réduction de l'aperçu. */
+const LARGEUR_A4_PX = 794;
+const PDF_A4 = Object.freeze({ largeur: 595.28, hauteur: 841.89, marge: 34.02 });
+/* Largeurs des caractères des polices standard du PDF (Helvetica et Helvetica-Bold,
+   en millièmes de la taille), codes 32 à 255 de l'encodage WinAnsi. Aucune police
+   à embarquer : tout lecteur PDF les possède. */
+const POLICES_PDF = Object.freeze({
+  normale: Object.freeze([278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584, 0, 556, 0, 222, 556, 333, 1000, 556, 556, 333, 1000, 667, 333, 1000, 0, 611, 0, 0, 222, 222, 333, 333, 350, 556, 1000, 333, 1000, 500, 333, 944, 0, 500, 667, 278, 333, 556, 556, 556, 556, 260, 556, 333, 737, 370, 556, 584, 333, 737, 333, 400, 584, 333, 333, 333, 556, 537, 278, 333, 333, 365, 556, 834, 834, 834, 611, 667, 667, 667, 667, 667, 667, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278, 722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611, 556, 556, 556, 556, 556, 556, 889, 500, 556, 556, 556, 556, 278, 278, 278, 278, 556, 556, 556, 556, 556, 556, 556, 584, 611, 556, 556, 556, 556, 500, 556, 500]),
+  grasse: Object.freeze([278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584, 0, 556, 0, 278, 556, 500, 1000, 556, 556, 333, 1000, 667, 333, 1000, 0, 611, 0, 0, 278, 278, 500, 500, 350, 556, 1000, 333, 1000, 556, 333, 944, 0, 500, 667, 278, 333, 556, 556, 556, 556, 280, 556, 333, 737, 370, 556, 584, 333, 737, 333, 400, 584, 333, 333, 333, 611, 556, 278, 333, 333, 365, 556, 834, 834, 834, 611, 722, 722, 722, 722, 722, 722, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278, 722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611, 556, 556, 556, 556, 556, 556, 889, 556, 556, 556, 556, 556, 278, 278, 278, 278, 611, 611, 611, 611, 611, 611, 611, 584, 611, 611, 611, 611, 611, 556, 611, 556])
+});
+/* Caractères hors Latin-1 présents dans l'encodage WinAnsi (point de code → octet). */
+const WINANSI_SPECIAUX = Object.freeze({
+  8364: 128, 8218: 130, 402: 131, 8222: 132, 8230: 133, 8224: 134, 8225: 135, 710: 136, 8240: 137, 352: 138, 8249: 139,
+  338: 140, 381: 142, 8216: 145, 8217: 146, 8220: 147, 8221: 148, 8226: 149, 8211: 150, 8212: 151, 732: 152, 8482: 153,
+  353: 154, 8250: 155, 339: 156, 382: 158, 376: 159, 8722: 45, 8239: 160, 8199: 160, 8201: 32
+});
 
 /* ---------- Identité visuelle (étape 4) ---------- */
 /* Remplace toute photo d'électricien manquante : jamais de cadre vide. */

@@ -23,6 +23,8 @@
   --rouge-2: #C41414;
   --jaune: #FFD400;
   --vert: #12A150;
+  /* Vert assombri pour un texte blanc lisible (contraste ≥ 4,5:1), comme --orange-texte. */
+  --vert-fonce: #0B7A3B;
   --orange: #F59E0B;
   --fond: #F4F2F9;
   --carte: #FFFFFF;
@@ -1186,6 +1188,103 @@ a.bouton { text-decoration: none; }
   .lignes-prix-mo { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
+/* ---------- 7g. Feuille A4, PDF et WhatsApp (étape 8) ---------- */
+.actions-fiche, .actions-feuille { display: grid; gap: 10px; }
+.actions-feuille .bouton[hidden] { display: none; }
+a.bouton { text-decoration: none; }
+.bouton-whatsapp { background: var(--vert-fonce); color: #FFFFFF; }
+@media (min-width: 700px) {
+  .actions-fiche, .actions-feuille { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+}
+.bouton-whatsapp .icone { width: 20px; height: 20px; }
+.bouton-whatsapp:focus-visible { outline: 3px solid var(--violet-2); outline-offset: 2px; }
+.bouton[disabled] { opacity: 0.6; cursor: progress; }
+.aide-whatsapp:empty, .feuille-ecran .brouillon-etat:empty { display: none; }
+.encadre-alerte {
+  margin: 0; padding: 12px 14px; border-radius: var(--rayon-petit); border: 2px solid var(--jaune);
+  background: rgba(255, 212, 0, 0.14); color: var(--texte); font-weight: 600;
+}
+.encadre-alerte[hidden] { display: none; }
+.feuille-ecran { display: grid; gap: 16px; }
+.feuille-tete { display: grid; gap: 10px; }
+.feuille-tete .titre-ecran { margin: 0; }
+.feuille-tete .aide { margin: 0; }
+.feuille-cadre { overflow-x: auto; padding: 4px 0 8px; }
+
+/* La feuille : papier blanc dans les deux thèmes, mêmes proportions qu'à l'impression. */
+.feuille-a4 {
+  zoom: var(--echelle, 1);
+  box-sizing: border-box; width: 210mm; min-height: 297mm; margin: 0 auto; padding: 12mm;
+  display: flex; flex-direction: column; gap: 3.2mm;
+  background: #FFFFFF; color: #17131F; font-family: "Inter", system-ui, sans-serif; font-size: 8pt; line-height: 1.3;
+  border-radius: 2px; box-shadow: 0 10px 30px rgba(23, 19, 31, 0.18);
+  overflow-wrap: normal; word-break: normal; hyphens: manual;
+}
+.feuille-a4 p, .feuille-a4 h2 { margin: 0; }
+.f-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; padding-bottom: 2.5mm; border-bottom: 1.4pt solid #6A0DAD; }
+.f-emetteur { display: flex; align-items: flex-start; gap: 4mm; min-width: 0; }
+.f-logo { width: 19mm; height: 19mm; object-fit: contain; flex: none; }
+.f-initiales {
+  flex: none; width: 18mm; height: 18mm; border-radius: 50%; display: grid; place-items: center;
+  background: #6A0DAD; color: #FFFFFF; font-weight: 800; font-size: 16pt; letter-spacing: 0.02em;
+}
+.f-infos { display: grid; gap: 0.6mm; min-width: 0; }
+.f-entreprise { font-size: 12pt; font-weight: 800; line-height: 1.2; }
+.f-ligne { color: #5F5870; font-size: 8pt; }
+.f-ref { text-align: right; flex: none; display: grid; gap: 0.6mm; }
+.f-type { font-size: 21pt; font-weight: 800; color: #6A0DAD; line-height: 1; letter-spacing: 0.02em; }
+.f-numero { font-size: 10pt; font-weight: 800; white-space: nowrap; }
+.f-date { color: #5F5870; white-space: nowrap; }
+.f-objet { font-size: 10pt; font-weight: 600; }
+.f-objet strong { font-weight: 800; }
+.f-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
+.f-bloc { background: #F3E9FD; padding: 2.5mm 3mm; display: grid; gap: 0.8mm; align-content: start; }
+.f-etiquette { font-size: 6.5pt; font-weight: 800; color: #6A0DAD; text-transform: uppercase; letter-spacing: 0.06em; }
+.f-nom { font-size: 9.5pt; font-weight: 700; }
+.f-section { display: grid; gap: 1.5mm; }
+.f-titre { font-size: 8.5pt; font-weight: 800; color: #6A0DAD; text-transform: uppercase; letter-spacing: 0.04em; }
+.f-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.f-table thead { display: table-header-group; }
+.f-table th { background: #6A0DAD; color: #FFFFFF; font-size: 7.2pt; font-weight: 700; text-align: left; padding: 1.6mm 1.8mm; }
+.f-table td { padding: 1.05mm 1.8mm; vertical-align: top; }
+.f-table tbody tr:nth-child(even):not(.f-sous-total) { background: #F3E9FD; }
+.f-c-unite { width: 15mm; }
+.f-c-qte { width: 15mm; }
+.f-c-prix { width: 30mm; }
+.f-c-montant { width: 32mm; }
+.f-table .f-nombre, .f-totaux .f-nombre { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.f-fort { font-weight: 700; }
+.f-nombre[data-longueur="l"] { font-size: 6.8pt; }
+.f-nombre[data-longueur="xl"] { font-size: 5.8pt; }
+.f-a-completer .f-nombre { color: #8A5100; }
+.f-vide { color: #5F5870; }
+.f-sous-total td { border-top: 0.9pt solid #6A0DAD; font-weight: 800; padding-top: 1.6mm; }
+.f-sous-total td:first-child { text-align: right; }
+.f-sous-total td:last-child { color: #6A0DAD; font-size: 8.5pt; }
+.f-bas { display: grid; grid-template-columns: minmax(0, 1fr) 88mm; gap: 6mm; align-items: start; }
+.f-gauche { display: grid; gap: 1mm; align-content: start; }
+.f-gauche .f-etiquette:not(:first-child) { margin-top: 1.8mm; }
+.f-lettres { font-size: 8.5pt; }
+.f-texte { white-space: pre-line; }
+.f-totaux { width: 100%; border-collapse: collapse; }
+.f-totaux th { text-align: left; font-weight: 500; padding: 0.9mm 2mm; }
+.f-totaux td { padding: 0.9mm 2mm; }
+.f-total-general th, .f-total-general td { background: #6A0DAD; color: #FFFFFF; font-weight: 800; padding: 2.6mm 2.5mm; }
+.f-total-general th { font-size: 9.5pt; }
+.f-total-general td { font-size: 12pt; }
+.f-total-general td[data-longueur="l"] { font-size: 9.5pt; }
+.f-total-general td[data-longueur="xl"] { font-size: 8pt; }
+.f-reste th, .f-reste td { font-weight: 800; }
+.f-fin { display: grid; gap: 2mm; }
+.f-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 5.5mm; }
+.f-signature { border: 0.8pt solid #DCD3EA; min-height: 18mm; padding: 2.2mm 2.8mm; display: grid; gap: 0.6mm; align-content: start; }
+.f-sig-titre { font-weight: 700; font-size: 8.5pt; }
+.f-sig-aide { color: #5F5870; font-size: 7pt; }
+.f-mention { color: #5F5870; font-size: 7.2pt; }
+.f-pied { margin-top: auto; padding-top: 3mm; text-align: center; font-size: 6.8pt; color: #17131F; }
+/* Formule gratuite : pied en filigrane discret. Abonné : le pied n'est pas créé du tout. */
+.f-filigrane { opacity: 0.22; }
+
 /* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */
 @media (min-width: 1025px) {
   #tiroir { transform: none; box-shadow: none; width: var(--largeur-tiroir); }
@@ -1218,8 +1317,21 @@ a.bouton { text-decoration: none; }
 
 /* ---------- 10. Impression ---------- */
 @media print {
-  #toile, .halo, .voile, #tiroir, .entete, .onglets { display: none !important; }
+  @page { size: A4; margin: 12mm; }
+  #toile, .halo, .voile, #tiroir, .entete, .onglets, .toast { display: none !important; }
   .page { margin: 0; }
+  /* Écran « feuille » : seule la feuille A4 est imprimée, à sa taille réelle. */
+  body[data-ecran-actif="feuille"] { background: #FFFFFF !important; }
+  body[data-ecran-actif="feuille"] .page { margin: 0 !important; display: block; min-height: 0; }
+  body[data-ecran-actif="feuille"] main.contenu { max-width: none; margin: 0; padding: 0; }
+  body[data-ecran-actif="feuille"] .ecran.actif { animation: none; }
+  body[data-ecran-actif="feuille"] .feuille-tete { display: none !important; }
+  body[data-ecran-actif="feuille"] .feuille-ecran { display: block; }
+  body[data-ecran-actif="feuille"] .feuille-cadre { overflow: visible; padding: 0; }
+  .feuille-a4 { zoom: 1 !important; width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; border-radius: 0; }
+  .feuille-a4, .feuille-a4 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .f-table tr, .f-parties, .f-bas, .f-fin, .f-tete { break-inside: avoid; }
+  .f-titre { break-after: avoid; }
 }
 
 /* ---------- 11. Respect : mouvements réduits ---------- */
