@@ -12,7 +12,8 @@
     "construire": "node src/scripts/assembler.mjs && node src/scripts/verifier.mjs",
     "apercu": "node src/scripts/apercu.mjs",
     "sync": "npm run construire && npx cap sync android",
-    "android": "npm run sync && npx cap open android"
+    "android": "npm run sync && npx cap open android",
+    "icones": "python3 src/scripts/preparer_icones.py && capacitor-assets generate --android --assetPath assets --iconBackgroundColor \"#FFFFFF\" --iconBackgroundColorDark \"#FFFFFF\" --splashBackgroundColor \"#4E0A80\" --splashBackgroundColorDark \"#4E0A80\""
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
@@ -29,9 +30,13 @@
     "@capacitor/status-bar": "^7.0.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^7.0.0"
   },
   "engines": {
     "node": ">=22"
+  },
+  "overrides": {
+    "sharp": "^0.33.5"
   }
 }

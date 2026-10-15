@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-639iM3gUnY84wlnjTN9bmBDhjBARV00t50jRrVe0Asg='; style-src 'self' 'sha256-wczlWUN+xPXF4tm7Kekf9kq2N4o6RZF9EaaPcCaLjw0='; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.batiplus.bf; media-src 'none'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-UasIu7gtmhf7Ajjq7ccG8miZkqaku/5DC2sO/XTBT6A='; style-src 'self' 'sha256-GRATAhkimjxipq5TPVA8HtboQuNx6++tvqnsMv+I0z4='; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.batiplus.bf; media-src 'none'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#6A0DAD">
 <meta name="color-scheme" content="light dark">
@@ -605,7 +605,36 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
 
 .bandeau-photos { margin: 4px 0 0; }
 .bandeau-photos-rangee { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.bandeau-photos img { width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 14px; box-shadow: var(--ombre-1); }
+/* Cadre photo : voile en dégradé violet par-dessus pour la lisibilité, fond violet si l'image tarde. */
+.photo-cadre {
+  position: relative; display: block; aspect-ratio: 4 / 3; border-radius: 14px; overflow: hidden;
+  box-shadow: var(--ombre-1); background: linear-gradient(160deg, var(--violet-2), var(--violet-3));
+}
+.photo-cadre img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.photo-cadre::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(106, 13, 173, 0) 40%, rgba(78, 10, 128, 0.5) 100%);
+}
+/* Illustration de repli (photo absente) : déjà lisible, pas de voile. */
+.photo-repli { object-fit: contain; }
+.photo-cadre:has(.photo-repli)::after, .diapo-photo:has(.photo-repli)::after { display: none; }
+
+/* Moyens de paiement (section Paiement) : logo officiel sur pastille blanche de 40 px,
+   ou pastille unie à la couleur de la marque avec le nom en texte. Jamais déformés. */
+.paiements { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.paiement {
+  display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 14px;
+  border-radius: 12px; background: #fff; box-shadow: var(--ombre-1); white-space: nowrap;
+  font-family: var(--police-titre); font-weight: 800; font-size: 14px;
+}
+.paiement img { height: 26px; width: auto; max-width: none; object-fit: contain; }
+.paiement-pastille[data-marque="orange-money"] { background: #FF7900; color: #000; }
+.paiement-pastille[data-marque="moov-money"] { background: #0066B3; color: #fff; }
+.paiement-pastille[data-marque="wave"] { background: #1DC8F2; color: #0B1F3A; }
+.paiement-pastille[data-marque="telecel-money"] { background: #E30613; color: #fff; }
+.paiement-pastille[data-marque="visa"] { background: #1A1F71; color: #fff; }
+.paiement-pastille[data-marque="mastercard"] { background: #EB001B; color: #fff; }
+.paiement-pastille[data-marque="cinetpay"] { background: #19A463; color: #062B16; }
 .bandeau-photos figcaption { margin-top: 10px; text-align: center; font-family: var(--police-titre); font-weight: 800; font-size: 15px; color: var(--accent-texte); }
 
 /* Boutons secondaires */
@@ -779,47 +808,51 @@ a.bouton { text-decoration: none; }
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" class="visuellement-cache" aria-hidden="true" focusable="false">
-  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
-  <symbol id="i-fermer" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
-  <symbol id="i-lune" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
-  <symbol id="i-soleil" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
-  <symbol id="i-eclair" viewBox="0 0 24 24"><path d="M13.5 2L4.5 13.5h6.2L9.8 22l9.7-12.3h-6.4L13.5 2z"/></symbol>
-  <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></symbol>
-  <symbol id="i-devis" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
-  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-  <symbol id="i-chantier" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M10 21v-5h4v5"/></symbol>
-  <symbol id="i-clients" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5A6.5 6.5 0 0 1 21.5 20"/></symbol>
-  <symbol id="i-prix" viewBox="0 0 24 24"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/></symbol>
-  <symbol id="i-profil" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
   <symbol id="i-abonnement" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/></symbol>
-  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
-  <symbol id="i-installer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
-  <symbol id="i-telephone" viewBox="0 0 24 24"><path d="M21 16.5v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 1.1 3.7 2 2 0 0 1 3.1 1.5h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L7 9.3a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></symbol>
-  <symbol id="i-oeil" viewBox="0 0 24 24"><path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
-  <symbol id="i-oeil-barre" viewBox="0 0 24 24"><path d="M10.6 5.1A10 10 0 0 1 12 4.5c6.5 0 10.5 7.5 10.5 7.5a17 17 0 0 1-2.6 3.4M6.3 6.3A17.3 17.3 0 0 0 1.5 12s4 7.5 10.5 7.5a10 10 0 0 0 5.7-1.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M2 2l20 20"/></symbol>
-  <symbol id="i-effacer" viewBox="0 0 24 24"><path d="M21 5H8.5L2 12l6.5 7H21a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M17 9.5l-5 5M12 9.5l5 5"/></symbol>
-  <symbol id="i-cadenas" viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10.5" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></symbol>
-  <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.4A8.5 8.5 0 1 1 21 11.5z"/></symbol>
-  <symbol id="i-fleche" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
-  <symbol id="i-sortie" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
-  <symbol id="i-recherche" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5L16 16"/></symbol>
-  <symbol id="i-photo" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></symbol>
-  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></symbol>
-  <symbol id="i-poubelle" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></symbol>
-  <symbol id="i-exporter" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
-  <symbol id="i-importer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
-  <symbol id="i-calendrier" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
-  <symbol id="i-lieu" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></symbol>
   <symbol id="i-ampoule" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V17h5v-1.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></symbol>
   <symbol id="i-bouclier" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
-  <symbol id="i-norme" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 14l2 2 4-4"/></symbol>
-  <symbol id="i-mobile" viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M10 18.5h4"/></symbol>
-  <symbol id="i-ordinateur" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-cadenas-ouvert" viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10.5" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 7.7-1.5"/><path d="M12 15v2"/></symbol>
+  <symbol id="i-cadenas" viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10.5" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></symbol>
+  <symbol id="i-calendrier" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-chantier" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M10 21v-5h4v5"/></symbol>
   <symbol id="i-cle" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/></symbol>
-  <symbol id="i-graphique" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
-  <symbol id="i-echange" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
-  <symbol id="i-retour" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-clients" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5A6.5 6.5 0 0 1 21.5 20"/></symbol>
+  <symbol id="i-devis" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
   <symbol id="i-document" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  <symbol id="i-echange" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
+  <symbol id="i-eclair" viewBox="0 0 24 24"><path d="M13.5 2L4.5 13.5h6.2L9.8 22l9.7-12.3h-6.4L13.5 2z"/></symbol>
+  <symbol id="i-effacer" viewBox="0 0 24 24"><path d="M21 5H8.5L2 12l6.5 7H21a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M17 9.5l-5 5M12 9.5l5 5"/></symbol>
+  <symbol id="i-exporter" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
+  <symbol id="i-fermer" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-fleche" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-graphique" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></symbol>
+  <symbol id="i-importer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
+  <symbol id="i-imprimer" viewBox="0 0 24 24"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/><path d="M17 12.5h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
+  <symbol id="i-installer" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-lieu" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="i-lune" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.4A8.5 8.5 0 1 1 21 11.5z"/></symbol>
+  <symbol id="i-mobile" viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M10 18.5h4"/></symbol>
+  <symbol id="i-norme" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 14l2 2 4-4"/></symbol>
+  <symbol id="i-oeil-barre" viewBox="0 0 24 24"><path d="M10.6 5.1A10 10 0 0 1 12 4.5c6.5 0 10.5 7.5 10.5 7.5a17 17 0 0 1-2.6 3.4M6.3 6.3A17.3 17.3 0 0 0 1.5 12s4 7.5 10.5 7.5a10 10 0 0 0 5.7-1.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M2 2l20 20"/></symbol>
+  <symbol id="i-oeil" viewBox="0 0 24 24"><path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-ordinateur" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-plan" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 11h7M14 11h7M12 3v5M12 14v7M16 11v-2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-poubelle" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-prix" viewBox="0 0 24 24"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="8" cy="8" r="1.6"/></symbol>
+  <symbol id="i-profil" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-recherche" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5L16 16"/></symbol>
+  <symbol id="i-retour" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-soleil" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-sortie" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-telephone" viewBox="0 0 24 24"><path d="M21 16.5v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 1.1 3.7 2 2 0 0 1 3.1 1.5h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L7 9.3a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></symbol>
+  <symbol id="i-whatsapp" viewBox="0 0 24 24"><path d="M3.5 20.5l1.4-4.2A8.6 8.6 0 1 1 8 19.4z"/><path d="M9 9.2c0 3 2.8 5.8 5.8 5.8l1.2-1.4-1.9-1-1 .9a4.5 4.5 0 0 1-2.6-2.6l.9-1-1-1.9z"/></symbol>
 </svg>
 
 <canvas id="toile" aria-hidden="true"></canvas>
@@ -1152,9 +1185,9 @@ a.bouton { text-decoration: none; }
 
         <figure class="bandeau-photos cascade" data-rang="7">
           <div class="bandeau-photos-rangee">
-            <img src="images/equipe/equipe-chantier.webp" alt="Équipe d'électriciens sur un chantier" width="640" height="427" loading="lazy" decoding="async">
-            <img src="images/equipe/elec-tableau.webp" alt="Électricien câblant un tableau" width="640" height="427" loading="lazy" decoding="async">
-            <img src="images/equipe/elec-cables.webp" alt="Électricien tirant des câbles" width="640" height="427" loading="lazy" decoding="async">
+            <span class="photo-cadre"><img src="images/equipe/equipe-chantier.webp" alt="Équipe d'électriciens sur un chantier" width="640" height="427" loading="lazy" decoding="async"></span>
+            <span class="photo-cadre"><img src="images/equipe/elec-tableau.webp" alt="Électricien câblant un tableau" width="640" height="427" loading="lazy" decoding="async"></span>
+            <span class="photo-cadre"><img src="images/equipe/elec-cables.webp" alt="Électricien tirant des câbles" width="640" height="427" loading="lazy" decoding="async"></span>
           </div>
           <figcaption>La qualité, c'est la sécurité</figcaption>
         </figure>
@@ -1317,9 +1350,9 @@ a.bouton { text-decoration: none; }
 
         <figure class="bandeau-photos cascade" data-rang="8">
           <div class="bandeau-photos-rangee">
-            <img src="images/equipe/equipe-chantier.webp" alt="Équipe d'électriciens sur un chantier" width="640" height="427" loading="lazy" decoding="async">
-            <img src="images/equipe/elec-tableau.webp" alt="Électricien câblant un tableau" width="640" height="427" loading="lazy" decoding="async">
-            <img src="images/equipe/elec-cables.webp" alt="Électricien tirant des câbles" width="640" height="427" loading="lazy" decoding="async">
+            <span class="photo-cadre"><img src="images/equipe/equipe-chantier.webp" alt="Équipe d'électriciens sur un chantier" width="640" height="427" loading="lazy" decoding="async"></span>
+            <span class="photo-cadre"><img src="images/equipe/elec-tableau.webp" alt="Électricien câblant un tableau" width="640" height="427" loading="lazy" decoding="async"></span>
+            <span class="photo-cadre"><img src="images/equipe/elec-cables.webp" alt="Électricien tirant des câbles" width="640" height="427" loading="lazy" decoding="async"></span>
           </div>
           <figcaption>La qualité, c'est la sécurité</figcaption>
         </figure>
@@ -1705,6 +1738,24 @@ const RECHERCHE = Object.freeze([
 const CONDITIONS_DEFAUT = "Devis valable 30 jours. Acompte de 50 % à la commande, solde à la fin des travaux. Matériel garanti selon les conditions du fabricant.";
 
 /* ---------- Images importées (photo, logo) ---------- */
+/* ---------- Identité visuelle (étape 4) ---------- */
+/* Remplace toute photo d'électricien manquante : jamais de cadre vide. */
+const PHOTO_REPLI = "images/equipe/electricien-repli.svg";
+/* Moyens de paiement, dans l'ordre d'affichage de la section Paiement (étapes 11-12).
+   Un logo n'est affiché que si le fichier officiel est fourni dans www/images/paiement/ ;
+   sinon : pastille unie à la couleur de la marque, nom écrit en texte (couleurs dans charte.css). */
+const MOYENS_PAIEMENT = Object.freeze([
+  Object.freeze({ id: "orange-money", nom: "Orange Money" }),
+  Object.freeze({ id: "moov-money", nom: "Moov Money" }),
+  Object.freeze({ id: "wave", nom: "Wave" }),
+  Object.freeze({ id: "telecel-money", nom: "Telecel Money" }),
+  Object.freeze({ id: "visa", nom: "Visa" }),
+  Object.freeze({ id: "mastercard", nom: "Mastercard" }),
+  Object.freeze({ id: "cinetpay", nom: "CinetPay" })
+]);
+/* Rempli par l'assembleur : noms des fichiers WebP présents dans www/images/paiement/. */
+const LOGOS_PAIEMENT_FOURNIS = Object.freeze([]);
+
 const IMAGES = Object.freeze({
   types: Object.freeze(["image/jpeg", "image/png", "image/webp"]),
   octetsMax: 5 * 1024 * 1024,
@@ -2213,6 +2264,27 @@ function brancherBoutonRetour() {
 function surEchecLogo(evenement) {
   const conteneur = evenement.currentTarget.closest("[data-logo]");
   if (conteneur) conteneur.classList.add("logo-echec");
+}
+
+/* Photo d'électricien introuvable : l'illustration de repli prend sa place (jamais de cadre vide).
+   L'événement error ne remonte pas : il est capté en phase de capture sur le document. */
+function remplacerPhoto(img) {
+  if (img.dataset.repli === "1") return;
+  img.dataset.repli = "1";
+  img.classList.add("photo-repli");
+  img.src = PHOTO_REPLI;
+}
+
+function surEchecImage(evenement) {
+  const img = evenement.target;
+  if (img instanceof HTMLImageElement && img.closest(".photo-cadre, .diapo-photo")) remplacerPhoto(img);
+}
+
+function surveillerPhotos() {
+  document.addEventListener("error", surEchecImage, true);
+  document.querySelectorAll(".photo-cadre img, .diapo-photo img").forEach((img) => {
+    if (img.complete && img.naturalWidth === 0 && img.getAttribute("src")) remplacerPhoto(img);
+  });
 }
 
 function surveillerLogos() {
@@ -4089,6 +4161,7 @@ function preparerInterface() {
   $("etat-version").textContent = APP.version;
   $("etat-plateforme").textContent = nomPlateforme();
   surveillerLogos();
+  surveillerPhotos();
   construireNavigation();
   masquerLiensAbsents();
   remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);

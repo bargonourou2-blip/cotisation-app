@@ -7,7 +7,7 @@ Entrées (dossier sources-photos/) :
   - elec-tableau.jpg, elec-cables.jpg, elec-devis.jpg,
     equipe-chantier.jpg, profil-defaut.jpg   visuels d'illustration générés par IA
 
-Sorties (dossier www/images/equipe/) : WebP de moins de 150 Ko chacun.
+Sorties (dossier www/images/equipe/) : WebP de moins de 150 000 octets, 1 200 px max.
   - recadrage au format demandé (vertical 3:4, horizontal 4:3, carré)
   - jamais d'agrandissement (on ne fabrique pas de faux détails)
   - fondateur.webp : fond blanc retiré (transparence), pour être posé sur un fond violet
@@ -25,14 +25,15 @@ from PIL import Image, ImageDraw, ImageFilter
 RACINE = Path(__file__).resolve().parents[2]
 SOURCES = RACINE / "sources-photos"
 SORTIE = RACINE / "www" / "images" / "equipe"
-POIDS_MAX = 150 * 1024
+POIDS_MAX = 150_000        # « moins de 150 Ko » : on retient la lecture la plus stricte
+COTE_MAX = 1200            # aucune photo ne dépasse 1 200 px de côté
 
 # nom : (ratio largeur/hauteur, largeur maximale, position verticale du recadrage 0=haut 0.5=centre)
 PHOTOS = {
     "elec-tableau": (3 / 4, 1200, 0.35),
     "elec-cables": (3 / 4, 1200, 0.35),
-    "elec-devis": (4 / 3, 1600, 0.5),
-    "equipe-chantier": (4 / 3, 1600, 0.5),
+    "elec-devis": (4 / 3, 1200, 0.5),
+    "equipe-chantier": (4 / 3, 1200, 0.5),
     "profil-defaut": (1.0, 600, 0.3),
 }
 
@@ -49,9 +50,11 @@ def recadrer(img: Image.Image, ratio: float, position: float) -> Image.Image:
 
 
 def reduire(img: Image.Image, largeur_max: int) -> Image.Image:
-    if img.width <= largeur_max:
+    """Réduit à `largeur_max` de large et à COTE_MAX sur le plus grand côté."""
+    echelle = min(1.0, largeur_max / img.width, COTE_MAX / max(img.size))
+    if echelle >= 1.0:
         return img
-    return img.resize((largeur_max, round(img.height * largeur_max / img.width)), Image.LANCZOS)
+    return img.resize((round(img.width * echelle), round(img.height * echelle)), Image.LANCZOS)
 
 
 def enregistrer_leger(img: Image.Image, chemin: Path) -> None:

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Illustration d'un électricien">
+  <defs>
+    <linearGradient id="fond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F3E9FD"/>
+      <stop offset="1" stop-color="#D9C2F4"/>
+    </linearGradient>
+    <linearGradient id="tenue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8B2FD6"/>
+      <stop offset="1" stop-color="#4E0A80"/>
+    </linearGradient>
+    <linearGradient id="casque" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFE45C"/>
+      <stop offset="1" stop-color="#FFD400"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#fond)"/>
+  <circle cx="470" cy="120" r="70" fill="#FFFFFF" opacity="0.55"/>
+  <path d="M478 78l-34 50h26l-12 40 36-54h-26z" fill="#FFD400" stroke="#C49A00" stroke-width="3" stroke-linejoin="round"/>
+  <!-- Corps : combinaison violette -->
+  <path d="M150 600c0-120 50-190 150-190s150 70 150 190z" fill="url(#tenue)"/>
+  <path d="M262 412l38 70 38-70" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linejoin="round" opacity="0.9"/>
+  <rect x="168" y="520" width="264" height="18" rx="4" fill="#FFD400"/>
+  <rect x="168" y="552" width="264" height="10" rx="3" fill="#FFFFFF" opacity="0.7"/>
+  <!-- Bras levé tenant le testeur -->
+  <path d="M410 460c40-20 62-70 66-130" fill="none" stroke="#6A0DAD" stroke-width="54" stroke-linecap="round"/>
+  <circle cx="478" cy="318" r="30" fill="#8D5524"/>
+  <rect x="452" y="200" width="56" height="112" rx="12" fill="#17131F"/>
+  <rect x="462" y="212" width="36" height="30" rx="5" fill="#12A150"/>
+  <path d="M470 226h20" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="480" cy="270" r="10" fill="#FF1E1E"/>
+  <path d="M470 200l-14-46M492 200l12-46" stroke="#17131F" stroke-width="6" stroke-linecap="round"/>
+  <path d="M456 154l-4-14M504 154l4-14" stroke="#FF1E1E" stroke-width="8" stroke-linecap="round"/>
+  <!-- Cou et tête -->
+  <rect x="272" y="350" width="56" height="70" rx="20" fill="#7A4520"/>
+  <ellipse cx="300" cy="300" rx="78" ry="86" fill="#8D5524"/>
+  <ellipse cx="222" cy="306" rx="14" ry="22" fill="#7A4520"/>
+  <ellipse cx="378" cy="306" rx="14" ry="22" fill="#7A4520"/>
+  <circle cx="272" cy="300" r="9" fill="#17131F"/>
+  <circle cx="328" cy="300" r="9" fill="#17131F"/>
+  <path d="M258 280q14-10 28 0M314 280q14-10 28 0" fill="none" stroke="#3B200D" stroke-width="6" stroke-linecap="round"/>
+  <path d="M272 340q28 22 56 0" fill="none" stroke="#3B200D" stroke-width="7" stroke-linecap="round"/>
+  <!-- Casque jaune -->
+  <path d="M212 262c0-62 40-104 88-104s88 42 88 104z" fill="url(#casque)" stroke="#C49A00" stroke-width="4"/>
+  <rect x="196" y="254" width="208" height="24" rx="12" fill="#FFD400" stroke="#C49A00" stroke-width="4"/>
+  <path d="M300 160v94" stroke="#C49A00" stroke-width="12" stroke-linecap="round" opacity="0.6"/>
+  <path d="M252 184q-12 30-12 70M348 184q12 30 12 70" fill="none" stroke="#C49A00" stroke-width="5" opacity="0.5"/>
+</svg>

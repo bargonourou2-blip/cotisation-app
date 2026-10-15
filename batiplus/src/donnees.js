@@ -247,6 +247,24 @@ const RECHERCHE = Object.freeze([
 const CONDITIONS_DEFAUT = "Devis valable 30 jours. Acompte de 50 % à la commande, solde à la fin des travaux. Matériel garanti selon les conditions du fabricant.";
 
 /* ---------- Images importées (photo, logo) ---------- */
+/* ---------- Identité visuelle (étape 4) ---------- */
+/* Remplace toute photo d'électricien manquante : jamais de cadre vide. */
+const PHOTO_REPLI = "images/equipe/electricien-repli.svg";
+/* Moyens de paiement, dans l'ordre d'affichage de la section Paiement (étapes 11-12).
+   Un logo n'est affiché que si le fichier officiel est fourni dans www/images/paiement/ ;
+   sinon : pastille unie à la couleur de la marque, nom écrit en texte (couleurs dans charte.css). */
+const MOYENS_PAIEMENT = Object.freeze([
+  Object.freeze({ id: "orange-money", nom: "Orange Money" }),
+  Object.freeze({ id: "moov-money", nom: "Moov Money" }),
+  Object.freeze({ id: "wave", nom: "Wave" }),
+  Object.freeze({ id: "telecel-money", nom: "Telecel Money" }),
+  Object.freeze({ id: "visa", nom: "Visa" }),
+  Object.freeze({ id: "mastercard", nom: "Mastercard" }),
+  Object.freeze({ id: "cinetpay", nom: "CinetPay" })
+]);
+/* Rempli par l'assembleur : noms des fichiers WebP présents dans www/images/paiement/. */
+const LOGOS_PAIEMENT_FOURNIS = Object.freeze("@@LOGOS_PAIEMENT@@");
+
 const IMAGES = Object.freeze({
   types: Object.freeze(["image/jpeg", "image/png", "image/webp"]),
   octetsMax: 5 * 1024 * 1024,

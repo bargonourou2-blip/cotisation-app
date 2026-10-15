@@ -20,7 +20,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 1 | Fondations : structure, charte, coquille Capacitor qui démarre | ✔ livrée |
 | 2 | Écrans d'entrée : démarrage, présentation, connexion/inscription | ✔ livrée |
 | 3 | Accueil, profil, à propos, réglages, thème, navigation complète | ✔ livrée |
-| 4 | Identités visuelles : logos réels, icônes, photos | à venir |
+| 4 | Identités visuelles : logos réels, icônes, photos | ✔ livrée |
 | 5 | Assistant Nouveau chantier (5 étapes) et moteur de calcul NF C 15-100 | à venir |
 | 6 | Résultat de l'étude : circuits, schéma du tableau, conformité | à venir |
 | 7 | Le devis : catalogue lié, lignes modifiables, main-d'œuvre 4 modes | à venir |
@@ -133,6 +133,25 @@ CHROME_PATH=/chemin/vers/chrome CAPTURES=/tmp/captures npm run verifier:navigate
 - Bouton retour Android : modale → recherche → tiroir → écran précédent → accueil → quitter,
   avec confirmation si un travail n'est pas enregistré.
 
+### Identités visuelles (étape 4)
+
+- **Logos** (`www/images/logo/`, `www/images/brg/`) : détourés (coins transparents vérifiés),
+  jamais remplacés par du texte stylisé sauf si l'image ne charge pas.
+- **Icônes de l'interface** : un fichier SVG par icône dans `www/icons/` (une seule couleur
+  `currentColor`, trait de 2 px, 24×24). L'assembleur en fait le sprite `<symbol id="i-nom">` et
+  **refuse** toute icône hors charte ou contenant autre chose que des formes géométriques.
+  Pour ajouter une icône : déposer `www/icons/nom.svg` avec le même en-tête, puis `npm run construire`.
+- **Icônes Android et écran de démarrage** : `npm run icones` prépare `assets/` puis lance
+  `@capacitor/assets` (mdpi → xxxhdpi, icône adaptative, splash logo blanc sur #4E0A80, mode nuit).
+  `sharp` est forcé en 0.33 (`overrides`) car l'ancienne version téléchargeait ses binaires hors npm.
+- **Photos** : WebP de moins de 150 000 octets, 1 200 px maximum, `loading="lazy"` en bas d'écran,
+  voile en dégradé violet. Si une photo manque, `images/equipe/electricien-repli.svg` la remplace.
+- **Logos de paiement** : déposer les fichiers **officiels** dans `www/images/paiement/`
+  (`orange-money.webp`, `moov-money.webp`, `wave.webp`, `telecel-money.webp`, `visa.webp`,
+  `mastercard.webp`, `cinetpay.webp`). L'assembleur détecte ceux qui sont présents. Un logo absent
+  s'affiche en pastille unie à la couleur de la marque, nom écrit en texte — jamais de logo inventé.
+  Ils n'apparaissent que dans la section Paiement (étapes 11-12).
+
 Les logos sont générés depuis les originaux du client (`sources-logos/`) par
 `python3 src/scripts/preparer_logos.py` (détourage sans liseré, WebP, icônes 192/512/maskable,
 version blanche, calque de l'éclair, logo BRG Électro+).
@@ -149,12 +168,15 @@ batiplus/
 │   ├── manifest.webmanifest
 │   ├── images/logo/         logos détourés + icônes
 │   ├── images/brg/          logo BRG Électro+
-│   ├── images/equipe/       photos de la présentation
+│   ├── images/equipe/       photos d'électriciens + illustration SVG de repli
+│   ├── images/paiement/     logos officiels des moyens de paiement (à fournir)
+│   ├── icons/               icônes SVG de l'interface (sources du sprite)
 │   └── assets/polices/      Inter et Montserrat en local (licence OFL)
 ├── src/                     sources de www/index.html
 │   └── scripts/             assembler, vérifier (jsdom + Chromium), aperçu, logos, photos
 ├── sources-logos/           fichiers originaux fournis par le client
 ├── sources-photos/          photos d'origine de la présentation
+├── assets/                  sources des icônes et du splash Android (@capacitor/assets)
 ├── capacitor.config.json
 ├── package.json
 ├── .env.exemple             variables de configuration (aucune vraie clé)

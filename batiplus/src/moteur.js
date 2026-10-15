@@ -483,6 +483,27 @@ function surEchecLogo(evenement) {
   if (conteneur) conteneur.classList.add("logo-echec");
 }
 
+/* Photo d'électricien introuvable : l'illustration de repli prend sa place (jamais de cadre vide).
+   L'événement error ne remonte pas : il est capté en phase de capture sur le document. */
+function remplacerPhoto(img) {
+  if (img.dataset.repli === "1") return;
+  img.dataset.repli = "1";
+  img.classList.add("photo-repli");
+  img.src = PHOTO_REPLI;
+}
+
+function surEchecImage(evenement) {
+  const img = evenement.target;
+  if (img instanceof HTMLImageElement && img.closest(".photo-cadre, .diapo-photo")) remplacerPhoto(img);
+}
+
+function surveillerPhotos() {
+  document.addEventListener("error", surEchecImage, true);
+  document.querySelectorAll(".photo-cadre img, .diapo-photo img").forEach((img) => {
+    if (img.complete && img.naturalWidth === 0 && img.getAttribute("src")) remplacerPhoto(img);
+  });
+}
+
 function surveillerLogos() {
   document.querySelectorAll("[data-logo] img").forEach((img) => {
     img.addEventListener("error", surEchecLogo);
@@ -2357,6 +2378,7 @@ function preparerInterface() {
   $("etat-version").textContent = APP.version;
   $("etat-plateforme").textContent = nomPlateforme();
   surveillerLogos();
+  surveillerPhotos();
   construireNavigation();
   masquerLiensAbsents();
   remplirListes("ins", PAYS_DEFAUT, PAYS_PAR_ISO.get(PAYS_DEFAUT).devise);

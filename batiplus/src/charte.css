@@ -587,7 +587,36 @@ body[data-mode="entree"] main.contenu { max-width: none; padding: 0; }
 
 .bandeau-photos { margin: 4px 0 0; }
 .bandeau-photos-rangee { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.bandeau-photos img { width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 14px; box-shadow: var(--ombre-1); }
+/* Cadre photo : voile en dégradé violet par-dessus pour la lisibilité, fond violet si l'image tarde. */
+.photo-cadre {
+  position: relative; display: block; aspect-ratio: 4 / 3; border-radius: 14px; overflow: hidden;
+  box-shadow: var(--ombre-1); background: linear-gradient(160deg, var(--violet-2), var(--violet-3));
+}
+.photo-cadre img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.photo-cadre::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(106, 13, 173, 0) 40%, rgba(78, 10, 128, 0.5) 100%);
+}
+/* Illustration de repli (photo absente) : déjà lisible, pas de voile. */
+.photo-repli { object-fit: contain; }
+.photo-cadre:has(.photo-repli)::after, .diapo-photo:has(.photo-repli)::after { display: none; }
+
+/* Moyens de paiement (section Paiement) : logo officiel sur pastille blanche de 40 px,
+   ou pastille unie à la couleur de la marque avec le nom en texte. Jamais déformés. */
+.paiements { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.paiement {
+  display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 14px;
+  border-radius: 12px; background: #fff; box-shadow: var(--ombre-1); white-space: nowrap;
+  font-family: var(--police-titre); font-weight: 800; font-size: 14px;
+}
+.paiement img { height: 26px; width: auto; max-width: none; object-fit: contain; }
+.paiement-pastille[data-marque="orange-money"] { background: #FF7900; color: #000; }
+.paiement-pastille[data-marque="moov-money"] { background: #0066B3; color: #fff; }
+.paiement-pastille[data-marque="wave"] { background: #1DC8F2; color: #0B1F3A; }
+.paiement-pastille[data-marque="telecel-money"] { background: #E30613; color: #fff; }
+.paiement-pastille[data-marque="visa"] { background: #1A1F71; color: #fff; }
+.paiement-pastille[data-marque="mastercard"] { background: #EB001B; color: #fff; }
+.paiement-pastille[data-marque="cinetpay"] { background: #19A463; color: #062B16; }
 .bandeau-photos figcaption { margin-top: 10px; text-align: center; font-family: var(--police-titre); font-weight: 800; font-size: 15px; color: var(--accent-texte); }
 
 /* Boutons secondaires */

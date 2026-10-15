@@ -10,6 +10,9 @@
      ⑱ aucun texte tronqué ni mot/montant coupé sur les écrans connectés et le
         tiroir (360 et 1440 px, clair et sombre, devis de 125 000 000)
      ⑲ le contenu ne passe jamais sous le menu latéral (1440 et 1025 px)
+     ㉒ tous les logos chargent et sont détourés, aucune image cassée, photo absente
+        remplacée par l'illustration de repli
+     ㉓ icônes maskable (navigateur et Android) : le pictogramme reste dans la zone sûre
      I  photo et logo : image réelle redessinée en WebP ≤ 300 Ko, faux PNG,
         SVG et fichier > 5 Mo refusés
      N  aucune erreur console, aucune violation CSP, aucune requête en échec
@@ -20,7 +23,7 @@
    CAPTURES (dossier des captures d'écran, hors dépôt), PORT (défaut 8091).
    ========================================================================== */
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -147,6 +150,33 @@ function mesurerSousMenu() {
   }).map((el) => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + "@" + Math.round(el.getBoundingClientRect().left));
   const centre = document.elementFromPoint(tiroir.left + tiroir.width / 2, tiroir.top + tiroir.height / 2);
   return { largeurMenu: Math.round(tiroir.right), visible: tiroir.left >= 0 && tiroir.width > 200, dessus: Boolean(centre && centre.closest("#tiroir")), sous: sous.slice(0, 5), total: sous.length };
+}
+
+/* Analyse des pixels d'une image : coins transparents, et distance maximale au centre
+   des pixels du pictogramme (rapportée au côté). `fondBlanc` : le fond est blanc opaque. */
+async function analyserImage(source, fondBlanc) {
+  const img = new Image();
+  img.src = source;
+  try { await img.decode(); } catch { return { charge: false }; }
+  const toile = document.createElement("canvas");
+  toile.width = img.naturalWidth;
+  toile.height = img.naturalHeight;
+  const ctx = toile.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  const width = toile.width;
+  const height = toile.height;
+  const { data } = ctx.getImageData(0, 0, width, height);
+  const alpha = (x, y) => data[(y * width + x) * 4 + 3];
+  const coins = [alpha(0, 0), alpha(width - 1, 0), alpha(0, height - 1), alpha(width - 1, height - 1)];
+  let rayon = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const motif = fondBlanc ? (255 - Math.min(data[i], data[i + 1], data[i + 2]) > 24) : data[i + 3] > 24;
+      if (motif) rayon = Math.max(rayon, Math.hypot(x + 0.5 - width / 2, y + 0.5 - height / 2));
+    }
+  }
+  return { charge: true, largeur: width, hauteur: height, coins, rayon: rayon / width };
 }
 
 /* ---------- Déroulé ---------- */
@@ -431,6 +461,85 @@ async function main() {
     controle("I", "images : redessinées en WebP compressé, fichiers piégés refusés", fautesI.length === 0,
       fautesI.length ? fautesI.join(" | ")
         : "photo JPEG → WebP " + dimPhoto.join("×") + " (" + Math.round(photo.length / 1024) + " Ko), logo → " + dimLogo.join("×") + " ; " + refusI.join(" ; "));
+  }
+
+  /* ㉒ logos et images */
+  {
+    const fautes22 = [];
+    const { page, contexte } = await nouvellePage(390, 844, false, true, base);
+    await pause(1800);
+    const logos = ["images/logo/batiplus-couleur.webp", "images/logo/batiplus-blanc.webp", "images/logo/batiplus-fond-noir.webp", "images/brg/brg-couleur.webp", "images/brg/brg-blanc.webp"];
+    for (const logo of logos) {
+      const a = await page.evaluate(analyserImage, logo, false);
+      if (!a.charge) fautes22.push(logo + " ne charge pas");
+      else if (a.coins.some((c) => c !== 0)) fautes22.push(logo + " non détouré (coins " + a.coins.join(",") + ")");
+    }
+    /* Chaque image référencée par la page se décode. */
+    const sources = await page.evaluate(() => [...new Set([...document.querySelectorAll("img[src]")].map((i) => i.getAttribute("src")).filter((s) => s && !s.startsWith("data:")))]);
+    for (const src of sources) {
+      const a = await page.evaluate(analyserImage, src, false);
+      if (!a.charge) fautes22.push(src + " ne se décode pas");
+    }
+    /* Images visibles réellement chargées (bas d'écran compris), jamais remplacées à tort. */
+    let visibles = 0;
+    for (const ecran of ["accueil", "a-propos", "profil"]) {
+      await ouvrirEcran(page, ecran);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await pause(900);
+      const etat = await page.evaluate(() => [...document.querySelectorAll(".ecran.actif img, .entete img")]
+        .filter((i) => i.getBoundingClientRect().width > 0 && !i.hidden && getComputedStyle(i).display !== "none")
+        .map((i) => ({ src: i.getAttribute("src").slice(0, 40), ok: i.complete && i.naturalWidth > 0, repli: i.dataset.repli === "1" })));
+      visibles += etat.length;
+      for (const e of etat) if (!e.ok || e.repli) fautes22.push(ecran + " : " + JSON.stringify(e));
+    }
+    await contexte.close();
+
+    /* Photo absente : l'illustration de repli la remplace (page à part, la requête bloquée est voulue). */
+    const essai = await navigateur.newPage();
+    await essai.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+    await essai.goto(ADRESSE + "manifest.webmanifest");
+    await essai.evaluate((valeurs) => { localStorage.clear(); for (const [c, v] of Object.entries(valeurs)) localStorage.setItem(c, v); }, base);
+    await essai.setRequestInterception(true);
+    essai.on("request", (r) => (/equipe-chantier\.webp|elec-cables\.webp/.test(r.url()) ? r.abort() : r.continue()));
+    await essai.goto(ADRESSE, { waitUntil: "load" });
+    await pause(1800);
+    await essai.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await pause(1200);
+    const replis = await essai.evaluate(() => [...document.querySelectorAll("#ecran-accueil .photo-cadre img")]
+      .map((i) => ({ src: i.getAttribute("src"), ok: i.complete && i.naturalWidth > 0 })));
+    await capturer(essai, "390x844-photo-repli", true);
+    await essai.close();
+    const remplacees = replis.filter((r) => r.src.endsWith("electricien-repli.svg") && r.ok).length;
+    if (remplacees !== 2 || replis.some((r) => !r.ok)) fautes22.push("repli : " + JSON.stringify(replis));
+    controle("㉒", "tous les logos chargent, aucun cadre cassé", fautes22.length === 0,
+      fautes22.length ? fautes22.slice(0, 4).join(" | ")
+        : "5 logos détourés (coins transparents), " + sources.length + " images référencées décodées, " + visibles + " images visibles chargées ; 2 photos bloquées → illustration d'électricien, jamais de cadre vide");
+  }
+
+  /* ㉓ icônes maskable : le pictogramme reste dans la zone sûre */
+  {
+    const page = await navigateur.newPage();
+    await page.goto(ADRESSE, { waitUntil: "load" });
+    const enDonnees = (chemin) => "data:image/png;base64," + readFileSync(join(RACINE, chemin)).toString("base64");
+    const res = "android/app/src/main/res/";
+    /* Navigateur : cercle sûr de 40 % du côté (W3C). Android : l'avant-plan est encadré d'une marge de
+       16,7 % ; le cercle sûr de 66 dp sur 72 dp visibles vaut 45,8 % du côté de l'image. */
+    const cas = [
+      ["www/images/logo/icon-maskable-512.png", true, 0.40],
+      [res + "mipmap-xxxhdpi/ic_launcher_foreground.png", false, 0.458],
+      [res + "mipmap-mdpi/ic_launcher_foreground.png", false, 0.458]
+    ];
+    const fautes23 = [];
+    const mesures23 = [];
+    for (const [chemin, fondBlanc, limite] of cas) {
+      const a = await page.evaluate(analyserImage, enDonnees(chemin), fondBlanc);
+      if (!a.charge) { fautes23.push(chemin + " illisible"); continue; }
+      mesures23.push(chemin.split("/").slice(-2).join("/") + " " + Math.round(a.rayon * 100) + " % ≤ " + Math.round(limite * 1000) / 10 + " %");
+      if (a.rayon > limite) fautes23.push(chemin + " : pictogramme à " + (a.rayon * 100).toFixed(1) + " % du centre (limite " + limite * 100 + " %)");
+    }
+    await page.close();
+    controle("㉓", "les icônes maskables ne sont pas rognées", fautes23.length === 0,
+      fautes23.length ? fautes23.join(" | ") : "distance maximale du pictogramme au centre : " + mesures23.join(" ; "));
   }
 
   controle("N", "aucune erreur console, CSP ou requête en échec (Chromium)", erreurs.length === 0,

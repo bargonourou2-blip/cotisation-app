@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* ==========================================================================
    BâtiPlus — vérificateur
-   Rapporte les contrôles bloquants des étapes 1-3 (①…⑫, ⑮, ⑰, ⑳, ㉑ ; ⑬, ⑭, ⑯, ⑱, ⑲ dans verifier-navigateur.mjs) et les contrôles de
+   Rapporte les contrôles bloquants des étapes 1-4 (①…⑫, ⑮, ⑰, ⑳, ㉑, ㉔, ㉕ ; ⑬, ⑭, ⑯, ⑱, ⑲, ㉒, ㉓ dans verifier-navigateur.mjs) et les contrôles de
    sécurité du front (S①…S⑪) sur le fichier livré www/index.html.
    Code de sortie 1 si un seul contrôle échoue.
    Le contrôle ⑩ (console au chargement) exécute la page dans jsdom :
@@ -10,7 +10,7 @@
    ========================================================================== */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
@@ -687,13 +687,105 @@ function controlesSecurite() {
       : "polices et images locales ; " + liensSortants.length + " lien sortant wa.me avec rel=noopener noreferrer"));
 }
 
+/* ---------- Étape 4 : identités visuelles ---------- */
+
+/* Dimensions d'un WebP lues dans son en-tête (VP8, VP8L ou VP8X). */
+function dimensionsWebp(chemin) {
+  const b = readFileSync(chemin);
+  if (b.toString("latin1", 0, 4) !== "RIFF" || b.toString("latin1", 8, 12) !== "WEBP") return null;
+  const bloc = b.toString("latin1", 12, 16);
+  if (bloc === "VP8X") return [1 + b.readUIntLE(24, 3), 1 + b.readUIntLE(27, 3)];
+  if (bloc === "VP8 ") return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff];
+  if (bloc === "VP8L") return [1 + (((b[22] & 0x3f) << 8) | b[21]), 1 + (((b[24] & 0x0f) << 10) | (b[23] << 2) | ((b[22] & 0xc0) >> 6))];
+  return null;
+}
+
+function poidsDossier(dossier) {
+  return readdirSync(dossier, { withFileTypes: true }).reduce((total, entree) => {
+    const chemin = join(dossier, entree.name);
+    return total + (entree.isDirectory() ? poidsDossier(chemin) : statSync(chemin).size);
+  }, 0);
+}
+
+function luminance(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function controlesIdentite() {
+  /* ㉔ poids total de www/ */
+  const poids = poidsDossier(WWW);
+  controle("㉔", "le poids total de www/ reste sous 2 Mo", poids < 2000000,
+    (poids / 1e6).toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " Mo (limite 2 Mo = 2 000 000 octets), polices, logos, photos et icônes compris");
+
+  /* ㉕ photos : < 150 000 octets, 1 200 px max, chargement différé, voile violet */
+  const dossierPhotos = join(WWW, "images", "equipe");
+  const photos = readdirSync(dossierPhotos).filter((f) => f.endsWith(".webp"));
+  const requises = ["elec-tableau", "elec-cables", "elec-devis", "equipe-chantier", "profil-defaut"];
+  const fautes = [];
+  for (const nom of requises) if (!photos.includes(nom + ".webp")) fautes.push(nom + ".webp absente");
+  let plusLourde = 0;
+  for (const f of photos) {
+    const taille = statSync(join(dossierPhotos, f)).size;
+    const dim = dimensionsWebp(join(dossierPhotos, f));
+    plusLourde = Math.max(plusLourde, taille);
+    if (taille >= 150000) fautes.push(f + " : " + taille + " octets");
+    if (!dim || Math.max(...dim) > 1200) fautes.push(f + " : " + JSON.stringify(dim));
+  }
+  const imgsBandeau = [...corpsSansScript.matchAll(/<span class="photo-cadre"><img [^>]+><\/span>/g)].map((m) => m[0]);
+  if (imgsBandeau.length < 6 || imgsBandeau.some((t) => !t.includes('loading="lazy"'))) fautes.push("photos du bas sans cadre à voile ou sans loading=lazy");
+  if (!existsSync(join(dossierPhotos, "electricien-repli.svg"))) fautes.push("illustration de repli absente");
+  else if (/<script|\son[a-z]+=|href=/i.test(readFileSync(join(dossierPhotos, "electricien-repli.svg"), "utf8"))) fautes.push("illustration de repli non sûre");
+  controle("㉕", "aucune photo ne dépasse 150 Ko", fautes.length === 0,
+    fautes.join(" ; ") || photos.length + " photos WebP, la plus lourde " + plusLourde.toLocaleString("fr-FR") + " octets, toutes ≤ 1 200 px ; bandeaux en loading=lazy sous voile violet ; illustration SVG de repli prête");
+
+  /* Icônes de l'interface : fichiers SVG d'une couleur, trait de 2 px, tous ceux utilisés existent */
+  const icones = readdirSync(join(WWW, "icons")).filter((f) => f.endsWith(".svg")).map((f) => f.slice(0, -4));
+  const demandees = ["accueil", "eclair", "devis", "clients", "prix", "profil", "abonnement", "plan", "cadenas", "cadenas-ouvert", "whatsapp", "imprimer"];
+  const utilisees = new Set([...html.replace(/<symbol[\s\S]*?<\/symbol>/g, "").matchAll(/["#]i-([a-z0-9-]+)"/g)].map((m) => m[1]));
+  const absentes = [...demandees.filter((n) => !icones.includes(n)), ...[...utilisees].filter((n) => !icones.includes(n))];
+  const nonConformes = icones.filter((n) => {
+    const t = readFileSync(join(WWW, "icons", n + ".svg"), "utf8");
+    return !t.includes('stroke="currentColor" stroke-width="2"') || /fill="(?!none)|#[0-9a-f]{3,6}|<(script|style|image|use|a)\b|\son[a-z]+=/i.test(t);
+  });
+  const symboles = compter(html, /<symbol id="i-/g);
+  controle("IC", "icônes SVG propres dans www/icons/ (une couleur, trait de 2 px)", absentes.length === 0 && nonConformes.length === 0 && symboles === icones.length,
+    absentes.length ? "absentes : " + absentes.join(", ") : nonConformes.length ? "non conformes : " + nonConformes.join(", ")
+      : icones.length + " icônes (dont les 12 demandées), sprite reconstruit par l'assembleur (" + symboles + " symboles), " + utilisees.size + " utilisées, toutes présentes");
+
+  /* Moyens de paiement : jamais de logo inventé ; pastille de la couleur de la marque, texte lisible */
+  const ids = [...js.matchAll(/\{ id: "([a-z-]+)", nom: "[^"]+" \}/g)].map((m) => m[1]);
+  const fournis = JSON.parse((js.match(/const LOGOS_PAIEMENT_FOURNIS = Object\.freeze\((\[[^\]]*\])\)/) || [])[1] || "null");
+  const pastilles = [];
+  const fautesPaiement = [];
+  for (const id of ids) {
+    const regle = css.match(new RegExp('\\.paiement-pastille\\[data-marque="' + id + '"\\] \\{ background: (#[0-9A-Fa-f]{6}); color: (#[0-9A-Fa-f]{3,6}); \\}'));
+    if (!regle) { fautesPaiement.push(id + " sans couleur"); continue; }
+    const etendre = (c) => (c.length === 4 ? "#" + [...c.slice(1)].map((x) => x + x).join("") : c);
+    const [l1, l2] = [luminance(etendre(regle[1])), luminance(etendre(regle[2]))].sort((x, y) => y - x);
+    const contraste = (l1 + 0.05) / (l2 + 0.05);
+    if (contraste < 4.5) fautesPaiement.push(id + " contraste " + contraste.toFixed(2));
+    pastilles.push(id + " " + contraste.toFixed(1));
+  }
+  if (ids.length !== 7) fautesPaiement.push(ids.length + " moyens au lieu de 7");
+  if (!Array.isArray(fournis)) fautesPaiement.push("liste des logos fournis non injectée");
+  else for (const f of fournis) if (!ids.includes(f)) fautesPaiement.push("logo inattendu : " + f);
+  const dossierPaiement = join(WWW, "images", "paiement");
+  const fichiersPaiement = existsSync(dossierPaiement) ? readdirSync(dossierPaiement).filter((f) => !f.startsWith(".")) : [];
+  if (fichiersPaiement.some((f) => !/^[a-z-]+\.webp$/.test(f))) fautesPaiement.push("fichier non WebP dans images/paiement/");
+  controle("PA", "logos de paiement : réels ou pastille texte, jamais inventés", fautesPaiement.length === 0,
+    fautesPaiement.join(" ; ") || (Array.isArray(fournis) ? fournis.length : 0) + " logo(s) officiel(s) fourni(s) ; 7 pastilles de repli aux couleurs des marques, contraste ≥ 4,5 (" + pastilles.join(", ") + ")");
+}
+
 /* ---------- Rapport ---------- */
 await controlesExecution();
 controleCapacitor();
 controleGitignore();
 controlesSecurite();
+controlesIdentite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);

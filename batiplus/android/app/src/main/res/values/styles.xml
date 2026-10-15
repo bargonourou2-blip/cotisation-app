@@ -18,5 +18,7 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <!-- Android 12+ : écran de démarrage système sur le violet profond de BâtiPlus -->
+        <item name="windowSplashScreenBackground">#4E0A80</item>
     </style>
 </resources>
