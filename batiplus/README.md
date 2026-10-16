@@ -57,6 +57,8 @@ npm run tester:backend      # contrôles de l'API : paiement, comptes, synchroni
 API (comptes, synchronisation, paiement, administration) : voir [`backend/INSTALLATION.md`](backend/INSTALLATION.md) et
 [`PAIEMENTS.md`](PAIEMENTS.md).
 
+Tester sur votre téléphone, pas à pas : **[TESTER-SUR-TELEPHONE.md](TESTER-SUR-TELEPHONE.md)**.
+
 Sur Android (Android Studio installé) :
 
 ```bash
