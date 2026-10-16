@@ -1,0 +1,17 @@
+{
+  "name": "batiplus-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BâtiPlus — API (paiement automatique, puis comptes et synchronisation). Zéro dépendance.",
+  "author": "BRG Électro+",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "serveur.js",
+  "scripts": {
+    "demarrer": "node --disable-warning=ExperimentalWarning serveur.js",
+    "tester": "node --disable-warning=ExperimentalWarning tests/paiements.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

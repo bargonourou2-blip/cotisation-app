@@ -28,7 +28,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 9 | Clients, chantiers, historique des devis, statistiques | ✔ livrée |
 | 10 | Sécurité du front (XSS, CSP, chiffrement, verrouillage) | ✔ livrée |
 | 11 | Abonnement : 5 formules, limite de 5 devis, relances | ✔ livrée |
-| 12 | Paiement automatique : adaptateurs d'agrégateur, webhook, idempotence | à venir |
+| 12 | Paiement automatique : adaptateurs d'agrégateur, webhook, idempotence | ✔ livrée |
 | 13 | Build Android, signature, Play Store, IOS.md | à venir |
 | 14 | Back-end Node.js complet, synchronisation, déploiement | à venir |
 
@@ -38,7 +38,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 
 | Outil | Version |
 |---|---|
-| Node.js | 22 LTS minimum |
+| Node.js | 22 LTS minimum (22.13+ pour le backend : SQLite intégré) |
 | Capacitor | 7.x |
 | Java JDK | 21 |
 | Android Studio + SDK | API 35 (compilation et cible) |
@@ -51,7 +51,11 @@ cd batiplus
 npm install                 # dépendances Capacitor
 npm run construire          # assemble www/index.html puis lance les contrôles
 npm run apercu              # aperçu dans le navigateur : http://localhost:8080
+npm run tester:backend      # contrôles du backend de paiement (aussi lancés par « construire »)
 ```
+
+Backend de paiement : voir [`backend/INSTALLATION.md`](backend/INSTALLATION.md) et
+[`PAIEMENTS.md`](PAIEMENTS.md).
 
 Sur Android (Android Studio installé) :
 
@@ -369,6 +373,38 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   vérification, jamais livrée), AV (écran Abonnement 360/768/1440 px, clair et sombre, textes ≥ 13 px,
   carte vedette 6 % plus haute, reçu imprimé sur 1 page) dans `npm run verifier:navigateur`.
 
+### Paiement automatique (étape 12)
+
+Détail complet : [`PAIEMENTS.md`](PAIEMENTS.md) ; installation : [`backend/INSTALLATION.md`](backend/INSTALLATION.md).
+
+- **Backend sans dépendance** (`backend/`, Node 22.13+, SQLite `node:sqlite` en WAL) : `serveur.js`
+  (routes, en-têtes de sécurité, CORS limité, corps ≤ 1 Mo, limites de débit), `config.js` (refus de
+  démarrer si un secret ou une clé manque), `base.js` (tables `electriciens`, `paiements`,
+  `abonnements`, journal d'audit en écriture seule, statut final non modifiable), `jetons.js`
+  (session HMAC, jeton d'abonnement ECDSA), `formules.js` (**seule source des prix**),
+  `paiements/service.js` (initiation, confirmation, rattrapage, renouvellements).
+- **6 adaptateurs au même contrat** (`paiements/`) : LigdiCash, CinetPay, FedaPay, PayDunya, Stripe,
+  simulation. Agrégateur principal + secours dans `backend/.env` ; les clés n'existent que là.
+- **Webhook** : URL secrète par agrégateur, signature vérifiée en temps constant, **statut
+  re-consulté** chez l'agrégateur, montant ET devise comparés au prix (écart → « anomalie », rien
+  d'activé, alerte admin), transaction SQL, réponse 200 rapide. 10 notifications = 1 activation.
+  Tâche planifiée toutes les 5 min : rattrapage après 3 min, « expiré » après 24 h.
+- **Application** : après « Payer maintenant », écran **« Nous confirmons votre paiement… »**
+  (`#ecran-paiement`), consultation toutes les 3 s pendant 3 min ; payé → jeton signé vérifié, coche
+  géante + 18 particules (aucune si mouvements réduits), filigrane retiré, paiement ajouté à « Mes
+  paiements », reçu ; échec / annulé / expiré → « Réessayer » ; plus de 3 min ou coupure → « Vérifier
+  à nouveau ». Retour `#paiement-retour?ref=…` vérifié puis effacé de l'adresse ; reprise discrète au
+  démarrage, au retour dans l'application et à la fermeture du navigateur (paiement en cours < 24 h).
+  Les erreurs de l'API sont traduites par code (`MESSAGES_PAIEMENT`), jamais affichées telles quelles.
+- **Renouvellement** : « Renouveler » en 1 toucher (accueil et Mon abonnement), rappels J-3, veille et
+  jour J (bandeau + notifications locales 3103 / 3101 / 3100) ; interrupteur « Renouveler
+  automatiquement par carte » dans le profil (désactivé par défaut, enregistré en ligne d'abord,
+  revient en arrière en cas d'échec). Renouvellement anticipé = jours additionnés ; passage supérieur
+  immédiat au prorata.
+- **Contrôles** : SP SE RT RN PX dans `npm run verifier` ; PS (écran de suivi 360/390/1440 px, clair
+  et sombre, animations et mouvements réduits) dans `npm run verifier:navigateur` ; S1–S5, P1–P13,
+  AD dans `npm run tester:backend` (base temporaire, vrai serveur, faux agrégateurs HTTP).
+
 ## Structure
 
 ```
@@ -385,6 +421,14 @@ batiplus/
 │   └── assets/polices/      Inter et Montserrat en local (licence OFL)
 ├── src/                     sources de www/index.html
 │   └── scripts/             assembler, vérifier (jsdom + Chromium), moteur, aperçu, logos, photos
+├── backend/                 API de paiement (Node 22.13+, zéro dépendance)
+│   ├── serveur.js           routes, sécurité HTTP, tâche planifiée
+│   ├── formules.js          prix officiels (seule source)
+│   ├── paiements/           contrat commun + 6 adaptateurs + service
+│   ├── tests/               contrôles du backend
+│   ├── .env.exemple         variables du serveur (aucune vraie clé)
+│   └── INSTALLATION.md
+├── PAIEMENTS.md             fonctionnement du paiement automatique
 ├── docs/                    validation du moteur NF C 15-100 (générée)
 ├── sources-logos/           fichiers originaux fournis par le client
 ├── sources-photos/          photos d'origine de la présentation
@@ -399,6 +443,9 @@ batiplus/
 
 - Aucune donnée saisie n'entre dans la page par `innerHTML`.
 - Aucun secret dans le front. Le front ne connaît que l'adresse publique de l'API.
+- Les clés d'agrégateur et la clé privée des abonnements n'existent que sur le serveur (`backend/.env`,
+  `.cles/`). Un abonnement ne s'active que par un paiement confirmé en ligne (re-consultation de
+  l'agrégateur), jamais par une notification seule, un retour de page ou une saisie.
 - `webContentsDebuggingEnabled` reste à `false` dans la version publiée.
 - Toute nouvelle saisie numérique reçoit une règle dans `src/regles-saisie.json` et un `data-regle`.
 - Aucune sauvegarde Android des données : la durabilité passe par l'export du profil et la

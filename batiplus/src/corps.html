@@ -1169,11 +1169,12 @@
           <p class="ma-formule-fin" id="ma-formule-fin"></p>
           <div class="jauge" id="jauge-formule" role="progressbar" aria-labelledby="jauge-formule-libelle" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"><span class="jauge-remplie" id="jauge-formule-remplie"></span></div>
           <p class="jauge-libelle" id="jauge-formule-libelle"></p>
+          <button type="button" class="bouton bouton-pro" id="bouton-renouveler" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle" id="libelle-renouveler">Renouveler</span></button>
         </section>
 
         <section class="bloc-abonnement" aria-labelledby="titre-formules">
           <h2 class="bloc-titre" id="titre-formules">Les 5 formules</h2>
-          <p class="aide">Tarifs en FCFA. Aucun prélèvement automatique : vous payez seulement quand vous le décidez.</p>
+          <p class="aide">Tarifs en FCFA. Mobile Money : vous confirmez chaque paiement. Carte bancaire : renouvellement automatique seulement si vous l'activez dans votre profil.</p>
           <ul class="formules" id="liste-formules"></ul>
           <p class="message-formulaire" id="msg-paiement" role="status" aria-live="polite"></p>
           <button type="button" class="bouton bouton-secondaire" id="bouton-reessayer-paiement" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Réessayer</span></button>
@@ -1205,7 +1206,7 @@
           </details>
           <details class="faq-question">
             <summary>Que se passe-t-il à la fin de ma formule ?</summary>
-            <p>Rien n'est perdu : vos chantiers, vos devis et vos clients restent sur votre téléphone. Vous repassez en formule Gratuit jusqu'à votre prochain paiement. Aucun prélèvement automatique : BâtiPlus vous prévient 3 jours puis 1 jour avant la fin.</p>
+            <p>Rien n'est perdu : vos chantiers, vos devis et vos clients restent sur votre téléphone. Vous repassez en formule Gratuit jusqu'à votre prochain paiement. BâtiPlus vous prévient 3 jours avant, la veille et le jour même : un seul toucher sur « Renouveler » suffit. Les jours payés en avance s'ajoutent à votre formule en cours.</p>
           </details>
           <details class="faq-question">
             <summary>Mes devis restent-ils accessibles si je ne paie pas ?</summary>
@@ -1214,6 +1215,26 @@
         </section>
 
         <article class="recu-a4" id="recu-a4" aria-hidden="true"></article>
+      </div>
+    </section>
+
+    <section class="ecran" id="ecran-paiement" aria-labelledby="titre-suivi">
+      <div class="suivi-paiement" id="suivi-paiement" data-issue="attente">
+        <div class="suivi-visuel" aria-hidden="true">
+          <span class="suivi-anneau"></span>
+          <span class="suivi-pastille suivi-pastille-ok"><svg class="icone"><use href="#i-coche"/></svg></span>
+          <span class="suivi-pastille suivi-pastille-ko"><svg class="icone"><use href="#i-alerte"/></svg></span>
+          <span class="suivi-particules" id="suivi-particules"></span>
+        </div>
+        <h1 class="titre-ecran suivi-titre" id="titre-suivi" tabindex="-1">Nous confirmons votre paiement…</h1>
+        <p class="suivi-texte" id="suivi-texte" role="status" aria-live="polite"></p>
+        <p class="suivi-reference" id="suivi-reference"></p>
+        <div class="suivi-actions">
+          <button type="button" class="bouton bouton-principal" id="bouton-suivi-recu" hidden><svg class="icone" aria-hidden="true"><use href="#i-recu"/></svg><span class="bouton-libelle">Voir mon reçu</span></button>
+          <button type="button" class="bouton bouton-principal" id="bouton-suivi-reessayer" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Réessayer</span></button>
+          <button type="button" class="bouton bouton-secondaire" id="bouton-suivi-verifier" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Vérifier à nouveau</span></button>
+          <button type="button" class="bouton bouton-discret" id="bouton-suivi-accueil"><svg class="icone" aria-hidden="true"><use href="#i-accueil"/></svg><span class="bouton-libelle">Retour à l'accueil</span></button>
+        </div>
       </div>
     </section>
 
@@ -1287,6 +1308,13 @@
           </div>
           <input type="file" id="fichier-logo" accept="image/jpeg,image/png,image/webp" hidden>
           <p class="message-formulaire" id="msg-logo" role="status"></p>
+        </div>
+
+        <div class="carte cascade" data-rang="3" id="carte-renouvellement">
+          <h2 class="bloc-titre">Renouvellement de ma formule</h2>
+          <label class="case"><input type="checkbox" id="renouvellement-auto" role="switch" aria-describedby="aide-renouvellement"><span>Renouveler automatiquement par carte bancaire</span></label>
+          <p class="aide" id="aide-renouvellement">Seulement pour un paiement par carte Visa ou Mastercard, la veille de la fin de votre Pro mensuel ou annuel. Avec Mobile Money, vous confirmez vous-même chaque renouvellement : BâtiPlus vous prévient 3 jours avant, la veille et le jour même.</p>
+          <p class="message-formulaire" id="msg-renouvellement" role="status"></p>
         </div>
 
         <form class="carte formulaire cascade" data-rang="4" id="carte-conditions" novalidate>

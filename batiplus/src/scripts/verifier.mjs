@@ -33,6 +33,7 @@ const etape8 = { fait: false, a4: [], filigrane: [], whatsapp: [], octetsPdf: 0 
 /* Constats de l'étape 10 (sécurité du front) relevés dans jsdom. */
 const etape10 = { fait: false, verrou: [], saisie: [], dom: [], codes: [], champsVus: 0, pagesVues: 0, cas: [] };
 /* Constats de l'étape 11 (abonnement) relevés dans jsdom. */
+const etape12 = { fait: false, suivi: [], echecs: [], retour: [], renouvellement: [], cas: [] };
 const etape11 = { fait: false, formules: [], logos: [], jeton: [], quota: [], relances: [], cadenas: [], recu: [], paiement: [], cas: [] };
 const REGLES = lireRegles();
 
@@ -2204,7 +2205,7 @@ async function controlesExecution() {
       await pause(1600);
       if (modaleOuverte(r3)) etape11.relances.push("2e invitation moins de 10 minutes après la 1re");
       r3.w.close();
-      /* Abonné : jamais d'invitation, rappel J-3 sur l'accueil et notifications J-3 / J-1 à 9 h. */
+      /* Abonné : jamais d'invitation, rappel J-3 sur l'accueil et notifications J-3, veille et jour J à 9 h. */
       const r4 = ouvrirPage({ ...base11, [K.comptes]: comptesAnciens, ...aboDe(jetonValide) }, null, { html: htmlPro });
       await pause(3000);
       if (modaleOuverte(r4)) etape11.relances.push("abonné invité : « " + r4.texte("modale-titre") + " »");
@@ -2239,8 +2240,14 @@ async function controlesExecution() {
       const r6 = ouvrirPage({}, natif11, { html: htmlPro });
       await pause(3000);
       const heures = notifs.planifiees.map((n) => n.id + "@" + new Date(n.schedule.at).getHours() + "h-" + Math.round((finNotif - new Date(n.schedule.at).getTime()) / jour) + "j");
-      if (notifs.planifiees.length !== 2 || heures.join() !== "3103@9h-3j,3101@9h-1j" || !notifs.annulees.includes(3103) || notifs.planifiees.some((n) => !/se termine dans/.test(n.body)))
-        etape11.relances.push("notifications J-3 / J-1 : " + (heures.join(" ") || "aucune") + " (annulées : " + notifs.annulees.join(",") + ")");
+      /* Jour J : 9 h, ou 1 h avant la fin si elle tombe plus tôt dans la journée (étape 12). */
+      const neufHeuresJ = new Date(finNotif);
+      neufHeuresJ.setHours(9, 0, 0, 0);
+      const heureJ = neufHeuresJ.getTime() > finNotif - 3600000 ? new Date(finNotif - 3600000).getHours() : 9;
+      const heuresAttendues = "3103@9h-3j,3101@9h-1j,3100@" + heureJ + "h-0j";
+      if (notifs.planifiees.length !== 3 || heures.join() !== heuresAttendues || !notifs.annulees.includes(3103) || !notifs.annulees.includes(3100)
+        || notifs.planifiees.some((n) => !/se termine (dans|aujourd'hui)/.test(n.body)) || !/aujourd'hui/.test((notifs.planifiees[2] || {}).body || ""))
+        etape11.relances.push("notifications J-3 / veille / jour J : " + (heures.join(" ") || "aucune") + " (annulées : " + notifs.annulees.join(",") + ")");
       r6.w.close();
       etape11.cas.push("relances : jour, impression, abonné, J-3, notifications");
 
@@ -2294,7 +2301,8 @@ async function controlesExecution() {
       reponse = { urlPaiement: "https://paiement.exemple.bf/p/123", reference: "BP-ABC123" };
       pp.$("bouton-modale-ok").click();
       await pause(400);
-      const premier = appels[0] || { init: {} };
+      const initiations = () => appels.filter((a) => a.url.endsWith("/api/paiements/initier"));
+      const premier = initiations()[0] || { url: "", init: {} };
       if (!premier.url.endsWith("/api/paiements/initier") || premier.init.method !== "POST" || premier.init.body !== '{"formule":"mensuel"}' || premier.init.credentials !== "omit")
         etape11.paiement.push("requête : " + premier.url + " " + premier.init.method + " " + premier.init.body + " " + premier.init.credentials);
       if (ouvertures.length !== 1 || ouvertures[0][0] !== "https://paiement.exemple.bf/p/123" || ouvertures[0][2] !== "noopener,noreferrer" || !pp.texte("msg-paiement").includes("BP-ABC123"))
@@ -2310,11 +2318,326 @@ async function controlesExecution() {
       reponse = { urlPaiement: "https://paiement.exemple.bf/p/9", reference: "BP-ABC129" };
       pp.$("bouton-reessayer-paiement").click();
       await pause(400);
-      if (ouvertures.length !== 2 || appels[appels.length - 1].init.body !== '{"formule":"semaine"}' || !pp.$("bouton-reessayer-paiement").hidden) etape11.paiement.push("« Réessayer » ne relance pas la formule choisie");
+      if (ouvertures.length !== 2 || (initiations().at(-1) || { init: {} }).init.body !== '{"formule":"semaine"}' || !pp.$("bouton-reessayer-paiement").hidden) etape11.paiement.push("« Réessayer » ne relance pas la formule choisie");
       if (appels.some((a) => /montant|prix|\d{3}/.test(String(a.init.body)))) etape11.paiement.push("un montant part dans la requête");
       pp.w.close();
-      etape11.cas.push(appels.length + " demandes de paiement");
+      etape11.cas.push(initiations().length + " demandes de paiement");
       etape11.fait = true;
+    }
+
+    /* ---------- Étape 12 : paiement automatique (suivi, échecs, retour, reprise, renouvellement) ---------- */
+    {
+      const m12 = chargerMoteur();
+      const jour = 86400000;
+      const isoDe = (ms) => new Date(ms).toISOString();
+      const nb12 = (x) => String(x || "").replace(/[\u00a0\u202f]/g, " ");
+      const sessionFraiche = () => { const s = JSON.parse(sessionActive); s.derniereActivite = Date.now(); return JSON.stringify(s); };
+      const base12 = { [K.pres]: "1", [K.comptes]: stockageInscrit[K.comptes], [K.session]: sessionActive };
+      const jetonApi = "v1." + "a".repeat(24) + "." + "b".repeat(43);
+      const avecApi = { bp_v1_jeton_api: JSON.stringify({ [compte.id]: jetonApi }) };
+      const aboDe12 = (jeton) => ({ bp_v1_abonnement: JSON.stringify({ [compte.id]: jeton }) });
+      const durees = { semaine: 7, mensuel: 30, annuel: 365, vie: null };
+      const chargePro = (formule, extra) => {
+        const t = Date.now();
+        return { v: 1, compteId: compte.id, telephone: compte.telephone, formule, debut: isoDe(t), fin: durees[formule] ? isoDe(t + durees[formule] * jour) : null, emisLe: isoDe(t - 1000), ...extra };
+      };
+      const statut = (reference, code, formule, extra) => ({
+        reference, statut: code, formule, montant: m12.FORMULES[formule].prix, devise: "XOF", moyen: "orange-money",
+        payeLe: code === "paye" ? isoDe(Date.now()) : null, abonnement: null, jeton: null, ...extra
+      });
+      const paye = async (reference, formule, cle) => {
+        const charge = chargePro(formule);
+        return statut(reference, "paye", formule, { jeton: await jetonAbo(charge, cle), abonnement: { formule, debut: charge.debut, fin: charge.fin } });
+      };
+      const menu12 = async (page, ecran, ms) => { const lien = page.doc.querySelector("#tiroir-menu [data-ecran='" + ecran + "']"); if (lien) lien.click(); await pause(ms || 600); };
+      const payer = async (page, id) => {
+        const bouton = page.doc.querySelector("[data-choisir-formule='" + id + "']");
+        if (bouton) bouton.click();
+        await pause(150);
+        page.$("bouton-modale-ok").click();
+        await pause(600);
+      };
+      const issue = (page) => page.$("suivi-paiement").dataset.issue;
+      const stocke = (page, cle) => page.w.localStorage.getItem(cle) || "";
+      /* Faux accès en ligne : initiation, consultation du statut, interrupteur. */
+      function banc12() {
+        const b = { appels: [], ouvertures: [], initier: [], statuts: {}, renouvellementOk: true, enLigne: true, impressions: 0 };
+        b.preparer = (w) => {
+          Object.defineProperty(w.navigator, "onLine", { configurable: true, get: () => b.enLigne });
+          w.print = () => { b.impressions += 1; };
+          w.open = (...args) => { b.ouvertures.push(args); return null; };
+          w.fetch = async (url, init) => {
+            const adresse = String(url);
+            b.appels.push({ url: adresse, init: init || {} });
+            if (adresse.endsWith("/api/paiements/initier")) {
+              const r = b.initier[0] || { ok: false, status: 503, corps: { erreur: "paiement_indisponible" } };
+              if (r instanceof Error) throw r;
+              return { ok: r.ok !== false, status: r.status || 201, json: async () => r.corps };
+            }
+            const trouve = /\/api\/paiements\/([^/?]+)$/.exec(adresse);
+            if (trouve) {
+              const s = b.statuts[decodeURIComponent(trouve[1])];
+              return s ? { ok: true, status: 200, json: async () => s } : { ok: false, status: 404, json: async () => ({ erreur: "introuvable" }) };
+            }
+            if (adresse.endsWith("/api/abonnement/renouvellement-auto")) return { ok: b.renouvellementOk, status: b.renouvellementOk ? 200 : 503, json: async () => ({}) };
+            return { ok: false, status: 404, json: async () => ({}) };
+          };
+        };
+        b.lectures = (ref) => b.appels.filter((a) => a.url.endsWith("/api/paiements/" + ref));
+        b.inits = () => b.appels.filter((a) => a.url.endsWith("/api/paiements/initier"));
+        return b;
+      }
+
+      /* SP. Parcours complet : page de paiement → « Nous confirmons… » → payé → Pro actif, reçu, accueil. */
+      {
+        const b = banc12();
+        b.initier = [{ corps: { urlPaiement: "https://paiement.exemple.bf/p/1", reference: "BP-SUIVI001" } }];
+        b.statuts["BP-SUIVI001"] = statut("BP-SUIVI001", "en_attente", "mensuel");
+        const p = ouvrirPage({ ...base12, ...avecApi }, null, { html: htmlPro, preparer: b.preparer });
+        await pause(2000);
+        await menu12(p, "abonnement");
+        await payer(p, "mensuel");
+        const init = b.inits()[0] || { init: { headers: {} } };
+        if (init.init.headers.Authorization !== "Bearer " + jetonApi || init.init.body !== '{"formule":"mensuel"}' || init.init.credentials !== "omit")
+          etape12.suivi.push("initiation : " + JSON.stringify(init.init.headers) + " " + init.init.body);
+        if (b.ouvertures.length !== 1 || b.ouvertures[0][0] !== "https://paiement.exemple.bf/p/1") etape12.suivi.push("page de paiement non ouverte");
+        if (p.actif() !== "ecran-paiement" || issue(p) !== "attente" || p.texte("titre-suivi") !== "Nous confirmons votre paiement…" || !nb12(p.texte("suivi-reference")).includes("BP-SUIVI001"))
+          etape12.suivi.push("écran de suivi : " + p.actif() + " / " + issue(p) + " / « " + p.texte("titre-suivi") + " »");
+        if (!stocke(p, "bp_v1_paiement_en_cours").includes("BP-SUIVI001")) etape12.suivi.push("paiement en cours non mémorisé (reprise impossible)");
+        if (stocke(p, "bp_v1_abonnement")) etape12.suivi.push("abonnement écrit avant la confirmation");
+        await pause(3300);
+        const lectures = b.lectures("BP-SUIVI001");
+        if (lectures.length < 2 || lectures.some((a) => a.init.method !== "GET" || a.init.credentials !== "omit" || a.init.headers.Authorization !== "Bearer " + jetonApi))
+          etape12.suivi.push("consultation toutes les 3 s : " + lectures.length + " lecture(s)");
+        if (issue(p) !== "attente" || !p.$("bouton-suivi-recu").hidden) etape12.suivi.push("« en attente » traité comme une issue");
+        b.statuts["BP-SUIVI001"] = await paye("BP-SUIVI001", "mensuel");
+        await pause(3300);
+        if (issue(p) !== "paye" || p.texte("titre-suivi") !== "Paiement confirmé !" || !nb12(p.texte("suivi-texte")).startsWith("Votre Pro mensuel est actif jusqu'au")
+          || p.$("bouton-suivi-recu").hidden || !p.$("bouton-suivi-reessayer").hidden || p.$("suivi-particules").children.length !== m12.PAIEMENTS.particules || p.doc.activeElement !== p.$("titre-suivi"))
+          etape12.suivi.push("payé : " + issue(p) + " « " + nb12(p.texte("suivi-texte")) + " » " + p.$("suivi-particules").children.length + " particules");
+        if (!stocke(p, "bp_v1_abonnement").includes(compte.id) || stocke(p, "bp_v1_paiement_en_cours").includes("BP-SUIVI001") || !stocke(p, "bp_v1_paiements").includes("BP-SUIVI001"))
+          etape12.suivi.push("payé : jeton, paiement en cours ou « Mes paiements » non mis à jour");
+        const apres = b.lectures("BP-SUIVI001").length;
+        await pause(3300);
+        if (b.lectures("BP-SUIVI001").length !== apres) etape12.suivi.push("la consultation continue après la confirmation");
+        p.$("bouton-suivi-recu").click();
+        await pause(300);
+        const recu = nb12(p.texte("recu-a4"));
+        if (b.impressions !== 1 || !recu.includes("BP-SUIVI001") || !recu.includes("2 500 FCFA") || !recu.includes("Orange Money")) etape12.suivi.push("reçu : " + b.impressions + " impression(s)");
+        p.w.dispatchEvent(new p.w.Event("afterprint"));
+        await pause(100);
+        p.$("bouton-suivi-accueil").click();
+        await pause(600);
+        if (p.actif() !== "ecran-accueil" || !nb12(p.texte("accueil-quota")).startsWith("Devis illimités")) etape12.suivi.push("accueil après paiement : « " + p.texte("accueil-quota") + " »");
+        await menu12(p, "abonnement");
+        if (!nb12(p.texte("liste-paiements")).includes("Pro mensuel") || !nb12(p.texte("liste-paiements")).includes("2 500 FCFA")) etape12.suivi.push("« Mes paiements » sans le paiement confirmé");
+        inspecterPage(p, "suivi du paiement");
+        p.w.close();
+        etape12.cas.push("payé après " + lectures.length + " consultations");
+      }
+
+      /* SE. Échec, réessayer (même formule), attente trop longue, coupure, jeton falsifié, codes d'erreur. */
+      {
+        const b = banc12();
+        const decalage = { ms: 0 };
+        b.initier = [{ corps: { urlPaiement: "https://paiement.exemple.bf/p/2", reference: "BP-ECHEC001" } }];
+        b.statuts["BP-ECHEC001"] = statut("BP-ECHEC001", "echoue", "semaine");
+        const p = ouvrirPage({ ...base12, ...avecApi }, null, { html: htmlPro, preparer: b.preparer, decalage });
+        await pause(2000);
+        await menu12(p, "abonnement");
+        await payer(p, "semaine");
+        await pause(300);
+        if (issue(p) !== "echoue" || p.texte("titre-suivi") !== m12.SUIVI_PAIEMENT.echoue.titre || p.$("bouton-suivi-reessayer").hidden || !p.$("bouton-suivi-recu").hidden || stocke(p, "bp_v1_abonnement"))
+          etape12.echecs.push("échoué : " + issue(p) + " « " + p.texte("titre-suivi") + " »");
+        if (stocke(p, "bp_v1_paiement_en_cours").includes("BP-ECHEC001")) etape12.echecs.push("paiement échoué gardé « en cours »");
+        b.initier = [{ corps: { urlPaiement: "https://paiement.exemple.bf/p/3", reference: "BP-ECHEC002" } }];
+        b.statuts["BP-ECHEC002"] = statut("BP-ECHEC002", "en_attente", "semaine");
+        p.$("bouton-suivi-reessayer").click();
+        await pause(600);
+        if (b.inits().length !== 2 || b.inits()[1].init.body !== '{"formule":"semaine"}' || issue(p) !== "attente" || !nb12(p.texte("suivi-reference")).includes("BP-ECHEC002"))
+          etape12.echecs.push("« Réessayer » : " + b.inits().length + " initiation(s), " + issue(p));
+        const anciennes = b.lectures("BP-ECHEC001").length;
+        await pause(3300);
+        if (b.lectures("BP-ECHEC001").length !== anciennes) etape12.echecs.push("l'ancien suivi continue après un nouveau lancement");
+        decalage.ms = m12.PAIEMENTS.suiviDureeMs + 1000;
+        await pause(3300);
+        if (issue(p) !== "long" || p.$("bouton-suivi-verifier").hidden || !p.$("bouton-suivi-reessayer").hidden || !nb12(p.texte("suivi-texte")).includes("s'activera toute seule"))
+          etape12.echecs.push("3 min sans confirmation : " + issue(p));
+        const avantArret = b.lectures("BP-ECHEC002").length;
+        await pause(3300);
+        if (b.lectures("BP-ECHEC002").length !== avantArret) etape12.echecs.push("consultation au-delà de 3 minutes");
+        p.$("bouton-suivi-verifier").click();
+        await pause(200);
+        if (issue(p) !== "attente") etape12.echecs.push("« Vérifier à nouveau » ne relance pas le suivi");
+        b.enLigne = false;
+        decalage.ms += m12.PAIEMENTS.suiviDureeMs + 1000;
+        await pause(3300);
+        if (issue(p) !== "hors_ligne" || p.$("bouton-suivi-verifier").hidden) etape12.echecs.push("coupure réseau : " + issue(p));
+        b.enLigne = true;
+        b.statuts["BP-ECHEC002"] = await paye("BP-ECHEC002", "semaine", autrePaire.privateKey);
+        p.$("bouton-suivi-verifier").click();
+        await pause(800);
+        if (issue(p) !== "invalide" || stocke(p, "bp_v1_abonnement") || stocke(p, "bp_v1_paiements").includes("BP-ECHEC002")) etape12.echecs.push("« payé » avec un jeton falsifié : " + issue(p));
+        for (const [code, reessai] of [["annule", true], ["expire", true], ["anomalie", false], ["rembourse", false]]) {
+          const ref = "BP-ISSUE" + code.toUpperCase();
+          b.initier = [{ corps: { urlPaiement: "https://paiement.exemple.bf/p/" + code, reference: ref } }];
+          b.statuts[ref] = statut(ref, code, "mensuel");
+          await menu12(p, "abonnement");
+          await payer(p, "mensuel");
+          await pause(300);
+          if (issue(p) !== code || p.texte("titre-suivi") !== m12.SUIVI_PAIEMENT[code].titre || p.$("bouton-suivi-reessayer").hidden === reessai || stocke(p, "bp_v1_abonnement"))
+            etape12.echecs.push(code + " : " + issue(p) + " « " + p.texte("titre-suivi") + " »");
+        }
+        for (const [code, attendu] of [["places_vie_epuisees", "places_vie_epuisees"], ["non_authentifie", "non_authentifie"], ["trop_de_tentatives", "trop_de_tentatives"],
+          ["<img src=x onerror=alert(1)>", "defaut"], ["constructor", "defaut"], [null, "defaut"]]) {
+          b.initier = [{ ok: false, status: 409, corps: code === null ? "texte" : { erreur: code } }];
+          await menu12(p, "abonnement");
+          await payer(p, "annuel");
+          if (p.texte("msg-paiement") !== m12.MESSAGES_PAIEMENT[attendu] || p.actif() !== "ecran-abonnement" || p.$("bouton-reessayer-paiement").hidden)
+            etape12.echecs.push("erreur « " + code + " » : « " + p.texte("msg-paiement") + " »");
+        }
+        inspecterPage(p, "échecs du paiement");
+        p.w.close();
+        etape12.cas.push("8 issues et 6 codes d'erreur");
+      }
+
+      /* RT. Retour de la page de paiement (#paiement-retour?ref=…), reprise au démarrage, navigateur fermé, retour dans l'application. */
+      {
+        const b = banc12();
+        const p = ouvrirPage({ ...base12, ...avecApi }, null, { html: htmlPro, preparer: b.preparer });
+        await pause(2000);
+        p.w.location.hash = "#paiement-retour?ref=<img src=x onerror=alert(1)>";
+        await pause(300);
+        if (p.w.location.hash || p.actif() !== "ecran-accueil" || b.appels.some((a) => /\/api\/paiements\/(?!initier)/.test(a.url))) etape12.retour.push("adresse de retour piégée : " + p.actif() + " " + p.w.location.hash);
+        b.statuts["BP-RETOUR01"] = statut("BP-RETOUR01", "en_attente", "annuel");
+        p.w.location.hash = "#paiement-retour?ref=BP-RETOUR01";
+        await pause(600);
+        if (p.w.location.href !== "https://batiplus.local/" || p.actif() !== "ecran-paiement" || issue(p) !== "attente" || b.lectures("BP-RETOUR01").length < 1)
+          etape12.retour.push("retour valide : " + p.w.location.href + " " + p.actif() + " " + b.lectures("BP-RETOUR01").length + " lecture(s)");
+        b.statuts["BP-RETOUR01"] = await paye("BP-RETOUR01", "annuel");
+        await pause(3300);
+        if (issue(p) !== "paye" || !nb12(p.texte("suivi-texte")).startsWith("Votre Pro annuel est actif")) etape12.retour.push("retour puis payé : " + issue(p));
+        p.w.close();
+
+        const b2 = banc12();
+        b2.statuts["BP-REPRISE1"] = await paye("BP-REPRISE1", "mensuel");
+        const p2 = ouvrirPage({ ...base12, ...avecApi, bp_v1_paiement_en_cours: JSON.stringify({ [compte.id]: { reference: "BP-REPRISE1", formule: "mensuel", depuis: Date.now() - 600000 } }) },
+          null, { html: htmlPro, preparer: b2.preparer });
+        await pause(2400);
+        if (p2.actif() !== "ecran-accueil" || p2.$("toast").hidden || !nb12(p2.texte("toast")).includes("Paiement confirmé : votre Pro mensuel est actif.")
+          || !stocke(p2, "bp_v1_abonnement").includes(compte.id) || stocke(p2, "bp_v1_paiement_en_cours").includes("BP-REPRISE1") || !stocke(p2, "bp_v1_paiements").includes("BP-REPRISE1"))
+          etape12.retour.push("reprise au démarrage : " + p2.actif() + " « " + p2.texte("toast") + " »");
+        p2.w.close();
+
+        const b3 = banc12();
+        b3.statuts["BP-ANCIEN01"] = await paye("BP-ANCIEN01", "mensuel");
+        const p3 = ouvrirPage({ ...base12, ...avecApi, bp_v1_paiement_en_cours: JSON.stringify({ [compte.id]: { reference: "BP-ANCIEN01", formule: "mensuel", depuis: Date.now() - 25 * 3600000 } }) },
+          null, { html: htmlPro, preparer: b3.preparer });
+        await pause(2400);
+        if (b3.lectures("BP-ANCIEN01").length || stocke(p3, "bp_v1_paiement_en_cours").includes("BP-ANCIEN01") || stocke(p3, "bp_v1_abonnement")) etape12.retour.push("paiement en cours de plus de 24 h encore suivi");
+        p3.w.close();
+
+        const b4 = banc12();
+        const ecouteurs = {};
+        const prefs = new Map(Object.entries({ ...base12, [K.session]: sessionFraiche(), ...avecApi }));
+        const natif12 = {
+          isNativePlatform: () => true,
+          getPlatform: () => "android",
+          Plugins: {
+            App: { addListener: (nom, fn) => { ecouteurs["app:" + nom] = fn; return Promise.resolve({ remove() {} }); }, exitApp() {} },
+            Browser: { open: async ({ url }) => { b4.ouvertures.push([url]); }, addListener: (nom, fn) => { ecouteurs["browser:" + nom] = fn; return Promise.resolve({ remove() {} }); } },
+            Preferences: {
+              get: async ({ key }) => ({ value: prefs.has(key) ? prefs.get(key) : null }),
+              set: async ({ key, value }) => { prefs.set(key, value); },
+              remove: async ({ key }) => { prefs.delete(key); }
+            }
+          }
+        };
+        b4.initier = [{ corps: { urlPaiement: "https://paiement.exemple.bf/p/4", reference: "BP-NATIF001" } }];
+        b4.statuts["BP-NATIF001"] = statut("BP-NATIF001", "en_attente", "mensuel");
+        const p4 = ouvrirPage({}, natif12, { html: htmlPro, preparer: b4.preparer });
+        await pause(2000);
+        await menu12(p4, "abonnement");
+        await payer(p4, "mensuel");
+        const lecturesNatif = b4.lectures("BP-NATIF001").length;
+        if (b4.ouvertures.length !== 1 || p4.actif() !== "ecran-paiement" || typeof ecouteurs["browser:browserFinished"] !== "function" || typeof ecouteurs["app:resume"] !== "function")
+          etape12.retour.push("téléphone : navigateur " + b4.ouvertures.length + ", écran " + p4.actif() + ", écouteurs " + Object.keys(ecouteurs).join(","));
+        else {
+          ecouteurs["browser:browserFinished"]();
+          await pause(400);
+          if (b4.lectures("BP-NATIF001").length !== lecturesNatif + 1) etape12.retour.push("navigateur fermé : pas de vérification immédiate");
+          b4.statuts["BP-NATIF001"] = await paye("BP-NATIF001", "mensuel");
+          ecouteurs["app:resume"]();
+          await pause(800);
+          if (issue(p4) !== "paye" || !String(prefs.get("bp_v1_abonnement") || "").includes(compte.id) || p4.actif() !== "ecran-paiement") etape12.retour.push("retour dans l'application : " + issue(p4) + " " + p4.actif());
+        }
+        p4.w.close();
+        etape12.cas.push("retour, reprise, 24 h, navigateur fermé");
+      }
+
+      /* RN. Renouveler en 1 toucher (accueil et Mon abonnement), rappel du jour J, interrupteur carte. */
+      {
+        const b = banc12();
+        const chargeJ3 = chargePro("mensuel", { debut: isoDe(Date.now() - 27.5 * jour), fin: isoDe(Date.now() + 2.5 * jour) });
+        b.initier = [{ corps: { urlPaiement: "https://paiement.exemple.bf/p/5", reference: "BP-RENOUV01" } }];
+        b.statuts["BP-RENOUV01"] = statut("BP-RENOUV01", "en_attente", "mensuel");
+        const p = ouvrirPage({ ...base12, ...avecApi, ...aboDe12(await jetonAbo(chargeJ3)) }, null, { html: htmlPro, preparer: b.preparer });
+        await pause(2000);
+        if (p.texte("libelle-passer-pro") !== "Renouveler" || !nb12(p.texte("accueil-rappel")).includes("Renouvelez en 1 toucher")) etape12.renouvellement.push("accueil J-3 : « " + p.texte("libelle-passer-pro") + " »");
+        p.$("bouton-passer-pro").click();
+        await pause(800);
+        if (b.inits().length !== 1 || b.inits()[0].init.body !== '{"formule":"mensuel"}' || p.actif() !== "ecran-paiement" || !p.$("modale").hidden)
+          etape12.renouvellement.push("« Renouveler » de l'accueil : " + b.inits().length + " initiation(s), " + p.actif());
+        await menu12(p, "abonnement");
+        if (p.$("bouton-renouveler").hidden || p.texte("libelle-renouveler") !== "Renouveler mon Pro mensuel") etape12.renouvellement.push("bouton « Renouveler » absent de Mon abonnement");
+        p.$("bouton-renouveler").click();
+        await pause(800);
+        if (b.inits().length !== 2 || p.actif() !== "ecran-paiement") etape12.renouvellement.push("« Renouveler mon Pro mensuel » : " + b.inits().length + " initiation(s)");
+        p.$("bouton-avatar").click();
+        await pause(600);
+        const interrupteur = p.$("renouvellement-auto");
+        if (p.$("carte-renouvellement").hidden || interrupteur.checked || interrupteur.getAttribute("role") !== "switch") etape12.renouvellement.push("interrupteur absent ou activé par défaut");
+        interrupteur.click();
+        await pause(400);
+        const reglage = b.appels.filter((a) => a.url.endsWith("/api/abonnement/renouvellement-auto"));
+        if (!interrupteur.checked || reglage.length !== 1 || reglage[0].init.body !== '{"actif":true}' || reglage[0].init.headers.Authorization !== "Bearer " + jetonApi
+          || !stocke(p, "bp_v1_renouvellement").includes(compte.id) || !p.texte("msg-renouvellement").startsWith("Activé"))
+          etape12.renouvellement.push("activation : " + interrupteur.checked + " « " + p.texte("msg-renouvellement") + " »");
+        b.renouvellementOk = false;
+        interrupteur.click();
+        await pause(400);
+        if (!interrupteur.checked || !p.texte("msg-renouvellement").includes("n'a pas pu être enregistré") || !stocke(p, "bp_v1_renouvellement").includes(compte.id))
+          etape12.renouvellement.push("échec en ligne : l'interrupteur ne revient pas en arrière");
+        b.enLigne = false;
+        const avantHorsLigne = b.appels.length;
+        interrupteur.click();
+        await pause(300);
+        if (!interrupteur.checked || b.appels.length !== avantHorsLigne) etape12.renouvellement.push("hors ligne : réglage modifié sans confirmation");
+        p.w.close();
+
+        const loin = ouvrirPage({ ...base12, ...aboDe12(await jetonAbo(chargePro("mensuel"))) }, null, { html: htmlPro });
+        await pause(2000);
+        await menu12(loin, "abonnement");
+        if (!loin.$("bouton-renouveler").hidden) etape12.renouvellement.push("« Renouveler » proposé loin de la fin");
+        loin.w.close();
+        const vie = ouvrirPage({ ...base12, ...aboDe12(await jetonAbo(chargePro("vie"))) }, null, { html: htmlPro });
+        await pause(2000);
+        vie.$("bouton-avatar").click();
+        await pause(600);
+        if (!vie.$("carte-renouvellement").hidden) etape12.renouvellement.push("interrupteur proposé à un Lifetime");
+        vie.w.close();
+
+        const finJ = new Date();
+        finJ.setHours(23, 59, 0, 0);
+        if (finJ.getTime() - Date.now() > 20 * 60000) {
+          const j = ouvrirPage({ ...base12, ...aboDe12(await jetonAbo(chargePro("mensuel", { debut: isoDe(finJ.getTime() - 30 * jour), fin: isoDe(finJ.getTime()) }))) }, null, { html: htmlPro });
+          await pause(2000);
+          if (!nb12(j.texte("accueil-rappel")).startsWith("Votre Pro mensuel se termine aujourd'hui") || j.texte("libelle-passer-pro") !== "Renouveler") etape12.renouvellement.push("jour J : « " + j.texte("accueil-rappel") + " »");
+          j.w.close();
+          etape12.cas.push("jour J vérifié");
+        }
+      }
+      etape12.fait = true;
     }
 
     /* ㉑ bouton retour Android : modale → recherche → tiroir → historique → accueil → quitter */
@@ -2947,7 +3270,7 @@ function controlesEtape11() {
     jeton.join(" ; ") || "ECDSA P-256 vérifié sur l'appareil avec la clé PUBLIQUE de la balise meta (vide dans la page livrée : échec fermé) ; refusés : formule en clair, autre clé, charge modifiée, autre compte, autre numéro, expiré, émis dans le futur, horloge reculée sous la dernière date vue, champ inconnu, Lifetime daté, mensuel sans fin, signature tronquée ; aucune clé privée dans le front");
   const relances = [...absent, ...etape11.relances];
   controle("RL", "relances sans harceler", relances.length === 0,
-    relances.join(" ; ") || "bandeau permanent (gratuit) ; invitation à la 1re ouverture du jour (jamais le jour de la création du compte, une seule fois) ; après impression ou envoi (au plus une toutes les 10 min) ; abonné : aucune invitation, rappel J-3 / J-1 sur l'accueil (« Renouveler ») et notifications locales à 9 h (ids 3103, 3101)");
+    relances.join(" ; ") || "bandeau permanent (gratuit) ; invitation à la 1re ouverture du jour (jamais le jour de la création du compte, une seule fois) ; après impression ou envoi (au plus une toutes les 10 min) ; abonné : aucune invitation, rappel J-3 / veille / jour J sur l'accueil (« Renouveler » en 1 toucher) et notifications locales à 9 h (ids 3103, 3101, 3100)");
   const cadenas = [...absent, ...etape11.cadenas];
   controle("PV", "fonctions Pro sous cadenas → invitation", cadenas.length === 0,
     cadenas.join(" ; ") || "gratuit : cadenas sur Statistiques (menu + carte), logo, feuille sans filigrane, 4 « Débloquer » ; un toucher ouvre l'invitation → « Voir les formules » → Abonnement ; abonné : aucun cadenas, avantages « Inclus », statistiques détaillées visibles");
@@ -2957,6 +3280,33 @@ function controlesEtape11() {
   const paiement = [...absent, ...etape11.paiement];
   controle("PI", "paiement : la formule seule, une adresse https seule", paiement.length === 0,
     paiement.join(" ; ") || "3 touchers (Choisir → Payer maintenant → page de paiement) ; corps envoyé = {\"formule\":\"…\"} sans montant, sans cookie ; seule une adresse https:// avec une référence BP-… est ouverte (noopener) ; javascript:, http://, référence piégée et coupure réseau → message clair + « Réessayer » qui relance la même formule");
+}
+
+/* ---------- Étape 12 : paiement automatique ---------- */
+async function controlesEtape12() {
+  const absent = etape12.fait ? [] : ["parcours jsdom de l'étape 12 non exécuté"];
+  const suivi = [...absent, ...etape12.suivi];
+  controle("SP", "paiement suivi jusqu'à l'activation, sans action de l'électricien", suivi.length === 0,
+    suivi.join(" ; ") || "page de paiement ouverte → écran « Nous confirmons votre paiement… » (référence affichée) ; GET /api/paiements/:ref toutes les 3 s avec le jeton de session ; « en attente » n'active rien ; payé → jeton signé vérifié sur l'appareil puis enregistré, coche géante + 18 particules, « Votre Pro mensuel est actif jusqu'au … », focus sur le titre, ajout à « Mes paiements », reçu imprimable, consultation arrêtée, accueil « Devis illimités »");
+  const echecs = [...absent, ...etape12.echecs];
+  controle("SE", "échecs, attente trop longue, coupure : message clair, rien d'activé", echecs.length === 0,
+    echecs.join(" ; ") || "échoué / annulé / expiré → « Réessayer » (même formule, nouvelle page, ancien suivi arrêté) ; anomalie / remboursé → pas de « Réessayer » ; 3 min sans confirmation → « s'activera toute seule », arrêt des consultations ; coupure → « Connexion perdue » + « Vérifier à nouveau » ; « payé » avec un jeton signé par une autre clé → rien d'activé ; codes d'erreur traduits (places Lifetime épuisées, session expirée, trop de tentatives), code inconnu ou piégé → message par défaut, jamais le texte reçu");
+  const retour = [...absent, ...etape12.retour];
+  controle("RT", "retour de la page de paiement et reprise après fermeture", retour.length === 0,
+    retour.join(" ; ") || "#paiement-retour?ref=BP-… : format vérifié, effacé de l'adresse, suivi relancé (adresse piégée ignorée) ; démarrage avec un paiement en cours de moins de 24 h → vérification discrète, toast « Paiement confirmé : votre Pro mensuel est actif. » ; au-delà de 24 h → oublié ; téléphone : navigateur fermé (browserFinished) et retour dans l'application (resume) → vérification immédiate");
+  const renouvellement = [...absent, ...etape12.renouvellement];
+  controle("RN", "renouveler en 1 toucher, rappel du jour J, interrupteur carte", renouvellement.length === 0,
+    renouvellement.join(" ; ") || "J-3 : « Renouveler » de l'accueil et « Renouveler mon Pro mensuel » de Mon abonnement lancent le paiement de la même formule sans étape de plus ; loin de la fin → pas de bouton ; jour J → « se termine aujourd'hui » ; interrupteur désactivé par défaut, enregistré en ligne d'abord, revient en arrière en cas d'échec ou hors ligne, caché pour Lifetime");
+  const m12 = chargerMoteur();
+  const { FORMULES: enLigne } = await import(new URL("../../backend/formules.js", import.meta.url).href);
+  const ecarts = Object.keys(m12.FORMULES).filter((id) => id !== "gratuit")
+    .filter((id) => !enLigne[id] || enLigne[id].prix !== m12.FORMULES[id].prix || enLigne[id].nom !== m12.FORMULES[id].nom || enLigne[id].jours !== m12.FORMULES[id].dureeJours)
+    .concat(Object.keys(enLigne).filter((id) => !m12.FORMULES[id]));
+  const livre = readFileSync(join(RACINE, "www", "index.html"), "utf8");
+  const secrets = (livre.match(/sk_(live|test)_|whsec_|PAYDUNYA|LIGDICASH_|CINETPAY_|FEDAPAY_|api_password|MASTER-KEY|PRIVATE[_-]KEY|BEGIN (EC )?PRIVATE/gi) || []);
+  controle("PX", "prix identiques dans l'application et en ligne, aucune clé d'agrégateur dans l'application", ecarts.length === 0 && secrets.length === 0,
+    ecarts.length || secrets.length ? "écarts : " + ecarts.join(",") + " ; secrets : " + secrets.join(",")
+      : "Pass semaine 750 / 7 j, Pro mensuel 2 500 / 30 j, Pro annuel 25 000 / 365 j, Lifetime 60 000 : identiques dans src/donnees.js et backend/formules.js (le montant facturé est lu en ligne) ; www/index.html ne contient aucune clé d'agrégateur ni clé privée");
 }
 
 /* ---------- Rapport ---------- */
@@ -2971,9 +3321,10 @@ controleGitignore();
 controlesSecurite();
 controlesEtape10();
 controlesEtape11();
+await controlesEtape12();
 controlesIdentite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+", "㊸", "㊹", "㊺", "㊻", "VR", "CO", "SW", "AN", "CS", "㊼", "㊽", "㊾", "㊿", "AB", "RL", "PV", "RC", "PI"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+", "㊸", "㊹", "㊺", "㊻", "VR", "CO", "SW", "AN", "CS", "㊼", "㊽", "㊾", "㊿", "AB", "RL", "PV", "RC", "PI", "SP", "SE", "RT", "RN", "PX"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);

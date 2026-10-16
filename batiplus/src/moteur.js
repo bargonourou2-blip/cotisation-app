@@ -1620,8 +1620,10 @@ function controlerInactivite() {
 }
 
 function surVisibiliteVerrou() {
-  if (document.visibilityState === "visible") controlerInactivite();
-  else if (etat.compte && !etat.verrouille) ecrireActivite(activite.derniere);
+  if (document.visibilityState === "visible") {
+    controlerInactivite();
+    verifierPaiementEnAttente();
+  } else if (etat.compte && !etat.verrouille) ecrireActivite(activite.derniere);
 }
 
 function surveillerInactivite() {
@@ -1630,7 +1632,7 @@ function surveillerInactivite() {
   document.addEventListener("visibilitychange", surVisibiliteVerrou);
   const app = plugin("App");
   if (app) {
-    app.addListener("resume", controlerInactivite);
+    app.addListener("resume", surRetourApplication);
     app.addListener("pause", surVisibiliteVerrou);
   }
   clearInterval(activite.minuterie);
@@ -2109,6 +2111,7 @@ async function afficherMaFormule() {
   jauge.dataset.niveau = niveau;
   $("jauge-formule-remplie").style.setProperty("--remplissage", String(Math.min(1, valeur / maximum)));
   ecrireInsecable($("jauge-formule-libelle"), libelle);
+  afficherRenouveler();
 }
 
 function libelleBoutonFormule(id, actuelle) {
@@ -2413,6 +2416,8 @@ function messagePaiement(texte, reessayer) {
 async function lancerPaiement(id) {
   if (id === FORMULE_DEFAUT || !Object.prototype.hasOwnProperty.call(FORMULES, id)) return;
   abonnementEtat.formuleChoisie = id;
+  /* Un nouveau lancement arrête le suivi précédent : jamais deux suivis en parallèle. */
+  arreterSuiviPaiement();
   if (navigator.onLine === false) {
     messagePaiement("Pas de connexion internet : le paiement demande une connexion. Touchez « Réessayer » une fois connecté.", true);
     return;
@@ -2423,37 +2428,441 @@ async function lancerPaiement(id) {
   try {
     const reponse = await fetch(API_URL + "/api/paiements/initier", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await entetesApi(true),
       body: JSON.stringify({ formule: id }),
       credentials: "omit",
       cache: "no-store",
       signal: controleur.signal
     });
-    const donnees = reponse.ok ? await reponse.json() : null;
+    let donnees = null;
+    try {
+      donnees = await reponse.json();
+    } catch (erreur) {
+      donnees = null;
+    }
+    if (!reponse.ok) {
+      /* Seul le CODE d'erreur est lu ; le message affiché vient toujours de l'application. */
+      messagePaiement(MESSAGES_PAIEMENT[codeErreurPaiement(donnees)], true);
+      return;
+    }
     const adresse = donnees ? adressePaiementSure(donnees.urlPaiement) : "";
     const reference = donnees && typeof donnees.reference === "string" && PAIEMENTS.reference.test(donnees.reference) ? donnees.reference : "";
     if (!adresse || !reference) throw new Error("réponse inattendue");
+    await noterPaiementEnCours(reference, id);
     const navigateur = plugin("Browser");
     if (navigateur) await navigateur.open({ url: adresse });
     else window.open(adresse, "_blank", "noopener,noreferrer");
     messagePaiement("Page de paiement ouverte (référence " + reference + "). Votre formule s'activera dès la confirmation du paiement.", false);
+    suivrePaiement(reference, id);
   } catch (erreur) {
     journal("paiement non démarré", erreur && erreur.message);
-    messagePaiement("Le paiement n'a pas pu démarrer. Vérifiez votre connexion internet puis touchez « Réessayer ».", true);
+    messagePaiement(MESSAGES_PAIEMENT.defaut, true);
   } finally {
     clearTimeout(delai);
   }
 }
 
-/* ---------- Rappels J-3 et J-1 (seules relances d'un abonné) ---------- */
+/* ---------- Suivi automatique du paiement (étape 12) ----------
+   Après l'ouverture de la page de paiement : écran « Nous confirmons votre paiement… »,
+   consultation de GET /api/paiements/:ref toutes les 3 s pendant 3 min. L'abonnement ne
+   s'active QUE par un jeton signé reçu en ligne et vérifié ici (clé publique) : ni le
+   retour de la page de paiement, ni un statut seul, ni une saisie ne peuvent l'activer. */
+
+const suiviPaiement = { reference: "", formule: "", debut: 0, minuterie: 0, generation: 0, consultation: false, actif: false };
+
+function objetSimple(valeur) {
+  return Boolean(valeur) && typeof valeur === "object" && !Array.isArray(valeur);
+}
+
+function formuleAchetable(id) {
+  return typeof id === "string" && id !== FORMULE_DEFAUT && Object.prototype.hasOwnProperty.call(FORMULES, id) ? id : "";
+}
+
+/* Jeton de session de l'API (déposé à la connexion en ligne, étape 14), rangé par compte. */
+async function jetonApiCompte() {
+  const compte = etat.compte;
+  if (!compte) return "";
+  const brut = await lireJson(CLES_STOCKAGE.jetonApi);
+  const jeton = objetSimple(brut) && Object.prototype.hasOwnProperty.call(brut, compte.id) ? brut[compte.id] : "";
+  return typeof jeton === "string" && PAIEMENTS.jetonApi.test(jeton) ? jeton : "";
+}
+
+async function entetesApi(avecCorps) {
+  const entetes = avecCorps ? { "Content-Type": "application/json" } : {};
+  const jeton = await jetonApiCompte();
+  if (jeton) entetes.Authorization = "Bearer " + jeton;
+  return entetes;
+}
+
+function codeErreurPaiement(donnees) {
+  const code = objetSimple(donnees) && typeof donnees.erreur === "string" ? donnees.erreur : "";
+  return code && code !== "defaut" && Object.prototype.hasOwnProperty.call(MESSAGES_PAIEMENT, code) ? code : "defaut";
+}
+
+/* Paiement en cours mémorisé (référence + formule) : reprise après fermeture de l'application. */
+async function lireEnCoursBrut() {
+  const brut = await lireJson(CLES_STOCKAGE.paiementEnCours);
+  const propre = {};
+  if (objetSimple(brut)) {
+    for (const [id, valeur] of Object.entries(brut)) {
+      if (!/^[a-z0-9-]{8,64}$/i.test(id) || !objetSimple(valeur)) continue;
+      if (typeof valeur.reference !== "string" || !PAIEMENTS.reference.test(valeur.reference) || !formuleAchetable(valeur.formule)) continue;
+      if (!Number.isFinite(valeur.depuis) || valeur.depuis <= 0) continue;
+      propre[id] = { reference: valeur.reference, formule: valeur.formule, depuis: valeur.depuis };
+    }
+  }
+  return propre;
+}
+
+async function lirePaiementEnCours() {
+  if (!etat.compte) return null;
+  const tous = await lireEnCoursBrut();
+  return Object.prototype.hasOwnProperty.call(tous, etat.compte.id) ? tous[etat.compte.id] : null;
+}
+
+async function noterPaiementEnCours(reference, formule) {
+  if (!etat.compte) return;
+  const tous = await lireEnCoursBrut();
+  tous[etat.compte.id] = { reference, formule, depuis: Date.now() };
+  await ecrireValeur(CLES_STOCKAGE.paiementEnCours, JSON.stringify(tous));
+}
+
+async function oublierPaiementEnCours(reference) {
+  if (!etat.compte) return;
+  const tous = await lireEnCoursBrut();
+  const present = tous[etat.compte.id];
+  if (!present || (reference && present.reference !== reference)) return;
+  delete tous[etat.compte.id];
+  await ecrireValeur(CLES_STOCKAGE.paiementEnCours, JSON.stringify(tous));
+}
+
+/* Réponse de GET /api/paiements/:ref relue champ par champ ; tout écart → ignorée. */
+function reponseSuiviValide(source, reference) {
+  if (!objetSimple(source) || source.reference !== reference || !PAIEMENTS.statutsSuivi.includes(source.statut)) return null;
+  const formule = formuleAchetable(source.formule);
+  if (!formule) return null;
+  const abonnement = objetSimple(source.abonnement) ? source.abonnement : {};
+  return {
+    reference,
+    statut: source.statut,
+    formule,
+    montant: Number.isInteger(source.montant) && source.montant >= 0 && source.montant <= PAIEMENTS.montantMax ? source.montant : FORMULES[formule].prix,
+    moyen: typeof source.moyen === "string" && /^[a-z0-9_-]{1,40}$/i.test(source.moyen) ? source.moyen : "",
+    payeLe: dateIsoValide(source.payeLe) ? source.payeLe : "",
+    jeton: typeof source.jeton === "string" && source.jeton.length <= 4096 ? source.jeton : "",
+    debut: dateIsoValide(abonnement.debut) ? abonnement.debut : "",
+    fin: dateIsoValide(abonnement.fin) ? abonnement.fin : ""
+  };
+}
+
+/* null = pas de réponse exploitable (réseau, session, réponse inattendue). */
+async function consulterPaiement(reference) {
+  if (!etat.compte || !PAIEMENTS.reference.test(reference) || typeof fetch !== "function" || navigator.onLine === false) return null;
+  const controleur = new AbortController();
+  const delai = setTimeout(() => controleur.abort(), PAIEMENTS.delaiConsultationMs);
+  try {
+    const reponse = await fetch(API_URL + "/api/paiements/" + encodeURIComponent(reference), {
+      method: "GET",
+      headers: await entetesApi(false),
+      credentials: "omit",
+      cache: "no-store",
+      signal: controleur.signal
+    });
+    if (!reponse.ok) return null;
+    return reponseSuiviValide(await reponse.json(), reference);
+  } catch (erreur) {
+    return null;
+  } finally {
+    clearTimeout(delai);
+  }
+}
+
+function arreterSuiviPaiement() {
+  clearTimeout(suiviPaiement.minuterie);
+  suiviPaiement.minuterie = 0;
+  suiviPaiement.generation += 1;
+  suiviPaiement.actif = false;
+}
+
+function suivrePaiement(reference, formule) {
+  arreterSuiviPaiement();
+  suiviPaiement.reference = reference;
+  suiviPaiement.formule = formuleAchetable(formule);
+  suiviPaiement.debut = Date.now();
+  suiviPaiement.actif = true;
+  afficherSuivi("attente");
+  montrer("paiement");
+  planifierConsultation(0);
+}
+
+function planifierConsultation(delai) {
+  const generation = suiviPaiement.generation;
+  clearTimeout(suiviPaiement.minuterie);
+  suiviPaiement.minuterie = setTimeout(() => {
+    if (generation === suiviPaiement.generation) tourDeSuivi(generation);
+  }, delai);
+}
+
+async function tourDeSuivi(generation) {
+  if (suiviPaiement.consultation) {
+    planifierConsultation(PAIEMENTS.suiviIntervalleMs);
+    return;
+  }
+  suiviPaiement.consultation = true;
+  let resultat = null;
+  try {
+    resultat = await consulterPaiement(suiviPaiement.reference);
+  } finally {
+    suiviPaiement.consultation = false;
+  }
+  if (generation !== suiviPaiement.generation) return;
+  if (resultat && resultat.statut !== "en_attente") {
+    suiviPaiement.actif = false;
+    await conclurePaiement(resultat, false);
+    return;
+  }
+  if (Date.now() - suiviPaiement.debut >= PAIEMENTS.suiviDureeMs) {
+    suiviPaiement.actif = false;
+    afficherSuivi(!resultat && navigator.onLine === false ? "hors_ligne" : "long");
+    return;
+  }
+  planifierConsultation(PAIEMENTS.suiviIntervalleMs);
+}
+
+/* Paiement confirmé : ajouté à « Mes paiements » (reçu disponible), une seule fois par référence. */
+async function memoriserPaiement(r) {
+  const compte = etat.compte;
+  const brut = await lireJson(CLES_STOCKAGE.paiements);
+  const tous = {};
+  if (objetSimple(brut)) {
+    for (const [id, liste] of Object.entries(brut)) if (/^[a-z0-9-]{8,64}$/i.test(id) && Array.isArray(liste)) tous[id] = liste.slice(0, PAIEMENTS.max);
+  }
+  const entree = {
+    reference: r.reference, formule: r.formule, montant: r.montant,
+    payeLe: r.payeLe || new Date(maintenantFiable()).toISOString(),
+    statut: "paye", moyen: r.moyen, debut: r.debut, fin: r.fin
+  };
+  if (!paiementValide(entree)) return false;
+  const anciens = (tous[compte.id] || []).filter((p) => !(objetSimple(p) && p.reference === r.reference));
+  tous[compte.id] = [entree, ...anciens].slice(0, PAIEMENTS.max);
+  return ecrireValeur(CLES_STOCKAGE.paiements, JSON.stringify(tous));
+}
+
+/* discret : vérification au démarrage / au retour → un toast au lieu de l'écran de suivi. */
+async function conclurePaiement(r, discret) {
+  if (r.statut === "paye") {
+    if (!(await enregistrerJetonAbonnement(r.jeton))) {
+      if (!discret) afficherSuivi("invalide");
+      return false;
+    }
+    await memoriserPaiement(r);
+    await oublierPaiementEnCours(r.reference);
+    if (montrer.ecranCourant === "abonnement") await ouvrirAbonnement();
+    if (discret || montrer.ecranCourant !== "paiement") afficherToast("Paiement confirmé : votre " + FORMULES[etat.abonnement.formule].nom + " est actif.");
+    if (!discret) afficherSuivi("paye");
+    return true;
+  }
+  await oublierPaiementEnCours(r.reference);
+  if (!discret) afficherSuivi(r.statut);
+  return false;
+}
+
+function texteSuiviPaye() {
+  const abonnement = etat.abonnement;
+  const formule = FORMULES[abonnement.formule] || FORMULES[FORMULE_DEFAUT];
+  const debut = abonnement.fin
+    ? "Votre " + formule.nom + " est actif jusqu'au " + dateLongue(Date.parse(abonnement.fin), true) + "."
+    : "Votre formule " + formule.nom + " est active pour toujours.";
+  return debut + " Devis illimités et sans filigrane dès maintenant. Merci pour votre confiance !";
+}
+
+function lancerParticules() {
+  const conteneur = $("suivi-particules");
+  const particules = [];
+  for (let i = 0; i < PAIEMENTS.particules; i += 1) particules.push(document.createElement("i"));
+  /* Remplacer les particules relance leur animation à chaque confirmation. */
+  conteneur.replaceChildren(...particules);
+}
+
+function afficherSuivi(issue) {
+  const cle = Object.prototype.hasOwnProperty.call(SUIVI_PAIEMENT, issue) ? issue : "long";
+  const textes = SUIVI_PAIEMENT[cle];
+  $("suivi-paiement").dataset.issue = cle;
+  $("titre-suivi").textContent = textes.titre;
+  ecrireInsecable($("suivi-texte"), cle === "paye" ? texteSuiviPaye() : textes.texte);
+  ecrireInsecable($("suivi-reference"), suiviPaiement.reference ? "Référence : " + suiviPaiement.reference : "");
+  $("bouton-suivi-recu").hidden = cle !== "paye";
+  $("bouton-suivi-reessayer").hidden = !["echoue", "annule", "expire"].includes(cle) || !suiviPaiement.formule;
+  $("bouton-suivi-verifier").hidden = !["long", "hors_ligne", "invalide"].includes(cle);
+  if (cle === "paye") {
+    lancerParticules();
+    vibrer();
+  } else {
+    $("suivi-particules").replaceChildren();
+  }
+  if (cle !== "attente" && montrer.ecranCourant === "paiement") $("titre-suivi").focus({ preventScroll: true });
+}
+
+function surVerifierSuivi() {
+  if (!PAIEMENTS.reference.test(suiviPaiement.reference)) return;
+  vibrer();
+  arreterSuiviPaiement();
+  suiviPaiement.debut = Date.now();
+  suiviPaiement.actif = true;
+  afficherSuivi("attente");
+  planifierConsultation(0);
+}
+
+function surReessayerSuivi() {
+  if (!suiviPaiement.formule) return;
+  vibrer();
+  /* Le brouillon du devis en cours n'est jamais touché : on relance seulement la même formule. */
+  lancerPaiement(suiviPaiement.formule);
+}
+
+/* Retour de la page de paiement : #paiement-retour?ref=BP-… (format vérifié, puis effacé de l'adresse). */
+async function surRetourPaiement() {
+  const adresse = location.hash || "";
+  if (!adresse.startsWith("#paiement-retour")) return;
+  const trouve = /^#paiement-retour\?ref=(BP-[A-Z0-9]{6,20})$/.exec(adresse);
+  history.replaceState(null, "", location.pathname + location.search);
+  if (!trouve || !etat.compte || etat.verrouille) return;
+  const enCours = await lirePaiementEnCours();
+  suivrePaiement(trouve[1], enCours && enCours.reference === trouve[1] ? enCours.formule : "");
+}
+
+/* Retour dans l'application (navigateur fermé, reprise, démarrage) : vérification discrète
+   d'un paiement en cours de moins de 24 h. */
+async function verifierPaiementEnAttente() {
+  if (!etat.compte || etat.verrouille) return;
+  if (suiviPaiement.actif) {
+    planifierConsultation(0);
+    return;
+  }
+  const enCours = await lirePaiementEnCours();
+  if (!enCours) return;
+  if (Date.now() - enCours.depuis >= PAIEMENTS.enCoursMaxMs) {
+    await oublierPaiementEnCours(enCours.reference);
+    return;
+  }
+  const resultat = await consulterPaiement(enCours.reference);
+  if (resultat && resultat.statut !== "en_attente" && !suiviPaiement.actif) {
+    if (resultat.statut === "paye") await conclurePaiement(resultat, true);
+    else await oublierPaiementEnCours(enCours.reference);
+  }
+}
+
+function ecouterRetourPaiement() {
+  window.addEventListener("hashchange", surRetourPaiement);
+  const navigateur = plugin("Browser");
+  if (navigateur && typeof navigateur.addListener === "function") {
+    Promise.resolve(navigateur.addListener("browserFinished", verifierPaiementEnAttente)).catch(() => journal("écoute du navigateur impossible"));
+  }
+}
+
+function surRetourApplication() {
+  controlerInactivite();
+  verifierPaiementEnAttente();
+}
+
+/* Renouveler en 1 toucher : même formule, même parcours de paiement. */
+function renouvelerFormule() {
+  const id = formuleAchetable(etat.abonnement && etat.abonnement.formule);
+  if (!id || id === "vie" || !texteRappel(etat.abonnement)) return;
+  vibrer();
+  lancerPaiement(id);
+}
+
+function surClicPasserPro() {
+  /* La navigation vers « Mon abonnement » est faite par [data-ecran] ; en mode rappel, le paiement part aussitôt. */
+  if ($("bouton-passer-pro").dataset.renouveler) renouvelerFormule();
+}
+
+function afficherRenouveler() {
+  const id = formuleAchetable(etat.abonnement && etat.abonnement.formule);
+  const visible = Boolean(id) && id !== "vie" && Boolean(texteRappel(etat.abonnement));
+  $("bouton-renouveler").hidden = !visible;
+  $("libelle-renouveler").textContent = visible ? "Renouveler mon " + FORMULES[id].nom : "Renouveler";
+}
+
+/* Interrupteur « renouvellement automatique par carte » : enregistré en ligne d'abord ;
+   en cas d'échec, il revient à sa position précédente. */
+async function lireRenouvellementLocal() {
+  const brut = await lireJson(CLES_STOCKAGE.renouvellement);
+  return objetSimple(brut) ? brut : {};
+}
+
+async function afficherRenouvellement() {
+  const id = etat.abonnement ? etat.abonnement.formule : FORMULE_DEFAUT;
+  $("carte-renouvellement").hidden = id === "vie";
+  const local = await lireRenouvellementLocal();
+  $("renouvellement-auto").checked = local[etat.compte.id] === true;
+  $("renouvellement-auto").disabled = false;
+  message("msg-renouvellement", "");
+}
+
+async function surChangementRenouvellement() {
+  const interrupteur = $("renouvellement-auto");
+  const actif = interrupteur.checked;
+  interrupteur.disabled = true;
+  message("msg-renouvellement", "Enregistrement…");
+  let enregistre = false;
+  if (typeof fetch === "function" && navigator.onLine !== false && etat.compte) {
+    const controleur = new AbortController();
+    const delai = setTimeout(() => controleur.abort(), PAIEMENTS.delaiConsultationMs);
+    try {
+      const reponse = await fetch(API_URL + "/api/abonnement/renouvellement-auto", {
+        method: "POST",
+        headers: await entetesApi(true),
+        body: JSON.stringify({ actif }),
+        credentials: "omit",
+        cache: "no-store",
+        signal: controleur.signal
+      });
+      enregistre = reponse.ok;
+    } catch (erreur) {
+      enregistre = false;
+    } finally {
+      clearTimeout(delai);
+    }
+  }
+  if (enregistre) {
+    const local = await lireRenouvellementLocal();
+    const propre = {};
+    for (const [id, valeur] of Object.entries(local)) if (/^[a-z0-9-]{8,64}$/i.test(id) && valeur === true) propre[id] = true;
+    if (actif) propre[etat.compte.id] = true;
+    else delete propre[etat.compte.id];
+    await ecrireValeur(CLES_STOCKAGE.renouvellement, JSON.stringify(propre));
+    message("msg-renouvellement", actif
+      ? "Activé : votre Pro payé par carte sera renouvelé la veille de sa fin. Vous pouvez l'arrêter ici à tout moment."
+      : "Désactivé : vous confirmerez vous-même chaque renouvellement.", true);
+  } else {
+    interrupteur.checked = !actif;
+    message("msg-renouvellement", "Le réglage n'a pas pu être enregistré. Vérifiez votre connexion internet puis réessayez.");
+  }
+  interrupteur.disabled = false;
+}
+
+/* ---------- Rappels J-3, veille et jour J (seules relances d'un abonné) ---------- */
 
 function texteRappel(abonnement) {
   const formule = FORMULES[abonnement && abonnement.formule];
   if (!formule || !formule.illimite || !abonnement.fin) return "";
   const jours = joursRestants(abonnement);
   if (jours > Math.max(...RELANCES.rappelsJours)) return "";
-  return "Votre " + formule.nom + " se termine dans " + accorderNombre(Math.max(1, jours), "jour", "jours") + ", le "
-    + dateLongue(Date.parse(abonnement.fin), false) + ". Renouvelez pour garder vos devis illimités.";
+  const fin = Date.parse(abonnement.fin);
+  const echeance = cleJourLocal(fin) === cleJourLocal(maintenantFiable())
+    ? " se termine aujourd'hui, le "
+    : " se termine dans " + accorderNombre(Math.max(1, jours), "jour", "jours") + ", le ";
+  return "Votre " + formule.nom + echeance + dateLongue(fin, false) + ". Renouvelez en 1 toucher pour garder vos devis illimités.";
+}
+
+/* Heure d'un rappel : 9 h le jour voulu ; le jour J, au plus tard 1 h avant la fin. */
+function heureRappel(fin, jours) {
+  const jour = new Date(fin - jours * 86400000);
+  jour.setHours(RELANCES.heureRappel, 0, 0, 0);
+  if (jours === 0 && jour.getTime() > fin - 3600000) return new Date(fin - 3600000);
+  return jour;
 }
 
 async function planifierRappels() {
@@ -2468,16 +2877,13 @@ async function planifierRappels() {
     await notifications.cancel({ notifications: RELANCES.rappelsJours.map((j) => ({ id: RELANCES.idNotification + j })) });
     if (!formule.illimite || !abonnement.fin) return;
     const fin = Date.parse(abonnement.fin);
-    const aPlanifier = RELANCES.rappelsJours.map((j) => {
-      const jour = new Date(fin - j * 86400000);
-      jour.setHours(RELANCES.heureRappel, 0, 0, 0);
-      return {
-        id: RELANCES.idNotification + j,
-        title: "BâtiPlus",
-        body: "Votre " + formule.nom + " se termine dans " + accorderNombre(j, "jour", "jours") + ", le " + dateLongue(fin, false) + ". Renouvelez depuis Mon abonnement.",
-        schedule: { at: jour, allowWhileIdle: true }
-      };
-    }).filter((n) => n.schedule.at.getTime() > Date.now());
+    const aPlanifier = RELANCES.rappelsJours.map((j) => ({
+      id: RELANCES.idNotification + j,
+      title: "BâtiPlus",
+      body: "Votre " + formule.nom + (j === 0 ? " se termine aujourd'hui" : " se termine dans " + accorderNombre(j, "jour", "jours") + ", le " + dateLongue(fin, false))
+        + ". Renouvelez en 1 toucher depuis Mon abonnement.",
+      schedule: { at: heureRappel(fin, j), allowWhileIdle: true }
+    })).filter((n) => n.schedule.at.getTime() > Date.now());
     if (!aPlanifier.length) return;
     let permission = await notifications.checkPermissions();
     if (permission.display === "prompt" || permission.display === "prompt-with-rationale") permission = await notifications.requestPermissions();
@@ -2762,6 +3168,8 @@ async function afficherQuotaAccueil(formule) {
   $("accueil-rappel").hidden = !rappel;
   $("accueil-rappel").textContent = rappel;
   $("libelle-passer-pro").textContent = rappel ? "Renouveler" : "Passer en Pro";
+  if (rappel) $("bouton-passer-pro").dataset.renouveler = "1";
+  else delete $("bouton-passer-pro").dataset.renouveler;
   $("bouton-passer-pro").hidden = !ecranExiste("abonnement") || (formule.illimite && !rappel);
 }
 
@@ -2902,6 +3310,7 @@ function remplirProfil() {
   ["pro-ancien", "pro-nouveau", "pro-confirmation"].forEach(viderCode);
   activerCode("pro-ancien");
   afficherStatistiques();
+  afficherRenouvellement();
 }
 
 function lireFormulaireProfil() {
@@ -8895,6 +9304,16 @@ function brancherEvenements() {
   $("bouton-reessayer-paiement").addEventListener("click", () => {
     if (abonnementEtat.formuleChoisie) lancerPaiement(abonnementEtat.formuleChoisie);
   });
+  $("bouton-passer-pro").addEventListener("click", surClicPasserPro);
+  $("bouton-renouveler").addEventListener("click", renouvelerFormule);
+  $("bouton-suivi-recu").addEventListener("click", () => imprimerRecu(suiviPaiement.reference));
+  $("bouton-suivi-reessayer").addEventListener("click", surReessayerSuivi);
+  $("bouton-suivi-verifier").addEventListener("click", surVerifierSuivi);
+  $("bouton-suivi-accueil").addEventListener("click", () => {
+    vibrer();
+    montrer(ECRAN_DEPART);
+  });
+  $("renouvellement-auto").addEventListener("change", surChangementRenouvellement);
   /* Capture : la règle de saisie passe AVANT les écouteurs des écrans. */
   document.addEventListener("focusin", surFocusNumerique, true);
   document.addEventListener("input", surSaisieNumerique, true);
@@ -9160,6 +9579,9 @@ async function demarrer() {
   const [, premierEcran] = await Promise.all([attendre(DUREE_DEMARRAGE), choisirPremierEcran()]);
   montrer(premierEcran);
   surveillerInactivite();
+  ecouterRetourPaiement();
+  if (location.hash.startsWith("#paiement-retour")) await surRetourPaiement();
+  else verifierPaiementEnAttente();
   await surveillerReseau();
   journal("démarrage terminé");
 }

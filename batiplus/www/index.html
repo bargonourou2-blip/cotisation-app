@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-x2DEY6SVaaeoqDbx6oA+jWWh3zvrp+tQ1x1B0PG1Esk='; style-src 'self' 'sha256-r6rrqzPslFhAzMshs8FsAfhqF3MienqasIyZFP0b9cg='; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.batiplus.bf; media-src 'none'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-FWDIYxvSOXU34UUcE0pRiz5vO2/mRGdgucmrQ0ZMcso='; style-src 'self' 'sha256-pzCkL9+tDWVibiEwOWuNt54AB/0ojxdG+jJPc9bALRU='; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.batiplus.bf; media-src 'none'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#6A0DAD">
 <meta name="color-scheme" content="light dark">
@@ -1579,6 +1579,69 @@ input[aria-invalid="true"] { border-color: var(--erreur); }
 /* Reçu A4 : jamais affiché à l'écran, seulement à l'impression (navigateur). */
 .recu-a4 { display: none; }
 
+/* ---------- 7k. Paiement automatique (étape 12) : « Nous confirmons votre paiement… » ----------
+   Anneau qui tourne pendant l'attente ; coche géante + particules jaunes et violettes au succès ;
+   pastille d'alerte pour un échec. Mouvements réduits : aucune rotation, aucune particule. */
+.suivi-paiement { max-width: 560px; margin: 0 auto; padding: 28px 4px 12px; display: grid; justify-items: center; text-align: center; gap: 14px; }
+.suivi-visuel { position: relative; width: 156px; height: 156px; display: grid; place-items: center; }
+.suivi-anneau { position: absolute; inset: 16px; border-radius: 50%; border: 6px solid var(--violet-doux); border-top-color: var(--violet); animation: tourne 1s linear infinite; }
+.suivi-pastille { position: absolute; inset: 16px; border-radius: 50%; display: grid; place-items: center; opacity: 0; transform: scale(0.4); }
+.suivi-pastille .icone { width: 62px; height: 62px; fill: none; stroke-width: 3; }
+.suivi-pastille-ok { background: linear-gradient(135deg, var(--violet-2), var(--violet)); box-shadow: 0 14px 32px rgba(106, 13, 173, 0.35); }
+.suivi-pastille-ok .icone { stroke: var(--jaune); }
+.suivi-pastille-ko { background: var(--violet-doux); }
+.suivi-pastille-ko .icone { stroke: var(--rouge-2); }
+.suivi-paiement:not([data-issue="attente"]) .suivi-anneau { animation: none; opacity: 0; }
+.suivi-paiement[data-issue="paye"] .suivi-pastille-ok { animation: coche-geante 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) forwards; }
+.suivi-paiement:is([data-issue="echoue"], [data-issue="annule"], [data-issue="expire"], [data-issue="anomalie"], [data-issue="rembourse"], [data-issue="invalide"]) .suivi-pastille-ko { opacity: 1; transform: none; transition: opacity 0.3s, transform 0.3s var(--courbe); }
+.suivi-paiement:is([data-issue="long"], [data-issue="hors_ligne"]) .suivi-anneau { opacity: 1; border-top-color: var(--orange); }
+.suivi-particules { position: absolute; inset: 0; pointer-events: none; }
+.suivi-particules i { position: absolute; left: 50%; top: 50%; width: 11px; height: 11px; border-radius: 3px; background: var(--jaune); opacity: 0; }
+.suivi-particules i:nth-child(even) { background: var(--violet-2); border-radius: 50%; }
+.suivi-particules i:nth-child(1) { --a: 0deg; --d: 96px; }
+.suivi-particules i:nth-child(2) { --a: 20deg; --d: 128px; }
+.suivi-particules i:nth-child(3) { --a: 40deg; --d: 96px; }
+.suivi-particules i:nth-child(4) { --a: 60deg; --d: 128px; }
+.suivi-particules i:nth-child(5) { --a: 80deg; --d: 96px; }
+.suivi-particules i:nth-child(6) { --a: 100deg; --d: 128px; }
+.suivi-particules i:nth-child(7) { --a: 120deg; --d: 96px; }
+.suivi-particules i:nth-child(8) { --a: 140deg; --d: 128px; }
+.suivi-particules i:nth-child(9) { --a: 160deg; --d: 96px; }
+.suivi-particules i:nth-child(10) { --a: 180deg; --d: 128px; }
+.suivi-particules i:nth-child(11) { --a: 200deg; --d: 96px; }
+.suivi-particules i:nth-child(12) { --a: 220deg; --d: 128px; }
+.suivi-particules i:nth-child(13) { --a: 240deg; --d: 96px; }
+.suivi-particules i:nth-child(14) { --a: 260deg; --d: 128px; }
+.suivi-particules i:nth-child(15) { --a: 280deg; --d: 96px; }
+.suivi-particules i:nth-child(16) { --a: 300deg; --d: 128px; }
+.suivi-particules i:nth-child(17) { --a: 320deg; --d: 96px; }
+.suivi-particules i:nth-child(18) { --a: 340deg; --d: 128px; }
+.suivi-paiement[data-issue="paye"] .suivi-particules i { animation: particule 1.1s ease-out 0.15s forwards; }
+@keyframes coche-geante { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: none; } }
+@keyframes particule {
+  0% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--a)) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--a)) translateY(calc(-1 * var(--d))) scale(0.4); }
+}
+.suivi-titre { font-size: 24px; }
+.suivi-titre:focus { outline: none; }
+.suivi-paiement[data-issue="paye"] .suivi-titre { color: var(--accent-texte); }
+.suivi-texte { color: var(--texte-2); font-size: 15px; line-height: 1.5; max-width: 46ch; }
+.suivi-texte:empty { display: none; }
+.suivi-reference { color: var(--texte-2); font-size: 14px; font-weight: 600; }
+.suivi-reference:empty { display: none; }
+.suivi-actions { display: grid; gap: 10px; width: min(100%, 360px); margin-top: 6px; }
+.suivi-actions .bouton { width: 100%; }
+/* Icônes au trait (reçu, actualiser) : contour jaune, jamais remplies comme l'éclair. */
+.suivi-actions .bouton-principal .icone { fill: none; stroke: var(--jaune); }
+#bouton-renouveler .icone { fill: none; stroke: currentColor; }
+#bouton-renouveler { margin-top: 12px; width: 100%; }
+#carte-renouvellement .case { margin-top: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  .suivi-anneau { animation: none; }
+  .suivi-paiement[data-issue="paye"] .suivi-pastille-ok { animation: none; opacity: 1; transform: none; }
+  .suivi-particules { display: none; }
+}
+
 /* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */
 @media (min-width: 1025px) {
   #tiroir { transform: none; box-shadow: none; width: var(--largeur-tiroir); }
@@ -2895,11 +2958,12 @@ input[aria-invalid="true"] { border-color: var(--erreur); }
           <p class="ma-formule-fin" id="ma-formule-fin"></p>
           <div class="jauge" id="jauge-formule" role="progressbar" aria-labelledby="jauge-formule-libelle" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"><span class="jauge-remplie" id="jauge-formule-remplie"></span></div>
           <p class="jauge-libelle" id="jauge-formule-libelle"></p>
+          <button type="button" class="bouton bouton-pro" id="bouton-renouveler" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle" id="libelle-renouveler">Renouveler</span></button>
         </section>
 
         <section class="bloc-abonnement" aria-labelledby="titre-formules">
           <h2 class="bloc-titre" id="titre-formules">Les 5 formules</h2>
-          <p class="aide">Tarifs en FCFA. Aucun prélèvement automatique : vous payez seulement quand vous le décidez.</p>
+          <p class="aide">Tarifs en FCFA. Mobile Money : vous confirmez chaque paiement. Carte bancaire : renouvellement automatique seulement si vous l'activez dans votre profil.</p>
           <ul class="formules" id="liste-formules"></ul>
           <p class="message-formulaire" id="msg-paiement" role="status" aria-live="polite"></p>
           <button type="button" class="bouton bouton-secondaire" id="bouton-reessayer-paiement" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Réessayer</span></button>
@@ -2931,7 +2995,7 @@ input[aria-invalid="true"] { border-color: var(--erreur); }
           </details>
           <details class="faq-question">
             <summary>Que se passe-t-il à la fin de ma formule ?</summary>
-            <p>Rien n'est perdu : vos chantiers, vos devis et vos clients restent sur votre téléphone. Vous repassez en formule Gratuit jusqu'à votre prochain paiement. Aucun prélèvement automatique : BâtiPlus vous prévient 3 jours puis 1 jour avant la fin.</p>
+            <p>Rien n'est perdu : vos chantiers, vos devis et vos clients restent sur votre téléphone. Vous repassez en formule Gratuit jusqu'à votre prochain paiement. BâtiPlus vous prévient 3 jours avant, la veille et le jour même : un seul toucher sur « Renouveler » suffit. Les jours payés en avance s'ajoutent à votre formule en cours.</p>
           </details>
           <details class="faq-question">
             <summary>Mes devis restent-ils accessibles si je ne paie pas ?</summary>
@@ -2940,6 +3004,26 @@ input[aria-invalid="true"] { border-color: var(--erreur); }
         </section>
 
         <article class="recu-a4" id="recu-a4" aria-hidden="true"></article>
+      </div>
+    </section>
+
+    <section class="ecran" id="ecran-paiement" aria-labelledby="titre-suivi">
+      <div class="suivi-paiement" id="suivi-paiement" data-issue="attente">
+        <div class="suivi-visuel" aria-hidden="true">
+          <span class="suivi-anneau"></span>
+          <span class="suivi-pastille suivi-pastille-ok"><svg class="icone"><use href="#i-coche"/></svg></span>
+          <span class="suivi-pastille suivi-pastille-ko"><svg class="icone"><use href="#i-alerte"/></svg></span>
+          <span class="suivi-particules" id="suivi-particules"></span>
+        </div>
+        <h1 class="titre-ecran suivi-titre" id="titre-suivi" tabindex="-1">Nous confirmons votre paiement…</h1>
+        <p class="suivi-texte" id="suivi-texte" role="status" aria-live="polite"></p>
+        <p class="suivi-reference" id="suivi-reference"></p>
+        <div class="suivi-actions">
+          <button type="button" class="bouton bouton-principal" id="bouton-suivi-recu" hidden><svg class="icone" aria-hidden="true"><use href="#i-recu"/></svg><span class="bouton-libelle">Voir mon reçu</span></button>
+          <button type="button" class="bouton bouton-principal" id="bouton-suivi-reessayer" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Réessayer</span></button>
+          <button type="button" class="bouton bouton-secondaire" id="bouton-suivi-verifier" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Vérifier à nouveau</span></button>
+          <button type="button" class="bouton bouton-discret" id="bouton-suivi-accueil"><svg class="icone" aria-hidden="true"><use href="#i-accueil"/></svg><span class="bouton-libelle">Retour à l'accueil</span></button>
+        </div>
       </div>
     </section>
 
@@ -3013,6 +3097,13 @@ input[aria-invalid="true"] { border-color: var(--erreur); }
           </div>
           <input type="file" id="fichier-logo" accept="image/jpeg,image/png,image/webp" hidden>
           <p class="message-formulaire" id="msg-logo" role="status"></p>
+        </div>
+
+        <div class="carte cascade" data-rang="3" id="carte-renouvellement">
+          <h2 class="bloc-titre">Renouvellement de ma formule</h2>
+          <label class="case"><input type="checkbox" id="renouvellement-auto" role="switch" aria-describedby="aide-renouvellement"><span>Renouveler automatiquement par carte bancaire</span></label>
+          <p class="aide" id="aide-renouvellement">Seulement pour un paiement par carte Visa ou Mastercard, la veille de la fin de votre Pro mensuel ou annuel. Avec Mobile Money, vous confirmez vous-même chaque renouvellement : BâtiPlus vous prévient 3 jours avant, la veille et le jour même.</p>
+          <p class="message-formulaire" id="msg-renouvellement" role="status"></p>
         </div>
 
         <form class="carte formulaire cascade" data-rang="4" id="carte-conditions" novalidate>
@@ -3284,7 +3375,12 @@ const CLES_STOCKAGE = Object.freeze({
   devisMois: "bp_v1_devis_mois",
   relances: "bp_v1_relances",
   horloge: "bp_v1_horloge",
-  paiements: "bp_v1_paiements"
+  paiements: "bp_v1_paiements",
+  /* Étape 12 : paiement en cours de confirmation (référence seule, jamais de montant décidé ici),
+     jeton de session de l'API (émis à la connexion en ligne, étape 14), accord de renouvellement par carte. */
+  paiementEnCours: "bp_v1_paiement_en_cours",
+  jetonApi: "bp_v1_jeton_api",
+  renouvellement: "bp_v1_renouvellement"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -3485,12 +3581,12 @@ const ABONNEMENT_JETON = Object.freeze({
   avanceHorlogeMs: 15 * 60 * 1000
 });
 
-/* Relances, sans harceler : jamais pour un abonné (sauf rappel J-3 et J-1), au plus une
+/* Relances, sans harceler : jamais pour un abonné (sauf rappels J-3, J-1 et le jour J), au plus une
    invitation facultative toutes les 10 minutes, aucune le jour de la création du compte. */
 const RELANCES = Object.freeze({
   intervalleMs: 10 * 60 * 1000,
   devisAvantDernier: LIMITE_GRATUITE - 1,
-  rappelsJours: Object.freeze([3, 1]),
+  rappelsJours: Object.freeze([3, 1, 0]),
   idNotification: 3100,
   facultatives: Object.freeze(["jour", "envoi"]),
   heureRappel: 9,
@@ -3512,13 +3608,48 @@ const CONFIANCE_PAIEMENT = Object.freeze([
   Object.freeze({ icone: "i-recu", texte: "Un reçu pour chaque paiement" })
 ]);
 
-/* Paiements confirmés reçus en ligne (étape 12) : bornes de lecture. */
+/* Paiement automatique (étape 12). Le montant est TOUJOURS fixé en ligne : le front n'envoie que
+   la formule. Après la page de paiement, l'application interroge GET /api/paiements/:reference
+   toutes les 3 s pendant 3 min ; la formule ne s'active qu'avec le jeton SIGNÉ reçu en réponse. */
 const PAIEMENTS = Object.freeze({
   max: 200,
   reference: /^BP-[A-Z0-9]{6,20}$/,
   statuts: Object.freeze({ paye: "Payé", rembourse: "Remboursé" }),
   montantMax: 1000000,
-  delaiInitiationMs: 15000
+  delaiInitiationMs: 15000,
+  suiviIntervalleMs: 3000,
+  suiviDureeMs: 180000,
+  delaiConsultationMs: 10000,
+  enCoursMaxMs: 24 * 60 * 60 * 1000,
+  statutsSuivi: Object.freeze(["en_attente", "paye", "echoue", "annule", "expire", "anomalie", "rembourse"]),
+  jetonApi: /^v1\.[A-Za-z0-9_-]{10,400}\.[A-Za-z0-9_-]{43}$/,
+  particules: 18
+});
+
+/* Réponses de l'API au lancement d'un paiement : code → message clair (jamais le texte reçu). */
+const MESSAGES_PAIEMENT = Object.freeze({
+  non_authentifie: "Votre session en ligne a expiré : reconnectez-vous avec votre numéro et votre code, puis touchez « Réessayer ».",
+  deja_a_vie: "Votre formule Lifetime couvre déjà tout le Pro : aucun paiement n'est nécessaire.",
+  places_vie_epuisees: "Les 200 places Lifetime sont toutes prises. Le Pro annuel reste disponible.",
+  trop_de_tentatives: "Trop de tentatives de paiement : patientez quelques minutes puis touchez « Réessayer ».",
+  trop_de_requetes: "Trop de demandes en même temps : patientez une minute puis touchez « Réessayer ».",
+  paiement_indisponible: "Le paiement est momentanément indisponible. Réessayez dans quelques minutes : vos études et vos devis sont conservés.",
+  compte_suspendu: "Ce compte est suspendu. Contactez BRG Électro+ au +226 05 60 86 08.",
+  defaut: "Le paiement n'a pas pu démarrer. Vérifiez votre connexion internet puis touchez « Réessayer »."
+});
+
+/* Écran « Nous confirmons votre paiement… » : un texte par issue. */
+const SUIVI_PAIEMENT = Object.freeze({
+  attente: Object.freeze({ titre: "Nous confirmons votre paiement…", texte: "Terminez le paiement sur la page sécurisée. Votre formule s'active toute seule dès la confirmation : inutile d'envoyer une preuve." }),
+  paye: Object.freeze({ titre: "Paiement confirmé !", texte: "" }),
+  echoue: Object.freeze({ titre: "Le paiement n'a pas abouti", texte: "Aucune formule n'a été activée. Vous pouvez réessayer avec le même moyen de paiement ou un autre. Vos études et vos devis sont conservés." }),
+  annule: Object.freeze({ titre: "Paiement annulé", texte: "Rien n'a changé. Touchez « Réessayer » quand vous voulez : vos études et vos devis sont conservés." }),
+  expire: Object.freeze({ titre: "La page de paiement a expiré", texte: "Touchez « Réessayer » pour ouvrir une nouvelle page de paiement. Vos études et vos devis sont conservés." }),
+  anomalie: Object.freeze({ titre: "Paiement en vérification", texte: "Le montant reçu ne correspond pas au prix de la formule : elle n'a pas été activée. BRG Électro+ vérifie et vous contacte. Gardez la référence ci-dessous." }),
+  rembourse: Object.freeze({ titre: "Paiement remboursé", texte: "Ce paiement a été remboursé : la formule correspondante n'est plus active." }),
+  long: Object.freeze({ titre: "Confirmation en cours", texte: "La confirmation prend plus de temps que prévu. Pas d'inquiétude : votre formule s'activera toute seule dès que le paiement sera confirmé, même si vous quittez cette page." }),
+  hors_ligne: Object.freeze({ titre: "Connexion perdue", texte: "Impossible de vérifier le paiement sans internet. Votre formule s'activera dès le retour de la connexion : touchez « Vérifier à nouveau »." }),
+  invalide: Object.freeze({ titre: "Vérification impossible", texte: "Le paiement est confirmé, mais l'activation n'a pas pu être vérifiée sur ce téléphone. Touchez « Vérifier à nouveau » ; si le problème continue, contactez BRG Électro+." })
 });
 
 const STATUTS_DEVIS = Object.freeze({
@@ -5465,8 +5596,10 @@ function controlerInactivite() {
 }
 
 function surVisibiliteVerrou() {
-  if (document.visibilityState === "visible") controlerInactivite();
-  else if (etat.compte && !etat.verrouille) ecrireActivite(activite.derniere);
+  if (document.visibilityState === "visible") {
+    controlerInactivite();
+    verifierPaiementEnAttente();
+  } else if (etat.compte && !etat.verrouille) ecrireActivite(activite.derniere);
 }
 
 function surveillerInactivite() {
@@ -5475,7 +5608,7 @@ function surveillerInactivite() {
   document.addEventListener("visibilitychange", surVisibiliteVerrou);
   const app = plugin("App");
   if (app) {
-    app.addListener("resume", controlerInactivite);
+    app.addListener("resume", surRetourApplication);
     app.addListener("pause", surVisibiliteVerrou);
   }
   clearInterval(activite.minuterie);
@@ -5954,6 +6087,7 @@ async function afficherMaFormule() {
   jauge.dataset.niveau = niveau;
   $("jauge-formule-remplie").style.setProperty("--remplissage", String(Math.min(1, valeur / maximum)));
   ecrireInsecable($("jauge-formule-libelle"), libelle);
+  afficherRenouveler();
 }
 
 function libelleBoutonFormule(id, actuelle) {
@@ -6258,6 +6392,8 @@ function messagePaiement(texte, reessayer) {
 async function lancerPaiement(id) {
   if (id === FORMULE_DEFAUT || !Object.prototype.hasOwnProperty.call(FORMULES, id)) return;
   abonnementEtat.formuleChoisie = id;
+  /* Un nouveau lancement arrête le suivi précédent : jamais deux suivis en parallèle. */
+  arreterSuiviPaiement();
   if (navigator.onLine === false) {
     messagePaiement("Pas de connexion internet : le paiement demande une connexion. Touchez « Réessayer » une fois connecté.", true);
     return;
@@ -6268,37 +6404,441 @@ async function lancerPaiement(id) {
   try {
     const reponse = await fetch(API_URL + "/api/paiements/initier", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await entetesApi(true),
       body: JSON.stringify({ formule: id }),
       credentials: "omit",
       cache: "no-store",
       signal: controleur.signal
     });
-    const donnees = reponse.ok ? await reponse.json() : null;
+    let donnees = null;
+    try {
+      donnees = await reponse.json();
+    } catch (erreur) {
+      donnees = null;
+    }
+    if (!reponse.ok) {
+      /* Seul le CODE d'erreur est lu ; le message affiché vient toujours de l'application. */
+      messagePaiement(MESSAGES_PAIEMENT[codeErreurPaiement(donnees)], true);
+      return;
+    }
     const adresse = donnees ? adressePaiementSure(donnees.urlPaiement) : "";
     const reference = donnees && typeof donnees.reference === "string" && PAIEMENTS.reference.test(donnees.reference) ? donnees.reference : "";
     if (!adresse || !reference) throw new Error("réponse inattendue");
+    await noterPaiementEnCours(reference, id);
     const navigateur = plugin("Browser");
     if (navigateur) await navigateur.open({ url: adresse });
     else window.open(adresse, "_blank", "noopener,noreferrer");
     messagePaiement("Page de paiement ouverte (référence " + reference + "). Votre formule s'activera dès la confirmation du paiement.", false);
+    suivrePaiement(reference, id);
   } catch (erreur) {
     journal("paiement non démarré", erreur && erreur.message);
-    messagePaiement("Le paiement n'a pas pu démarrer. Vérifiez votre connexion internet puis touchez « Réessayer ».", true);
+    messagePaiement(MESSAGES_PAIEMENT.defaut, true);
   } finally {
     clearTimeout(delai);
   }
 }
 
-/* ---------- Rappels J-3 et J-1 (seules relances d'un abonné) ---------- */
+/* ---------- Suivi automatique du paiement (étape 12) ----------
+   Après l'ouverture de la page de paiement : écran « Nous confirmons votre paiement… »,
+   consultation de GET /api/paiements/:ref toutes les 3 s pendant 3 min. L'abonnement ne
+   s'active QUE par un jeton signé reçu en ligne et vérifié ici (clé publique) : ni le
+   retour de la page de paiement, ni un statut seul, ni une saisie ne peuvent l'activer. */
+
+const suiviPaiement = { reference: "", formule: "", debut: 0, minuterie: 0, generation: 0, consultation: false, actif: false };
+
+function objetSimple(valeur) {
+  return Boolean(valeur) && typeof valeur === "object" && !Array.isArray(valeur);
+}
+
+function formuleAchetable(id) {
+  return typeof id === "string" && id !== FORMULE_DEFAUT && Object.prototype.hasOwnProperty.call(FORMULES, id) ? id : "";
+}
+
+/* Jeton de session de l'API (déposé à la connexion en ligne, étape 14), rangé par compte. */
+async function jetonApiCompte() {
+  const compte = etat.compte;
+  if (!compte) return "";
+  const brut = await lireJson(CLES_STOCKAGE.jetonApi);
+  const jeton = objetSimple(brut) && Object.prototype.hasOwnProperty.call(brut, compte.id) ? brut[compte.id] : "";
+  return typeof jeton === "string" && PAIEMENTS.jetonApi.test(jeton) ? jeton : "";
+}
+
+async function entetesApi(avecCorps) {
+  const entetes = avecCorps ? { "Content-Type": "application/json" } : {};
+  const jeton = await jetonApiCompte();
+  if (jeton) entetes.Authorization = "Bearer " + jeton;
+  return entetes;
+}
+
+function codeErreurPaiement(donnees) {
+  const code = objetSimple(donnees) && typeof donnees.erreur === "string" ? donnees.erreur : "";
+  return code && code !== "defaut" && Object.prototype.hasOwnProperty.call(MESSAGES_PAIEMENT, code) ? code : "defaut";
+}
+
+/* Paiement en cours mémorisé (référence + formule) : reprise après fermeture de l'application. */
+async function lireEnCoursBrut() {
+  const brut = await lireJson(CLES_STOCKAGE.paiementEnCours);
+  const propre = {};
+  if (objetSimple(brut)) {
+    for (const [id, valeur] of Object.entries(brut)) {
+      if (!/^[a-z0-9-]{8,64}$/i.test(id) || !objetSimple(valeur)) continue;
+      if (typeof valeur.reference !== "string" || !PAIEMENTS.reference.test(valeur.reference) || !formuleAchetable(valeur.formule)) continue;
+      if (!Number.isFinite(valeur.depuis) || valeur.depuis <= 0) continue;
+      propre[id] = { reference: valeur.reference, formule: valeur.formule, depuis: valeur.depuis };
+    }
+  }
+  return propre;
+}
+
+async function lirePaiementEnCours() {
+  if (!etat.compte) return null;
+  const tous = await lireEnCoursBrut();
+  return Object.prototype.hasOwnProperty.call(tous, etat.compte.id) ? tous[etat.compte.id] : null;
+}
+
+async function noterPaiementEnCours(reference, formule) {
+  if (!etat.compte) return;
+  const tous = await lireEnCoursBrut();
+  tous[etat.compte.id] = { reference, formule, depuis: Date.now() };
+  await ecrireValeur(CLES_STOCKAGE.paiementEnCours, JSON.stringify(tous));
+}
+
+async function oublierPaiementEnCours(reference) {
+  if (!etat.compte) return;
+  const tous = await lireEnCoursBrut();
+  const present = tous[etat.compte.id];
+  if (!present || (reference && present.reference !== reference)) return;
+  delete tous[etat.compte.id];
+  await ecrireValeur(CLES_STOCKAGE.paiementEnCours, JSON.stringify(tous));
+}
+
+/* Réponse de GET /api/paiements/:ref relue champ par champ ; tout écart → ignorée. */
+function reponseSuiviValide(source, reference) {
+  if (!objetSimple(source) || source.reference !== reference || !PAIEMENTS.statutsSuivi.includes(source.statut)) return null;
+  const formule = formuleAchetable(source.formule);
+  if (!formule) return null;
+  const abonnement = objetSimple(source.abonnement) ? source.abonnement : {};
+  return {
+    reference,
+    statut: source.statut,
+    formule,
+    montant: Number.isInteger(source.montant) && source.montant >= 0 && source.montant <= PAIEMENTS.montantMax ? source.montant : FORMULES[formule].prix,
+    moyen: typeof source.moyen === "string" && /^[a-z0-9_-]{1,40}$/i.test(source.moyen) ? source.moyen : "",
+    payeLe: dateIsoValide(source.payeLe) ? source.payeLe : "",
+    jeton: typeof source.jeton === "string" && source.jeton.length <= 4096 ? source.jeton : "",
+    debut: dateIsoValide(abonnement.debut) ? abonnement.debut : "",
+    fin: dateIsoValide(abonnement.fin) ? abonnement.fin : ""
+  };
+}
+
+/* null = pas de réponse exploitable (réseau, session, réponse inattendue). */
+async function consulterPaiement(reference) {
+  if (!etat.compte || !PAIEMENTS.reference.test(reference) || typeof fetch !== "function" || navigator.onLine === false) return null;
+  const controleur = new AbortController();
+  const delai = setTimeout(() => controleur.abort(), PAIEMENTS.delaiConsultationMs);
+  try {
+    const reponse = await fetch(API_URL + "/api/paiements/" + encodeURIComponent(reference), {
+      method: "GET",
+      headers: await entetesApi(false),
+      credentials: "omit",
+      cache: "no-store",
+      signal: controleur.signal
+    });
+    if (!reponse.ok) return null;
+    return reponseSuiviValide(await reponse.json(), reference);
+  } catch (erreur) {
+    return null;
+  } finally {
+    clearTimeout(delai);
+  }
+}
+
+function arreterSuiviPaiement() {
+  clearTimeout(suiviPaiement.minuterie);
+  suiviPaiement.minuterie = 0;
+  suiviPaiement.generation += 1;
+  suiviPaiement.actif = false;
+}
+
+function suivrePaiement(reference, formule) {
+  arreterSuiviPaiement();
+  suiviPaiement.reference = reference;
+  suiviPaiement.formule = formuleAchetable(formule);
+  suiviPaiement.debut = Date.now();
+  suiviPaiement.actif = true;
+  afficherSuivi("attente");
+  montrer("paiement");
+  planifierConsultation(0);
+}
+
+function planifierConsultation(delai) {
+  const generation = suiviPaiement.generation;
+  clearTimeout(suiviPaiement.minuterie);
+  suiviPaiement.minuterie = setTimeout(() => {
+    if (generation === suiviPaiement.generation) tourDeSuivi(generation);
+  }, delai);
+}
+
+async function tourDeSuivi(generation) {
+  if (suiviPaiement.consultation) {
+    planifierConsultation(PAIEMENTS.suiviIntervalleMs);
+    return;
+  }
+  suiviPaiement.consultation = true;
+  let resultat = null;
+  try {
+    resultat = await consulterPaiement(suiviPaiement.reference);
+  } finally {
+    suiviPaiement.consultation = false;
+  }
+  if (generation !== suiviPaiement.generation) return;
+  if (resultat && resultat.statut !== "en_attente") {
+    suiviPaiement.actif = false;
+    await conclurePaiement(resultat, false);
+    return;
+  }
+  if (Date.now() - suiviPaiement.debut >= PAIEMENTS.suiviDureeMs) {
+    suiviPaiement.actif = false;
+    afficherSuivi(!resultat && navigator.onLine === false ? "hors_ligne" : "long");
+    return;
+  }
+  planifierConsultation(PAIEMENTS.suiviIntervalleMs);
+}
+
+/* Paiement confirmé : ajouté à « Mes paiements » (reçu disponible), une seule fois par référence. */
+async function memoriserPaiement(r) {
+  const compte = etat.compte;
+  const brut = await lireJson(CLES_STOCKAGE.paiements);
+  const tous = {};
+  if (objetSimple(brut)) {
+    for (const [id, liste] of Object.entries(brut)) if (/^[a-z0-9-]{8,64}$/i.test(id) && Array.isArray(liste)) tous[id] = liste.slice(0, PAIEMENTS.max);
+  }
+  const entree = {
+    reference: r.reference, formule: r.formule, montant: r.montant,
+    payeLe: r.payeLe || new Date(maintenantFiable()).toISOString(),
+    statut: "paye", moyen: r.moyen, debut: r.debut, fin: r.fin
+  };
+  if (!paiementValide(entree)) return false;
+  const anciens = (tous[compte.id] || []).filter((p) => !(objetSimple(p) && p.reference === r.reference));
+  tous[compte.id] = [entree, ...anciens].slice(0, PAIEMENTS.max);
+  return ecrireValeur(CLES_STOCKAGE.paiements, JSON.stringify(tous));
+}
+
+/* discret : vérification au démarrage / au retour → un toast au lieu de l'écran de suivi. */
+async function conclurePaiement(r, discret) {
+  if (r.statut === "paye") {
+    if (!(await enregistrerJetonAbonnement(r.jeton))) {
+      if (!discret) afficherSuivi("invalide");
+      return false;
+    }
+    await memoriserPaiement(r);
+    await oublierPaiementEnCours(r.reference);
+    if (montrer.ecranCourant === "abonnement") await ouvrirAbonnement();
+    if (discret || montrer.ecranCourant !== "paiement") afficherToast("Paiement confirmé : votre " + FORMULES[etat.abonnement.formule].nom + " est actif.");
+    if (!discret) afficherSuivi("paye");
+    return true;
+  }
+  await oublierPaiementEnCours(r.reference);
+  if (!discret) afficherSuivi(r.statut);
+  return false;
+}
+
+function texteSuiviPaye() {
+  const abonnement = etat.abonnement;
+  const formule = FORMULES[abonnement.formule] || FORMULES[FORMULE_DEFAUT];
+  const debut = abonnement.fin
+    ? "Votre " + formule.nom + " est actif jusqu'au " + dateLongue(Date.parse(abonnement.fin), true) + "."
+    : "Votre formule " + formule.nom + " est active pour toujours.";
+  return debut + " Devis illimités et sans filigrane dès maintenant. Merci pour votre confiance !";
+}
+
+function lancerParticules() {
+  const conteneur = $("suivi-particules");
+  const particules = [];
+  for (let i = 0; i < PAIEMENTS.particules; i += 1) particules.push(document.createElement("i"));
+  /* Remplacer les particules relance leur animation à chaque confirmation. */
+  conteneur.replaceChildren(...particules);
+}
+
+function afficherSuivi(issue) {
+  const cle = Object.prototype.hasOwnProperty.call(SUIVI_PAIEMENT, issue) ? issue : "long";
+  const textes = SUIVI_PAIEMENT[cle];
+  $("suivi-paiement").dataset.issue = cle;
+  $("titre-suivi").textContent = textes.titre;
+  ecrireInsecable($("suivi-texte"), cle === "paye" ? texteSuiviPaye() : textes.texte);
+  ecrireInsecable($("suivi-reference"), suiviPaiement.reference ? "Référence : " + suiviPaiement.reference : "");
+  $("bouton-suivi-recu").hidden = cle !== "paye";
+  $("bouton-suivi-reessayer").hidden = !["echoue", "annule", "expire"].includes(cle) || !suiviPaiement.formule;
+  $("bouton-suivi-verifier").hidden = !["long", "hors_ligne", "invalide"].includes(cle);
+  if (cle === "paye") {
+    lancerParticules();
+    vibrer();
+  } else {
+    $("suivi-particules").replaceChildren();
+  }
+  if (cle !== "attente" && montrer.ecranCourant === "paiement") $("titre-suivi").focus({ preventScroll: true });
+}
+
+function surVerifierSuivi() {
+  if (!PAIEMENTS.reference.test(suiviPaiement.reference)) return;
+  vibrer();
+  arreterSuiviPaiement();
+  suiviPaiement.debut = Date.now();
+  suiviPaiement.actif = true;
+  afficherSuivi("attente");
+  planifierConsultation(0);
+}
+
+function surReessayerSuivi() {
+  if (!suiviPaiement.formule) return;
+  vibrer();
+  /* Le brouillon du devis en cours n'est jamais touché : on relance seulement la même formule. */
+  lancerPaiement(suiviPaiement.formule);
+}
+
+/* Retour de la page de paiement : #paiement-retour?ref=BP-… (format vérifié, puis effacé de l'adresse). */
+async function surRetourPaiement() {
+  const adresse = location.hash || "";
+  if (!adresse.startsWith("#paiement-retour")) return;
+  const trouve = /^#paiement-retour\?ref=(BP-[A-Z0-9]{6,20})$/.exec(adresse);
+  history.replaceState(null, "", location.pathname + location.search);
+  if (!trouve || !etat.compte || etat.verrouille) return;
+  const enCours = await lirePaiementEnCours();
+  suivrePaiement(trouve[1], enCours && enCours.reference === trouve[1] ? enCours.formule : "");
+}
+
+/* Retour dans l'application (navigateur fermé, reprise, démarrage) : vérification discrète
+   d'un paiement en cours de moins de 24 h. */
+async function verifierPaiementEnAttente() {
+  if (!etat.compte || etat.verrouille) return;
+  if (suiviPaiement.actif) {
+    planifierConsultation(0);
+    return;
+  }
+  const enCours = await lirePaiementEnCours();
+  if (!enCours) return;
+  if (Date.now() - enCours.depuis >= PAIEMENTS.enCoursMaxMs) {
+    await oublierPaiementEnCours(enCours.reference);
+    return;
+  }
+  const resultat = await consulterPaiement(enCours.reference);
+  if (resultat && resultat.statut !== "en_attente" && !suiviPaiement.actif) {
+    if (resultat.statut === "paye") await conclurePaiement(resultat, true);
+    else await oublierPaiementEnCours(enCours.reference);
+  }
+}
+
+function ecouterRetourPaiement() {
+  window.addEventListener("hashchange", surRetourPaiement);
+  const navigateur = plugin("Browser");
+  if (navigateur && typeof navigateur.addListener === "function") {
+    Promise.resolve(navigateur.addListener("browserFinished", verifierPaiementEnAttente)).catch(() => journal("écoute du navigateur impossible"));
+  }
+}
+
+function surRetourApplication() {
+  controlerInactivite();
+  verifierPaiementEnAttente();
+}
+
+/* Renouveler en 1 toucher : même formule, même parcours de paiement. */
+function renouvelerFormule() {
+  const id = formuleAchetable(etat.abonnement && etat.abonnement.formule);
+  if (!id || id === "vie" || !texteRappel(etat.abonnement)) return;
+  vibrer();
+  lancerPaiement(id);
+}
+
+function surClicPasserPro() {
+  /* La navigation vers « Mon abonnement » est faite par [data-ecran] ; en mode rappel, le paiement part aussitôt. */
+  if ($("bouton-passer-pro").dataset.renouveler) renouvelerFormule();
+}
+
+function afficherRenouveler() {
+  const id = formuleAchetable(etat.abonnement && etat.abonnement.formule);
+  const visible = Boolean(id) && id !== "vie" && Boolean(texteRappel(etat.abonnement));
+  $("bouton-renouveler").hidden = !visible;
+  $("libelle-renouveler").textContent = visible ? "Renouveler mon " + FORMULES[id].nom : "Renouveler";
+}
+
+/* Interrupteur « renouvellement automatique par carte » : enregistré en ligne d'abord ;
+   en cas d'échec, il revient à sa position précédente. */
+async function lireRenouvellementLocal() {
+  const brut = await lireJson(CLES_STOCKAGE.renouvellement);
+  return objetSimple(brut) ? brut : {};
+}
+
+async function afficherRenouvellement() {
+  const id = etat.abonnement ? etat.abonnement.formule : FORMULE_DEFAUT;
+  $("carte-renouvellement").hidden = id === "vie";
+  const local = await lireRenouvellementLocal();
+  $("renouvellement-auto").checked = local[etat.compte.id] === true;
+  $("renouvellement-auto").disabled = false;
+  message("msg-renouvellement", "");
+}
+
+async function surChangementRenouvellement() {
+  const interrupteur = $("renouvellement-auto");
+  const actif = interrupteur.checked;
+  interrupteur.disabled = true;
+  message("msg-renouvellement", "Enregistrement…");
+  let enregistre = false;
+  if (typeof fetch === "function" && navigator.onLine !== false && etat.compte) {
+    const controleur = new AbortController();
+    const delai = setTimeout(() => controleur.abort(), PAIEMENTS.delaiConsultationMs);
+    try {
+      const reponse = await fetch(API_URL + "/api/abonnement/renouvellement-auto", {
+        method: "POST",
+        headers: await entetesApi(true),
+        body: JSON.stringify({ actif }),
+        credentials: "omit",
+        cache: "no-store",
+        signal: controleur.signal
+      });
+      enregistre = reponse.ok;
+    } catch (erreur) {
+      enregistre = false;
+    } finally {
+      clearTimeout(delai);
+    }
+  }
+  if (enregistre) {
+    const local = await lireRenouvellementLocal();
+    const propre = {};
+    for (const [id, valeur] of Object.entries(local)) if (/^[a-z0-9-]{8,64}$/i.test(id) && valeur === true) propre[id] = true;
+    if (actif) propre[etat.compte.id] = true;
+    else delete propre[etat.compte.id];
+    await ecrireValeur(CLES_STOCKAGE.renouvellement, JSON.stringify(propre));
+    message("msg-renouvellement", actif
+      ? "Activé : votre Pro payé par carte sera renouvelé la veille de sa fin. Vous pouvez l'arrêter ici à tout moment."
+      : "Désactivé : vous confirmerez vous-même chaque renouvellement.", true);
+  } else {
+    interrupteur.checked = !actif;
+    message("msg-renouvellement", "Le réglage n'a pas pu être enregistré. Vérifiez votre connexion internet puis réessayez.");
+  }
+  interrupteur.disabled = false;
+}
+
+/* ---------- Rappels J-3, veille et jour J (seules relances d'un abonné) ---------- */
 
 function texteRappel(abonnement) {
   const formule = FORMULES[abonnement && abonnement.formule];
   if (!formule || !formule.illimite || !abonnement.fin) return "";
   const jours = joursRestants(abonnement);
   if (jours > Math.max(...RELANCES.rappelsJours)) return "";
-  return "Votre " + formule.nom + " se termine dans " + accorderNombre(Math.max(1, jours), "jour", "jours") + ", le "
-    + dateLongue(Date.parse(abonnement.fin), false) + ". Renouvelez pour garder vos devis illimités.";
+  const fin = Date.parse(abonnement.fin);
+  const echeance = cleJourLocal(fin) === cleJourLocal(maintenantFiable())
+    ? " se termine aujourd'hui, le "
+    : " se termine dans " + accorderNombre(Math.max(1, jours), "jour", "jours") + ", le ";
+  return "Votre " + formule.nom + echeance + dateLongue(fin, false) + ". Renouvelez en 1 toucher pour garder vos devis illimités.";
+}
+
+/* Heure d'un rappel : 9 h le jour voulu ; le jour J, au plus tard 1 h avant la fin. */
+function heureRappel(fin, jours) {
+  const jour = new Date(fin - jours * 86400000);
+  jour.setHours(RELANCES.heureRappel, 0, 0, 0);
+  if (jours === 0 && jour.getTime() > fin - 3600000) return new Date(fin - 3600000);
+  return jour;
 }
 
 async function planifierRappels() {
@@ -6313,16 +6853,13 @@ async function planifierRappels() {
     await notifications.cancel({ notifications: RELANCES.rappelsJours.map((j) => ({ id: RELANCES.idNotification + j })) });
     if (!formule.illimite || !abonnement.fin) return;
     const fin = Date.parse(abonnement.fin);
-    const aPlanifier = RELANCES.rappelsJours.map((j) => {
-      const jour = new Date(fin - j * 86400000);
-      jour.setHours(RELANCES.heureRappel, 0, 0, 0);
-      return {
-        id: RELANCES.idNotification + j,
-        title: "BâtiPlus",
-        body: "Votre " + formule.nom + " se termine dans " + accorderNombre(j, "jour", "jours") + ", le " + dateLongue(fin, false) + ". Renouvelez depuis Mon abonnement.",
-        schedule: { at: jour, allowWhileIdle: true }
-      };
-    }).filter((n) => n.schedule.at.getTime() > Date.now());
+    const aPlanifier = RELANCES.rappelsJours.map((j) => ({
+      id: RELANCES.idNotification + j,
+      title: "BâtiPlus",
+      body: "Votre " + formule.nom + (j === 0 ? " se termine aujourd'hui" : " se termine dans " + accorderNombre(j, "jour", "jours") + ", le " + dateLongue(fin, false))
+        + ". Renouvelez en 1 toucher depuis Mon abonnement.",
+      schedule: { at: heureRappel(fin, j), allowWhileIdle: true }
+    })).filter((n) => n.schedule.at.getTime() > Date.now());
     if (!aPlanifier.length) return;
     let permission = await notifications.checkPermissions();
     if (permission.display === "prompt" || permission.display === "prompt-with-rationale") permission = await notifications.requestPermissions();
@@ -6607,6 +7144,8 @@ async function afficherQuotaAccueil(formule) {
   $("accueil-rappel").hidden = !rappel;
   $("accueil-rappel").textContent = rappel;
   $("libelle-passer-pro").textContent = rappel ? "Renouveler" : "Passer en Pro";
+  if (rappel) $("bouton-passer-pro").dataset.renouveler = "1";
+  else delete $("bouton-passer-pro").dataset.renouveler;
   $("bouton-passer-pro").hidden = !ecranExiste("abonnement") || (formule.illimite && !rappel);
 }
 
@@ -6747,6 +7286,7 @@ function remplirProfil() {
   ["pro-ancien", "pro-nouveau", "pro-confirmation"].forEach(viderCode);
   activerCode("pro-ancien");
   afficherStatistiques();
+  afficherRenouvellement();
 }
 
 function lireFormulaireProfil() {
@@ -12740,6 +13280,16 @@ function brancherEvenements() {
   $("bouton-reessayer-paiement").addEventListener("click", () => {
     if (abonnementEtat.formuleChoisie) lancerPaiement(abonnementEtat.formuleChoisie);
   });
+  $("bouton-passer-pro").addEventListener("click", surClicPasserPro);
+  $("bouton-renouveler").addEventListener("click", renouvelerFormule);
+  $("bouton-suivi-recu").addEventListener("click", () => imprimerRecu(suiviPaiement.reference));
+  $("bouton-suivi-reessayer").addEventListener("click", surReessayerSuivi);
+  $("bouton-suivi-verifier").addEventListener("click", surVerifierSuivi);
+  $("bouton-suivi-accueil").addEventListener("click", () => {
+    vibrer();
+    montrer(ECRAN_DEPART);
+  });
+  $("renouvellement-auto").addEventListener("change", surChangementRenouvellement);
   /* Capture : la règle de saisie passe AVANT les écouteurs des écrans. */
   document.addEventListener("focusin", surFocusNumerique, true);
   document.addEventListener("input", surSaisieNumerique, true);
@@ -13005,6 +13555,9 @@ async function demarrer() {
   const [, premierEcran] = await Promise.all([attendre(DUREE_DEMARRAGE), choisirPremierEcran()]);
   montrer(premierEcran);
   surveillerInactivite();
+  ecouterRetourPaiement();
+  if (location.hash.startsWith("#paiement-retour")) await surRetourPaiement();
+  else verifierPaiementEnAttente();
   await surveillerReseau();
   journal("démarrage terminé");
 }

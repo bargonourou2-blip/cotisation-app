@@ -1049,6 +1049,85 @@ async function main() {
         : vuesAV + " vues (360, 768, 1440 px, clair et sombre), " + motsAV.toLocaleString("fr-FR") + " mots mesurés ; Pro mensuel / voisine " + rapportVedette.join(", ") + " ; 7 moyens de paiement en 40 px ; invitation et récapitulatif lisibles ; reçu imprimé seul sur " + pagesRecu + " page A4");
   }
 
+  /* PS écran « Nous confirmons votre paiement… » (étape 12) : attente (anneau), échec (pastille),
+     payé (coche géante + particules ; aucune particule si mouvements réduits) ; 360, 390 et 1440 px. */
+  {
+    const fautesSV = [];
+    let vuesSV = 0;
+    let motsSV = 0;
+    for (const [largeur, hauteur, sombre, reduit] of [[360, 640, false, true], [390, 844, true, false], [1440, 900, false, false], [1440, 900, true, true]]) {
+      const { page, contexte, nom } = await nouvellePage(largeur, hauteur, sombre, reduit, etatLI11);
+      await pause(1800);
+      await page.evaluate(() => {
+        window.__statut = "en_attente";
+        window.open = () => null;
+        window.fetch = async (url) => {
+          const adresse = String(url);
+          if (adresse.endsWith("/api/paiements/initier")) return new Response(JSON.stringify({ urlPaiement: "https://paiement.exemple.bf/p/1", reference: "BP-VISUEL2026" }), { status: 201 });
+          return new Response(JSON.stringify({ reference: "BP-VISUEL2026", statut: window.__statut, formule: "mensuel", montant: 2500, devise: "XOF", moyen: "wave", payeLe: null, abonnement: null, jeton: null }), { status: 200 });
+        };
+        document.querySelector("#tiroir-menu [data-ecran='abonnement']").click();
+      });
+      await pause(900);
+      await page.evaluate(() => document.querySelector("[data-choisir-formule='mensuel']").click());
+      await pause(400);
+      await page.evaluate(() => document.getElementById("bouton-modale-ok").click());
+      await pause(900);
+      const lire = () => page.evaluate(() => {
+        const vis = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.display !== "none" && Number(s.opacity) > 0.05; };
+        return {
+          actif: document.querySelector(".ecran.actif").id,
+          issue: document.getElementById("suivi-paiement").dataset.issue,
+          anneau: vis(document.querySelector(".suivi-anneau")),
+          tourne: getComputedStyle(document.querySelector(".suivi-anneau")).animationName,
+          ok: vis(document.querySelector(".suivi-pastille-ok")),
+          ko: vis(document.querySelector(".suivi-pastille-ko")),
+          particules: getComputedStyle(document.getElementById("suivi-particules")).display !== "none" ? document.querySelectorAll("#suivi-particules i").length : 0,
+          animation: document.querySelector("#suivi-particules i") ? getComputedStyle(document.querySelector("#suivi-particules i")).animationName : "",
+          boutons: [...document.querySelectorAll(".suivi-actions .bouton")].filter((b) => !b.hidden).map((b) => Math.round(b.getBoundingClientRect().height))
+        };
+      });
+      const mesurer = async (vue) => {
+        const t = await page.evaluate(mesurerTextes, ["#ecran-paiement", ".entete", largeur > 1024 ? "#tiroir" : ".onglets"]);
+        vuesSV++;
+        motsSV += t.mots;
+        if (t.motsCoupes.length || t.rognes.length || t.deborde.length || t.defileX) fautesSV.push(nom + " " + vue + " " + JSON.stringify(t));
+        if (largeur > 1024) {
+          const m = await page.evaluate(mesurerSousMenu);
+          if (m.total) fautesSV.push(nom + " " + vue + " sous le menu " + JSON.stringify(m));
+        }
+        await capturer(page, nom + "-paiement-" + vue);
+      };
+      const attente = await lire();
+      if (attente.actif !== "ecran-paiement" || attente.issue !== "attente" || !attente.anneau || attente.ok || attente.ko || (reduit ? attente.tourne !== "none" : attente.tourne !== "tourne"))
+        fautesSV.push(nom + " attente " + JSON.stringify(attente));
+      await mesurer("attente");
+      await page.evaluate(() => { window.__statut = "echoue"; });
+      await pause(3600);
+      const echec = await lire();
+      if (echec.issue !== "echoue" || echec.anneau || !echec.ko || echec.ok || echec.boutons.length !== 2 || echec.boutons.some((h) => h < 44)) fautesSV.push(nom + " échec " + JSON.stringify(echec));
+      await mesurer("echec");
+      /* Payé : le jeton signé n'existe pas dans la page livrée (clé vide) → état visuel posé directement, textes réels. */
+      await page.evaluate(() => {
+        const suivi = document.getElementById("suivi-paiement");
+        suivi.dataset.issue = "paye";
+        document.getElementById("titre-suivi").textContent = "Paiement confirmé !";
+        document.getElementById("suivi-texte").textContent = "Votre Pro mensuel est actif jusqu'au 15 novembre 2026. Devis illimités et sans filigrane dès maintenant. Merci pour votre confiance !";
+        document.getElementById("suivi-particules").replaceChildren(...Array.from({ length: 18 }, () => document.createElement("i")));
+        document.getElementById("bouton-suivi-recu").hidden = false;
+        document.getElementById("bouton-suivi-reessayer").hidden = true;
+      });
+      await pause(reduit ? 300 : 450);
+      const succes = await lire();
+      if (!succes.ok || succes.ko || succes.anneau || (reduit ? succes.particules !== 0 : succes.particules !== 18 || succes.animation !== "particule")) fautesSV.push(nom + " payé " + JSON.stringify(succes));
+      await mesurer("paye");
+      await contexte.close();
+    }
+    controle("PS", "écran de suivi du paiement : lisible, animé, mouvements réduits respectés", fautesSV.length === 0,
+      fautesSV.length ? fautesSV.slice(0, 3).join(" | ")
+        : vuesSV + " vues (360, 390 sombre, 1440 clair et sombre), " + motsSV.toLocaleString("fr-FR") + " mots mesurés ; attente : anneau qui tourne (immobile si mouvements réduits) ; échec : pastille d'alerte + 2 boutons ≥ 44 px ; payé : coche géante + 18 particules (aucune si mouvements réduits) ; rien de coupé, rien sous le menu fixe");
+  }
+
   /* CA garde anti-encadrement (étape 10) : chargée dans le cadre d'une page tierce, l'application
      ne montre ni écran ni champ, seulement un lien qui l'ouvre dans sa propre fenêtre. */
   {

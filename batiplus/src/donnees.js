@@ -37,7 +37,12 @@ const CLES_STOCKAGE = Object.freeze({
   devisMois: "bp_v1_devis_mois",
   relances: "bp_v1_relances",
   horloge: "bp_v1_horloge",
-  paiements: "bp_v1_paiements"
+  paiements: "bp_v1_paiements",
+  /* Étape 12 : paiement en cours de confirmation (référence seule, jamais de montant décidé ici),
+     jeton de session de l'API (émis à la connexion en ligne, étape 14), accord de renouvellement par carte. */
+  paiementEnCours: "bp_v1_paiement_en_cours",
+  jetonApi: "bp_v1_jeton_api",
+  renouvellement: "bp_v1_renouvellement"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -238,12 +243,12 @@ const ABONNEMENT_JETON = Object.freeze({
   avanceHorlogeMs: 15 * 60 * 1000
 });
 
-/* Relances, sans harceler : jamais pour un abonné (sauf rappel J-3 et J-1), au plus une
+/* Relances, sans harceler : jamais pour un abonné (sauf rappels J-3, J-1 et le jour J), au plus une
    invitation facultative toutes les 10 minutes, aucune le jour de la création du compte. */
 const RELANCES = Object.freeze({
   intervalleMs: 10 * 60 * 1000,
   devisAvantDernier: LIMITE_GRATUITE - 1,
-  rappelsJours: Object.freeze([3, 1]),
+  rappelsJours: Object.freeze([3, 1, 0]),
   idNotification: 3100,
   facultatives: Object.freeze(["jour", "envoi"]),
   heureRappel: 9,
@@ -265,13 +270,48 @@ const CONFIANCE_PAIEMENT = Object.freeze([
   Object.freeze({ icone: "i-recu", texte: "Un reçu pour chaque paiement" })
 ]);
 
-/* Paiements confirmés reçus en ligne (étape 12) : bornes de lecture. */
+/* Paiement automatique (étape 12). Le montant est TOUJOURS fixé en ligne : le front n'envoie que
+   la formule. Après la page de paiement, l'application interroge GET /api/paiements/:reference
+   toutes les 3 s pendant 3 min ; la formule ne s'active qu'avec le jeton SIGNÉ reçu en réponse. */
 const PAIEMENTS = Object.freeze({
   max: 200,
   reference: /^BP-[A-Z0-9]{6,20}$/,
   statuts: Object.freeze({ paye: "Payé", rembourse: "Remboursé" }),
   montantMax: 1000000,
-  delaiInitiationMs: 15000
+  delaiInitiationMs: 15000,
+  suiviIntervalleMs: 3000,
+  suiviDureeMs: 180000,
+  delaiConsultationMs: 10000,
+  enCoursMaxMs: 24 * 60 * 60 * 1000,
+  statutsSuivi: Object.freeze(["en_attente", "paye", "echoue", "annule", "expire", "anomalie", "rembourse"]),
+  jetonApi: /^v1\.[A-Za-z0-9_-]{10,400}\.[A-Za-z0-9_-]{43}$/,
+  particules: 18
+});
+
+/* Réponses de l'API au lancement d'un paiement : code → message clair (jamais le texte reçu). */
+const MESSAGES_PAIEMENT = Object.freeze({
+  non_authentifie: "Votre session en ligne a expiré : reconnectez-vous avec votre numéro et votre code, puis touchez « Réessayer ».",
+  deja_a_vie: "Votre formule Lifetime couvre déjà tout le Pro : aucun paiement n'est nécessaire.",
+  places_vie_epuisees: "Les 200 places Lifetime sont toutes prises. Le Pro annuel reste disponible.",
+  trop_de_tentatives: "Trop de tentatives de paiement : patientez quelques minutes puis touchez « Réessayer ».",
+  trop_de_requetes: "Trop de demandes en même temps : patientez une minute puis touchez « Réessayer ».",
+  paiement_indisponible: "Le paiement est momentanément indisponible. Réessayez dans quelques minutes : vos études et vos devis sont conservés.",
+  compte_suspendu: "Ce compte est suspendu. Contactez BRG Électro+ au +226 05 60 86 08.",
+  defaut: "Le paiement n'a pas pu démarrer. Vérifiez votre connexion internet puis touchez « Réessayer »."
+});
+
+/* Écran « Nous confirmons votre paiement… » : un texte par issue. */
+const SUIVI_PAIEMENT = Object.freeze({
+  attente: Object.freeze({ titre: "Nous confirmons votre paiement…", texte: "Terminez le paiement sur la page sécurisée. Votre formule s'active toute seule dès la confirmation : inutile d'envoyer une preuve." }),
+  paye: Object.freeze({ titre: "Paiement confirmé !", texte: "" }),
+  echoue: Object.freeze({ titre: "Le paiement n'a pas abouti", texte: "Aucune formule n'a été activée. Vous pouvez réessayer avec le même moyen de paiement ou un autre. Vos études et vos devis sont conservés." }),
+  annule: Object.freeze({ titre: "Paiement annulé", texte: "Rien n'a changé. Touchez « Réessayer » quand vous voulez : vos études et vos devis sont conservés." }),
+  expire: Object.freeze({ titre: "La page de paiement a expiré", texte: "Touchez « Réessayer » pour ouvrir une nouvelle page de paiement. Vos études et vos devis sont conservés." }),
+  anomalie: Object.freeze({ titre: "Paiement en vérification", texte: "Le montant reçu ne correspond pas au prix de la formule : elle n'a pas été activée. BRG Électro+ vérifie et vous contacte. Gardez la référence ci-dessous." }),
+  rembourse: Object.freeze({ titre: "Paiement remboursé", texte: "Ce paiement a été remboursé : la formule correspondante n'est plus active." }),
+  long: Object.freeze({ titre: "Confirmation en cours", texte: "La confirmation prend plus de temps que prévu. Pas d'inquiétude : votre formule s'activera toute seule dès que le paiement sera confirmé, même si vous quittez cette page." }),
+  hors_ligne: Object.freeze({ titre: "Connexion perdue", texte: "Impossible de vérifier le paiement sans internet. Votre formule s'activera dès le retour de la connexion : touchez « Vérifier à nouveau »." }),
+  invalide: Object.freeze({ titre: "Vérification impossible", texte: "Le paiement est confirmé, mais l'activation n'a pas pu être vérifiée sur ce téléphone. Touchez « Vérifier à nouveau » ; si le problème continue, contactez BRG Électro+." })
 });
 
 const STATUTS_DEVIS = Object.freeze({
