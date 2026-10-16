@@ -13,6 +13,8 @@ keystore.properties
 
 # Backend — base de données (jamais dans le dépôt)
 backend/donnees/
+backend/sauvegardes/
+*.sqlite.chiffre
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

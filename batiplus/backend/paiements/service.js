@@ -324,7 +324,7 @@ export function creerServicePaiements({ base, config, adaptateurs, horloge = () 
     return bilan;
   }
 
-  /* Remboursement (administrateur, étape 14 pour la route) : confirmation + motif écrits,
+  /* Remboursement (administrateur : POST /api/admin/paiements/:ref/rembourser) : confirmation + motif écrits,
      journal complet, désactivation de l'abonnement dans la même transaction. */
   async function rembourser(reference, { adminId, motif, confirmation, ip = null }) {
     const paiement = req.paiement.get(reference);
@@ -343,7 +343,7 @@ export function creerServicePaiements({ base, config, adaptateurs, horloge = () 
     return { rembourse: true };
   }
 
-  /* Alertes en tête du tableau d'administration (route admin : étape 14). */
+  /* Alertes en tête du tableau d'administration (GET /api/admin/stats → anomalies). */
   function alertes() {
     return req.anomalies.all(iso(horloge() - 30 * JOUR_MS));
   }
@@ -361,6 +361,6 @@ export function creerServicePaiements({ base, config, adaptateurs, horloge = () 
 
   return Object.freeze({
     initier, confirmer, recevoirNotification, statutPourCompte, reglerRenouvellementAuto, renouvellementsAuto,
-    rattraper, rembourser, alertes, demarrerPlanificateur, arreterPlanificateur, nouvellePeriode
+    rattraper, rembourser, alertes, demarrerPlanificateur, arreterPlanificateur, nouvellePeriode, jetonPour, abonnementActif
   });
 }

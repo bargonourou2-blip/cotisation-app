@@ -1,10 +1,12 @@
 /* ==========================================================================
    BâtiPlus — backend : configuration (.env du backend UNIQUEMENT)
-   Le backend REFUSE DE DÉMARRER si un secret manque ou est faible, si une clé
-   d'agrégateur manque, ou si la production est réglée sur la simulation / le mode test.
+   Le backend REFUSE DE DÉMARRER si un secret manque, est faible ou garde une valeur
+   d'exemple, si une clé d'agrégateur manque, si le code administrateur n'est pas haché,
+   ou si la production est réglée sur la simulation / le mode test.
    Aucun message d'erreur ne contient la valeur d'un secret : seulement son nom.
    ========================================================================== */
 import { createPrivateKey, createPublicKey } from "node:crypto";
+import { lireHachageAdmin } from "./codes.js";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
@@ -44,6 +46,14 @@ export function lireFichierEnv(chemin) {
   return valeurs;
 }
 
+/* Valeur d'exemple ou de remplissage : refusée pour tout secret (C.1). */
+const EXEMPLE = /exemple|example|changez|change-?me|remplacer|votre[-_ ]?(?:cle|secret|code)|xxxx|^(.)\1+$/i;
+/* Secret trop peu varié (« a1a1a1… », « 000… ») : moins de 10 caractères distincts. */
+const peuVarie = (valeur) => new Set(valeur).size < 10;
+
+/* Origines de l'application mobile (Capacitor) : déclarées explicitement, jamais « * ». */
+const ORIGINES_MOBILES = Object.freeze(["capacitor://localhost"]);
+
 function adresseLocale(url) {
   return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1" || url.hostname === "[::1]";
 }
@@ -70,13 +80,23 @@ export function chargerConfig(env, dossier) {
   const origines = texte("ORIGINES_AUTORISEES").split(",").map((o) => o.trim()).filter(Boolean);
   if (!origines.length) problemes.push("ORIGINES_AUTORISEES manquante (ex. https://localhost,https://batiplus.bf)");
   if (origines.some((o) => o === "*" || o.includes("*"))) problemes.push("ORIGINES_AUTORISEES ne peut pas contenir « * »");
-  if (origines.some((o) => { const u = lireUrl(o); return !u || u.origin !== o; })) problemes.push("ORIGINES_AUTORISEES : chaque origine doit être de la forme https://domaine (sans chemin)");
+  if (origines.some((o) => { if (ORIGINES_MOBILES.includes(o)) return false; const u = lireUrl(o); return !u || u.origin !== o; })) problemes.push("ORIGINES_AUTORISEES : chaque origine doit être de la forme https://domaine (sans chemin)");
 
   const jetonSecret = texte("JETON_SECRET");
   if (!/^[a-f0-9]{64,}$/i.test(jetonSecret)) problemes.push("JETON_SECRET manquant ou trop court (64 caractères hexadécimaux : openssl rand -hex 32)");
   const webhookSecret = texte("WEBHOOK_SECRET");
   if (!/^[A-Za-z0-9_-]{32,}$/.test(webhookSecret)) problemes.push("WEBHOOK_SECRET manquant ou trop court (32 caractères au moins : openssl rand -hex 32)");
   if (jetonSecret && jetonSecret === webhookSecret) problemes.push("JETON_SECRET et WEBHOOK_SECRET doivent être différents");
+  for (const nom of ["JETON_SECRET", "WEBHOOK_SECRET", "SAUVEGARDE_CLE"]) if (texte(nom) && (EXEMPLE.test(texte(nom)) || peuVarie(texte(nom)))) problemes.push(nom + " garde une valeur d'exemple ou trop peu variée");
+
+  const adminCode = lireHachageAdmin(texte("ADMIN_CODE_HASH"));
+  if (!adminCode) problemes.push("ADMIN_CODE_HASH manquant ou invalide (node outils/hacher-code-admin.mjs) — jamais le code en clair");
+  const adminIps = texte("ADMIN_IPS").split(",").map((ip) => ip.trim()).filter(Boolean);
+  if (adminIps.some((ip) => !/^[0-9a-f:.]{2,45}$/i.test(ip))) problemes.push("ADMIN_IPS : adresses IP séparées par des virgules");
+
+  const cleSauvegarde = texte("SAUVEGARDE_CLE");
+  if (!/^[a-f0-9]{64}$/i.test(cleSauvegarde)) problemes.push("SAUVEGARDE_CLE manquante (64 caractères hexadécimaux : openssl rand -hex 32)");
+  else if (cleSauvegarde === jetonSecret || cleSauvegarde === webhookSecret) problemes.push("SAUVEGARDE_CLE doit être différente des autres secrets");
 
   let clePrivee = null;
   let clePublique = "";
@@ -116,6 +136,7 @@ export function chargerConfig(env, dossier) {
     for (const variable of CLES_FOURNISSEUR[nom]) {
       const valeur = texte(variable);
       if (valeur.length < 8) problemes.push(variable + " manquante (exigée par l'agrégateur " + nom + ")");
+      else if (EXEMPLE.test(valeur) && production) problemes.push(variable + " garde une valeur d'exemple");
       cles[nom][variable] = valeur;
     }
   }
@@ -125,6 +146,7 @@ export function chargerConfig(env, dossier) {
   if (problemes.length) throw new ErreurConfiguration(problemes);
 
   const base = texte("BASE_DONNEES") || "donnees/batiplus.sqlite";
+  const dossierSauvegarde = texte("SAUVEGARDE_DOSSIER") || "sauvegardes";
   return Object.freeze({
     production,
     port,
@@ -138,6 +160,9 @@ export function chargerConfig(env, dossier) {
     webhookSecret,
     clePrivee,
     clePublique,
+    adminCode,
+    adminIps: Object.freeze(adminIps),
+    sauvegarde: Object.freeze({ cle: cleSauvegarde, dossier: isAbsolute(dossierSauvegarde) ? dossierSauvegarde : join(dossier, dossierSauvegarde) }),
     paiement: Object.freeze({ mode, fournisseur, secours: secours || "", actifs: Object.freeze(actifs) }),
     cles: Object.freeze(cles)
   });

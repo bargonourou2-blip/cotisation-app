@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 import { ouvrirBase, STATUTS } from "../base.js";
 import { chargerConfig, ErreurConfiguration } from "../config.js";
 import { FORMULES, JOUR_MS } from "../formules.js";
-import { creerJetonSession } from "../jetons.js";
+import { creerJetonSession, empreinteAppareil } from "../jetons.js";
+import { formaterHachageAdmin, hacherCode } from "../codes.js";
 import { METHODES, hmacHex, verifierAdaptateur } from "../paiements/interface.js";
 import { creerServicePaiements, secretUrlNotification } from "../paiements/service.js";
 import { banc } from "../paiements/simulation.js";
@@ -40,18 +41,22 @@ const dossier = mkdtempSync(join(tmpdir(), "batiplus-paiements-"));
 const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 writeFileSync(join(dossier, "cle.pem"), privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600 });
 const SECRETS = {
-  JETON_SECRET: "a1".repeat(32),
-  WEBHOOK_SECRET: "w3bh00k-" + "b2".repeat(16),
-  SIMULATION_SECRET: "simulation-" + "c3".repeat(12)
+  JETON_SECRET: "0123456789abcdef".repeat(4),
+  WEBHOOK_SECRET: "w3bh00k-" + "f1e2d3c4b5a69788".repeat(2),
+  SIMULATION_SECRET: "simulation-" + "c3".repeat(12),
+  SAUVEGARDE_CLE: "fedcba9876543210".repeat(4)
 };
+/* Étape 14 : chaque jeton de session est lié à un appareil (en-tête X-Appareil). */
+const APPAREIL = "0123456789abcdef0123456789abcdef";
 const port = await liberer();
 const envTest = {
   NODE_ENV: "developpement", URL_PUBLIQUE: "http://127.0.0.1:" + port, ORIGINES_AUTORISEES: "https://localhost,https://batiplus.bf",
   ABONNEMENT_CLE_PRIVEE_CHEMIN: join(dossier, "cle.pem"), PAIEMENT_FOURNISSEUR: "simulation", PAIEMENT_MODE: "test",
-  BASE_DONNEES: join(dossier, "test.sqlite"), ...SECRETS
+  BASE_DONNEES: join(dossier, "test.sqlite"), SAUVEGARDE_DOSSIER: join(dossier, "sauvegardes"),
+  ADMIN_CODE_HASH: formaterHachageAdmin(await hacherCode("admin-essai-2026")), ...SECRETS
 };
 const decalage = { ms: 0 };
-const config = { ...chargerConfig(envTest, BACKEND), limites: { general: [100000, 60000], initier: [1000, 60000], notification: [100000, 60000] } };
+const config = { ...chargerConfig(envTest, BACKEND), sauvegardeAuto: false, limites: { general: [100000, 60000], initier: [1000, 60000], notification: [100000, 60000] } };
 const app = demarrer(config, { horloge: () => Date.now() + decalage.ms, journalConsole: { error() {}, warn() {}, log() {} } });
 await app.ecouter(port, "127.0.0.1");
 const base = app.base;
@@ -67,7 +72,8 @@ function nouveauCompte(extra = {}) {
   const id = Number(r.lastInsertRowid);
   for (const [cle, valeur] of Object.entries(extra)) base.prepare("UPDATE electriciens SET " + cle + " = ? WHERE id = ?").run(valeur, id);
   const electricien = base.prepare("SELECT * FROM electriciens WHERE id = ?").get(id);
-  return { electricien, jeton: creerJetonSession(config.jetonSecret, electricien) };
+  const appareil = Number(base.prepare("INSERT INTO appareils (electricien_id, empreinte, cree_le, vu_le) VALUES (?, ?, ?, ?)").run(id, empreinteAppareil(APPAREIL), new Date().toISOString(), new Date().toISOString()).lastInsertRowid);
+  return { electricien, jeton: creerJetonSession(config.jetonSecret, electricien, appareil) };
 }
 const lireCompte = (id) => base.prepare("SELECT * FROM electriciens WHERE id = ?").get(id);
 const lirePaiement = (reference) => base.prepare("SELECT * FROM paiements WHERE reference = ?").get(reference);
@@ -75,7 +81,7 @@ const abonnementsDe = (paiementId) => base.prepare("SELECT COUNT(*) AS n FROM ab
 const activites = (action) => base.prepare("SELECT * FROM activites WHERE action = ? ORDER BY id").all(action);
 
 async function appel(methode, chemin, { jeton, corps, entetes = {}, brut } = {}) {
-  const options = { method: methode, headers: { ...entetes }, redirect: "manual" };
+  const options = { method: methode, headers: { "X-Appareil": APPAREIL, ...entetes }, redirect: "manual" };
   if (jeton) options.headers.Authorization = "Bearer " + jeton;
   if (brut !== undefined) options.body = brut;
   else if (corps !== undefined) {
