@@ -657,6 +657,7 @@ async function main() {
         : vues36 + " vues (fiche devis créée depuis l'étude, ligne supprimée, Mes prix tout déplié, clair et sombre), " + mots36.toLocaleString("fr-FR") + " mots mesurés, montants à 13 chiffres et 5 fournisseurs aux noms longs sur une ligne, rien sous le menu fixe");
   }
 
+  let etatLI11 = null;
   /* LI Mes devis, Mes chantiers, Mes clients, Statistiques : devis aux montants géants et noms longs,
      brouillon, client saisi à la main ; bandeau « Annuler » ; 360 et 1440 px, clair et sombre. */
   {
@@ -683,6 +684,7 @@ async function main() {
     const brouillonLI = { [compteId]: { ...chantiersLI[0], id: "brouillon-li-0001", nom: "Immeuble R+4 avenue Kwame-Nkrumah — saisie en cours", statut: "brouillon", etape: 3, etapeMax: 3 } };
     const clientsLI = [{ id: "cli1", compteId, nom: "Entreprise Générale de Construction du Burkina", telephone: "+22676543210", creeLe: new Date().toISOString(), modifieLe: new Date().toISOString() }];
     const etatLI = { ...avecEtudes36, bp_v1_devis: JSON.stringify(devisLI), bp_v1_brouillon_chantier: JSON.stringify(brouillonLI), bp_v1_clients: JSON.stringify(clientsLI) };
+    etatLI11 = etatLI;
     for (const [largeur, hauteur, sombre] of [[360, 640, false], [360, 640, true], [1440, 900, false], [1440, 900, true]]) {
       const { page, contexte, nom } = await nouvellePage(largeur, hauteur, sombre, true, etatLI);
       await pause(1800);
@@ -950,6 +952,101 @@ async function main() {
     }
     controle("VE", "écran verrouillé : lisible, clavier ≥ 44 px, rien d'autre accessible", fautesVE.length === 0,
       fautesVE.join(" | ") || "360×640, 390×844 sombre, 1280×800 : session de 20 min → verrou, ni menu ni onglets, 11 touches ≥ 44 px, aucun texte coupé, mauvais code signalé");
+  }
+
+  /* AV écran Abonnement (étape 11) : cartes, logos, cadenas, invitation, récapitulatif, Mes paiements ;
+     360, 768 et 1440 px, clair et sombre ; textes ≥ 13 px ; carte vedette 6 % plus haute ; reçu imprimé seul sur 1 page A4. */
+  {
+    const fautesAV = [];
+    let vuesAV = 0;
+    let motsAV = 0;
+    let rapportVedette = [];
+    let pagesRecu = 0;
+    const paiementAV = { reference: "BP-RECU2026A", formule: "annuel", montant: 25000, payeLe: new Date().toISOString(), statut: "paye", moyen: "telecel-money",
+      debut: new Date().toISOString(), fin: new Date(Date.now() + 365 * 86400000).toISOString() };
+    const etatAV = { ...etatLI11, bp_v1_paiements: JSON.stringify({ [compteId]: [paiementAV] }) };
+    const petitsTextes = (racine) => {
+      const trop = [];
+      const parcours = document.createTreeWalker(document.querySelector(racine), NodeFilter.SHOW_TEXT);
+      while (parcours.nextNode()) {
+        const el = parcours.currentNode.parentElement;
+        if (!parcours.currentNode.textContent.trim() || el.closest("[hidden], svg, .visuellement-cache, #recu-a4")) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        if (parseFloat(getComputedStyle(el).fontSize) < 13) trop.push(el.tagName.toLowerCase() + "." + String(el.className).split(" ")[0] + " " + getComputedStyle(el).fontSize + " « " + parcours.currentNode.textContent.trim().slice(0, 20) + " »");
+      }
+      return trop.slice(0, 5);
+    };
+    for (const [largeur, hauteur, sombre] of [[360, 640, false], [360, 640, true], [768, 1024, false], [1440, 900, false], [1440, 900, true]]) {
+      const { page, contexte, nom } = await nouvellePage(largeur, hauteur, sombre, true, etatAV);
+      await pause(1800);
+      const mesurer = async (vue, selecteurs, racinePolice) => {
+        const t = await page.evaluate(mesurerTextes, selecteurs);
+        vuesAV++;
+        motsAV += t.mots;
+        if (t.motsCoupes.length || t.rognes.length || t.deborde.length || t.defileX) fautesAV.push(nom + " " + vue + " " + JSON.stringify(t));
+        const petits = await page.evaluate(petitsTextes, racinePolice);
+        if (petits.length) fautesAV.push(nom + " " + vue + " texte < 13 px : " + petits.join(", "));
+        await capturer(page, nom + "-" + vue, vue === "abonnement");
+      };
+      await page.evaluate(() => document.querySelector("#tiroir-menu [data-ecran='abonnement']").click());
+      await pause(900);
+      const actif = await page.evaluate(() => document.querySelector(".ecran.actif").id);
+      if (actif !== "ecran-abonnement") { fautesAV.push(nom + " : écran " + actif); await contexte.close(); continue; }
+      await mesurer("abonnement", [".ecran.actif", ".entete", largeur > 1024 ? "#tiroir" : ".onglets"], "#ecran-abonnement");
+      if (largeur > 1024) {
+        const m = await page.evaluate(mesurerSousMenu);
+        if (m.total) fautesAV.push(nom + " sous le menu " + JSON.stringify(m));
+      }
+      const cartes = await page.evaluate(() => {
+        const vedette = document.querySelector(".formule-vedette");
+        const voisine = [...document.querySelectorAll("#liste-formules > li:not(.formule-vedette)")].find((li) => li.offsetTop === vedette.offsetTop);
+        const fonds = [...document.querySelectorAll("#liste-formules > li")].map((li) => getComputedStyle(li).backgroundColor + "|" + getComputedStyle(li.querySelector(".formule-badge")).backgroundColor);
+        const logos = [...document.querySelectorAll("#logos-paiement > li")].map((li) => { const r = li.getBoundingClientRect(); return Math.round(r.height) + (r.width > 0 ? "" : "!"); });
+        return { rapport: voisine ? vedette.getBoundingClientRect().height / voisine.getBoundingClientRect().height : null, couleurs: new Set(fonds).size, logos };
+      });
+      if (largeur >= 640) {
+        rapportVedette.push(largeur + " px : " + (cartes.rapport ? cartes.rapport.toFixed(3) : "—"));
+        if (!cartes.rapport || cartes.rapport < 1.055 || cartes.rapport > 1.065) fautesAV.push(nom + " carte vedette : rapport de hauteur " + cartes.rapport);
+      }
+      if (cartes.couleurs < 5) fautesAV.push(nom + " : " + cartes.couleurs + " couleurs de cartes distinctes");
+      if (cartes.logos.length !== 7 || cartes.logos.some((h) => h !== "40")) fautesAV.push(nom + " logos de paiement : " + cartes.logos.join(","));
+      /* Invitation (cadenas « Débloquer ») puis récapitulatif de paiement. */
+      for (const [vue, selecteur] of [["invitation", "#avantages-pro [data-invitation='logo']"], ["recapitulatif", "[data-choisir-formule='mensuel']"]]) {
+        await page.evaluate((s) => document.querySelector(s).click(), selecteur);
+        await pause(500);
+        const ouverte = await page.evaluate(() => !document.getElementById("modale").hidden);
+        if (!ouverte) { fautesAV.push(nom + " " + vue + " : modale fermée"); continue; }
+        await mesurer(vue, ["#modale"], "#modale");
+        await page.evaluate(() => document.getElementById("bouton-modale-annuler").click());
+        await pause(300);
+      }
+      /* Reçu imprimé : seule la feuille du reçu sort, sur une page A4. */
+      if (largeur === 1440 && !sombre) {
+        await page.evaluate(() => { window.print = () => {}; document.querySelector("[data-recu='BP-RECU2026A']").click(); });
+        await pause(400);
+        await page.emulateMediaType("print");
+        const imprime = await page.evaluate(() => {
+          const vis = (el) => el && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0;
+          return { recu: vis(document.getElementById("recu-a4")), autres: ["carte-ma-formule", "liste-formules", "carte-paiements", "tiroir"].filter((id) => vis(document.getElementById(id))) };
+        });
+        if (!imprime.recu || imprime.autres.length) fautesAV.push(nom + " reçu imprimé : " + JSON.stringify(imprime));
+        const t = await page.evaluate(mesurerTextes, ["#recu-a4"]);
+        if (t.motsCoupes.length || t.rognes.length || t.deborde.length) fautesAV.push(nom + " reçu " + JSON.stringify(t));
+        await capturer(page, "impression-recu", true);
+        pagesRecu = (Buffer.from(await page.pdf({ preferCSSPageSize: true, printBackground: true })).toString("latin1").match(/\/Type\s*\/Page\b(?!s)/g) || []).length;
+        await page.emulateMediaType(null);
+        if (pagesRecu !== 1) fautesAV.push("reçu : " + pagesRecu + " page(s) A4");
+      }
+      /* Accueil : bandeau d'abonnement et jauge. */
+      await page.evaluate(() => document.querySelector("#tiroir-menu [data-ecran='accueil']").click());
+      await pause(900);
+      await mesurer("accueil", ["#bandeau-abonnement"], "#bandeau-abonnement");
+      await contexte.close();
+    }
+    controle("AV", "écran Abonnement : rien ne déborde, textes ≥ 13 px, carte vedette 6 % plus haute", fautesAV.length === 0,
+      fautesAV.length ? fautesAV.slice(0, 3).join(" | ")
+        : vuesAV + " vues (360, 768, 1440 px, clair et sombre), " + motsAV.toLocaleString("fr-FR") + " mots mesurés ; Pro mensuel / voisine " + rapportVedette.join(", ") + " ; 7 moyens de paiement en 40 px ; invitation et récapitulatif lisibles ; reçu imprimé seul sur " + pagesRecu + " page A4");
   }
 
   /* CA garde anti-encadrement (étape 10) : chargée dans le cadre d'une page tierce, l'application

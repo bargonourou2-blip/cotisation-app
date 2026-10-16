@@ -9,11 +9,12 @@
      www/icons/*.svg   → le sprite d'icônes (<symbol id="i-nom">) au début du <body>
      www/images/paiement/*.webp → liste des logos de paiement fournis (LOGOS_PAIEMENT_FOURNIS)
      src/regles-saisie.json → REGLES_SAISIE (bornes partagées avec l'API, gelées en profondeur)
+     .env ABONNEMENT_CLE_PUBLIQUE → balise meta batiplus-cle-abonnement (clé PUBLIQUE de vérification)
    Calcule les empreintes SHA-256 du style et du script et les inscrit dans la
    Content-Security-Policy (pas de 'unsafe-inline', pas de 'unsafe-eval').
    Usage : npm run assembler
    ========================================================================== */
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { injecterRegles } from "./regles.mjs";
 import { dirname, join } from "node:path";
@@ -42,15 +43,39 @@ function arreter(message) {
 }
 
 /* L'adresse publique de l'API est la seule valeur de .env connue du front. */
-function adresseApi() {
+/* Variable de configuration : environnement d'abord, puis fichier .env (jamais versionné). */
+function lireEnv(nom) {
   const fichier = join(RACINE, ".env");
-  let valeur = process.env.API_URL || "";
+  let valeur = process.env[nom] || "";
   if (!valeur && existsSync(fichier)) {
-    const ligne = readFileSync(fichier, "utf8").split("\n").find((l) => l.startsWith("API_URL="));
-    if (ligne) valeur = ligne.slice("API_URL=".length).trim();
+    const ligne = readFileSync(fichier, "utf8").split("\n").find((l) => l.startsWith(nom + "="));
+    if (ligne) valeur = ligne.slice(nom.length + 1).trim();
   }
-  valeur = valeur || API_PAR_DEFAUT;
+  return valeur;
+}
+
+function adresseApi() {
+  const valeur = lireEnv("API_URL") || API_PAR_DEFAUT;
   if (!/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(valeur)) arreter("API_URL doit être une origine https:// sans chemin");
+  return valeur;
+}
+
+/* Clé PUBLIQUE de vérification des jetons d'abonnement (ECDSA P-256, SPKI en base64).
+   Absente : aucun jeton ne se vérifie, tout compte reste en formule Gratuit (échec fermé). */
+function clePubliqueAbonnement() {
+  const valeur = lireEnv("ABONNEMENT_CLE_PUBLIQUE");
+  if (!valeur) {
+    console.log("ℹ ABONNEMENT_CLE_PUBLIQUE absente : aucune formule payante ne pourra s'activer (voir src/scripts/cles-abonnement.mjs)");
+    return "";
+  }
+  if (!/^[A-Za-z0-9+/]{80,200}={0,2}$/.test(valeur)) arreter("ABONNEMENT_CLE_PUBLIQUE doit être une clé SPKI en base64");
+  let cle = null;
+  try {
+    cle = createPublicKey({ key: Buffer.from(valeur, "base64"), format: "der", type: "spki" });
+  } catch (erreur) {
+    arreter("ABONNEMENT_CLE_PUBLIQUE illisible");
+  }
+  if (cle.asymmetricKeyType !== "ec" || cle.asymmetricKeyDetails.namedCurve !== "prime256v1") arreter("ABONNEMENT_CLE_PUBLIQUE doit être une clé ECDSA P-256");
   return valeur;
 }
 
@@ -153,7 +178,8 @@ function assembler() {
     .replace("<style>\n@@CHARTE@@\n</style>", () => "<style>" + contenuStyle + "</style>")
     .replace("<script>\n@@SCRIPT@@\n</script>", () => "<script>" + contenuScript + "</script>")
     .replace("@@CORPS@@", () => corps)
-    .replace("@@CSP@@", () => csp);
+    .replace("@@CSP@@", () => csp)
+    .replace("@@CLE_ABONNEMENT@@", () => clePubliqueAbonnement());
 
   if (html.includes("@@")) arreter("un marqueur @@…@@ n'a pas été remplacé");
   writeFileSync(SORTIE, html + "\n", "utf8");

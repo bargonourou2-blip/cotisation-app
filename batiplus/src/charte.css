@@ -1418,6 +1418,148 @@ input[aria-invalid="true"] { border-color: var(--erreur); }
 .hors-cadre p { color: var(--texte-2); }
 .erreur-saisie { flex-basis: 100%; grid-column: 1 / -1; margin-top: 4px; font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
 
+/* ---------- 7j. Abonnement (étape 11) : formules, jauge, cadenas Pro, paiements, reçu ---------- */
+.abonnement-accroche { margin-top: 6px; font-size: 15px; }
+#ecran-abonnement .surtitre { font-size: 13px; }
+.bloc-abonnement { display: grid; gap: 12px; }
+.bloc-abonnement > .bloc-titre { margin: 0; }
+
+/* Jauge : devis gratuits utilisés (Gratuit) ou jours restants (Pro). */
+.jauge { position: relative; height: 12px; border-radius: 999px; background: var(--violet-doux); overflow: hidden; }
+.jauge-mini { height: 7px; margin-top: 4px; }
+.jauge-remplie {
+  display: block; height: 100%; width: calc(var(--remplissage, 0) * 100%); border-radius: inherit;
+  background: linear-gradient(90deg, var(--vert), #2BC46E); transition: width 0.7s var(--courbe);
+}
+.jauge[data-niveau="presque"] .jauge-remplie { background: linear-gradient(90deg, var(--orange), var(--jaune)); }
+.jauge[data-niveau="plein"] .jauge-remplie { background: linear-gradient(90deg, var(--rouge-2), var(--rouge)); }
+.jauge-libelle { font-size: 14px; color: var(--texte-2); }
+.bandeau-rappel { font-size: 13px; font-weight: 700; color: var(--orange-texte); }
+
+/* Ma formule */
+.ma-formule { display: grid; gap: 12px; border: 2px solid var(--ligne); }
+.ma-formule-tete { display: flex; align-items: center; gap: 14px; }
+.ma-formule-icone { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 16px; background: var(--violet-doux); color: var(--accent-texte); }
+.ma-formule-icone .icone { width: 28px; height: 28px; }
+.ma-formule-titres { display: grid; gap: 2px; min-width: 0; }
+.ma-formule-titres .surtitre { margin: 0; font-size: 13px; }
+.ma-formule-nom { font-family: var(--police-titre); font-size: 22px; font-weight: 800; color: var(--texte); }
+.ma-formule-fin { font-size: 15px; color: var(--texte); }
+.ma-formule[data-ton="violet"], .ma-formule[data-ton="vert"], .ma-formule[data-ton="jaune"], .ma-formule[data-ton="noir"] { border-color: var(--violet-2); }
+.ma-formule[data-ton="noir"] .ma-formule-icone { background: #17131F; color: var(--jaune); }
+
+/* Les 5 cartes de formules : du moins cher au plus cher ; Pro mensuel mis en avant (6 % plus haute). */
+.formules { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.formule {
+  position: relative; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+  padding: 18px 16px 16px; border-radius: var(--rayon); border: 2px solid var(--ligne);
+  background: var(--carte); box-shadow: var(--ombre-1); color: var(--texte);
+}
+.formule-badge {
+  align-self: flex-start; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.04em; background: var(--violet-doux); color: var(--accent-texte);
+}
+.formule-tete { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.formule-icone { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 14px; background: var(--violet-doux); color: var(--accent-texte); }
+.formule-nom { margin: 0; font-size: 19px; font-weight: 800; }
+.formule-prix { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; font-size: 14px; color: var(--texte-2); }
+.formule-prix strong { font-family: var(--police-titre); font-size: 26px; font-weight: 800; color: var(--texte); }
+.formule-arguments { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+.formule-arguments li { display: flex; align-items: flex-start; gap: 8px; }
+.formule-arguments .icone { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--vert-fonce); }
+.formule .bouton { margin-top: auto; min-height: 48px; font-size: 15px; }
+.formule .bouton:disabled { background: transparent; color: var(--texte-2); border: 1px dashed var(--ligne); box-shadow: none; cursor: default; }
+.formule-actuelle { border-color: var(--vert); }
+.formule-gris .formule-icone { color: var(--texte-2); }
+.formule-jaune .formule-badge, .formule-jaune .formule-icone { background: var(--jaune); color: var(--violet-3); }
+.formule-vert .formule-badge, .formule-vert .formule-icone { background: rgba(18, 161, 80, 0.14); color: var(--vert-fonce); }
+.formule-vedette { border-color: var(--violet); box-shadow: var(--ombre-2); }
+.formule-vedette .formule-badge { background: var(--violet); color: #fff; }
+.formule-vedette .formule-icone { background: var(--violet); color: var(--jaune); }
+.formule-noir { background: #17131F; border-color: #17131F; color: #F6F4FA; }
+.formule-noir .formule-prix, .formule-noir .formule-prix strong, .formule-noir .formule-arguments { color: #F6F4FA; }
+.formule-noir .formule-badge, .formule-noir .formule-icone { background: var(--jaune); color: #17131F; }
+.formule-noir .formule-arguments .icone { color: var(--jaune); }
+.formule-noir .bouton-secondaire { background: var(--jaune); color: #17131F; }
+.formule-noir .bouton:disabled { color: #D8D2E4; border-color: #4A4258; }
+:root[data-theme="sombre"] .formule-noir { background: #000; border-color: var(--jaune); }
+:root[data-theme="sombre"] .formule-vert .formule-badge, :root[data-theme="sombre"] .formule-vert .formule-icone,
+:root[data-theme="sombre"] .formule-arguments .icone { color: #3DD68C; }
+:root[data-theme="sombre"] .formule-noir .formule-arguments .icone { color: var(--jaune); }
+@media (min-width: 640px) {
+  .formules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 640px) {
+  /* Côte à côte : la carte vedette est 6 % plus haute que ses voisines (et déborde dans l'espacement). */
+  .formule-vedette { transform: scale(1.06); z-index: 1; }
+}
+@media (min-width: 1280px) {
+  .formules { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px 26px; }
+}
+
+/* Paiement : bande de confiance */
+.confiance { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.confiance li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--rayon-petit); background: var(--carte-2); border: 1px solid var(--ligne); font-size: 14px; font-weight: 600; }
+.confiance .icone { width: 20px; height: 20px; flex: none; color: var(--vert-fonce); }
+:root[data-theme="sombre"] .confiance .icone { color: #3DD68C; }
+
+/* Ce que débloque le Pro : cadenas = invitation */
+.avantages-pro { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.avantage-pro { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2); }
+.avantage-icone { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 12px; background: var(--violet-doux); color: var(--accent-texte); }
+.avantage-texte { flex: 1 1 200px; display: grid; gap: 2px; min-width: 0; font-size: 14px; color: var(--texte-2); }
+.avantage-texte strong { font-size: 15px; color: var(--texte); }
+.avantage-etat { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; white-space: nowrap; color: var(--vert-fonce); }
+.avantage-etat .icone { width: 18px; height: 18px; }
+.avantage-cadenas { min-height: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--jaune); color: var(--violet-3); cursor: pointer; }
+:root[data-theme="sombre"] .avantage-etat:not(.avantage-cadenas) { color: #3DD68C; }
+
+/* Cadenas Pro : pastille (profil, feuille), carte (statistiques), menu */
+.pastille-pro {
+  display: inline-flex; align-items: center; gap: 8px; justify-self: start; max-width: 100%;
+  min-height: 44px; padding: 8px 14px; border: 1px solid rgba(255, 212, 0, 0.7); border-radius: 999px;
+  background: rgba(255, 212, 0, 0.18); color: var(--texte); font-size: 13px; font-weight: 700; text-align: left; cursor: pointer;
+}
+.pastille-pro .icone { width: 18px; height: 18px; flex: none; color: var(--orange-texte); }
+.pastille-pro[hidden] { display: none; }
+.cadenas-pro { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; border: 2px dashed rgba(255, 212, 0, 0.8); }
+.cadenas-pro[hidden] { display: none; }
+.cadenas-pro-icone { width: 48px; height: 48px; flex: none; display: grid; place-items: center; border-radius: 14px; background: var(--jaune); color: var(--violet-3); }
+.cadenas-pro-texte { flex: 1 1 220px; display: grid; gap: 4px; font-size: 14px; color: var(--texte-2); }
+.cadenas-pro-texte .bloc-titre { margin: 0; }
+.cadenas-pro .bouton-pro { flex: 0 1 auto; padding: 0 18px; }
+.tiroir-cadenas { margin-left: auto; display: inline-flex; color: var(--orange-texte); }
+.tiroir-cadenas[hidden] { display: none; }
+.tiroir-cadenas .icone { width: 16px; height: 16px; }
+.tiroir-lien[aria-current="page"] .tiroir-cadenas { color: var(--jaune); }
+
+/* Mes paiements */
+.liste-paiements { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.paiement-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px; border-radius: var(--rayon-petit); border: 1px solid var(--ligne); }
+.paiement-ligne-texte { flex: 1 1 200px; display: grid; gap: 2px; min-width: 0; font-size: 13px; color: var(--texte-2); }
+.paiement-ligne-texte strong { font-size: 15px; color: var(--texte); }
+.paiement-ligne-montant { font-family: var(--police-titre); font-size: 17px; }
+.paiement-ligne .bouton { width: auto; min-height: 44px; padding: 0 14px; font-size: 14px; }
+
+/* Questions fréquentes */
+.faq { gap: 8px; }
+.faq-question { border-radius: var(--rayon-petit); border: 1px solid var(--ligne); background: var(--carte-2); }
+.faq-question summary { min-height: 48px; display: flex; align-items: center; padding: 10px 14px; font-weight: 700; font-size: 15px; cursor: pointer; }
+.faq-question p { margin: 0; padding: 0 14px 14px; font-size: 14px; color: var(--texte-2); }
+
+/* Invitation et récapitulatif (modale) */
+.invitation-avantages { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 6px; }
+.invitation-avantages li { display: flex; align-items: center; gap: 8px; color: var(--texte); font-weight: 600; font-size: 14px; }
+.invitation-avantages .icone { width: 18px; height: 18px; flex: none; color: var(--vert-fonce); }
+:root[data-theme="sombre"] .invitation-avantages .icone { color: #3DD68C; }
+.recap-prix { margin: 0; font-size: 15px; }
+.recap-prix strong { font-family: var(--police-titre); font-size: 28px; color: var(--accent-texte); }
+.paiements-recap .paiement { height: 34px; font-size: 13px; padding: 0 10px; }
+.paiements-recap .paiement img { height: 22px; }
+
+/* Reçu A4 : jamais affiché à l'écran, seulement à l'impression (navigateur). */
+.recu-a4 { display: none; }
+
 /* ---------- 9. Ordinateur (> 1024 px) : barre latérale FIXE ---------- */
 @media (min-width: 1025px) {
   #tiroir { transform: none; box-shadow: none; width: var(--largeur-tiroir); }
@@ -1465,6 +1607,30 @@ input[aria-invalid="true"] { border-color: var(--erreur); }
   .feuille-a4, .feuille-a4 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .f-table tr, .f-parties, .f-bas, .f-fin, .f-tete { break-inside: avoid; }
   .f-titre { break-after: avoid; }
+  /* Reçu de paiement : seule la feuille du reçu est imprimée. */
+  body[data-impression="recu"] { background: #FFFFFF !important; }
+  body[data-impression="recu"] .page { margin: 0 !important; display: block; min-height: 0; }
+  body[data-impression="recu"] main.contenu { max-width: none; margin: 0; padding: 0; }
+  body[data-impression="recu"] .ecran:not(#ecran-abonnement), body[data-impression="recu"] #ecran-abonnement .abonnement > :not(#recu-a4) { display: none !important; }
+  body[data-impression="recu"] .ecran.actif { animation: none; }
+  body[data-impression="recu"] .recu-a4 { display: grid; gap: 22px; color: #17131F; font-size: 13pt; }
+  .recu-a4, .recu-a4 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .recu-tete { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 20px; border-radius: 12px; background: #6A0DAD; color: #FFFFFF; }
+  .recu-marque { display: grid; gap: 4px; }
+  .recu-marque strong { font-family: var(--police-titre); font-size: 24pt; }
+  .recu-titre { display: grid; gap: 4px; text-align: right; }
+  .recu-titre h2 { margin: 0; font-size: 16pt; color: #FFD400; }
+  .recu-client h3 { margin: 0 0 6px; font-size: 11pt; color: #5F5870; }
+  .recu-client p { margin: 0; }
+  .recu-lignes { margin: 0; display: grid; }
+  .recu-lignes div { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid #DCD3EA; break-inside: avoid; }
+  .recu-lignes dt { color: #5F5870; }
+  .recu-lignes dd { margin: 0; font-weight: 700; text-align: right; }
+  .recu-total { padding: 14px 16px; border-radius: 12px; background: #F3E9FD; break-inside: avoid; }
+  .recu-total-ligne { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-weight: 700; color: #4E0A80; }
+  .recu-total-ligne strong { font-size: 20pt; color: #6A0DAD; }
+  .recu-total p { margin: 6px 0 0; color: #5F5870; font-size: 11pt; }
+  .recu-pied { font-size: 10pt; color: #5F5870; }
 }
 
 /* ---------- 11. Respect : mouvements réduits ---------- */

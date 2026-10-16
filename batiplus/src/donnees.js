@@ -29,7 +29,15 @@ const CLES_STOCKAGE = Object.freeze({
   brouillonChantier: "bp_v1_brouillon_chantier",
   catalogue: "bp_v1_catalogue",
   numerosDevis: "bp_v1_numeros_devis",
-  clients: "bp_v1_clients"
+  clients: "bp_v1_clients",
+  /* Étape 11 : jeton d'abonnement SIGNÉ par BâtiPlus (jamais une formule en clair),
+     compteur mensuel de devis créés, dates des invitations, plus tard instant vu,
+     paiements confirmés (reçus). */
+  abonnement: "bp_v1_abonnement",
+  devisMois: "bp_v1_devis_mois",
+  relances: "bp_v1_relances",
+  horloge: "bp_v1_horloge",
+  paiements: "bp_v1_paiements"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -60,7 +68,7 @@ const NAVIGATION = Object.freeze([
   { ecran: "devis", libelle: "Mes devis", icone: "i-devis" },
   { ecran: "chantiers", libelle: "Mes chantiers", icone: "i-chantier" },
   { ecran: "clients", libelle: "Mes clients", icone: "i-clients" },
-  { ecran: "stats", libelle: "Statistiques", icone: "i-graphique" },
+  { ecran: "stats", libelle: "Statistiques", icone: "i-graphique", pro: true },
   { ecran: "prix", libelle: "Mes prix", icone: "i-prix" },
   { ecran: "profil", libelle: "Profil", icone: "i-profil" },
   { ecran: "abonnement", libelle: "Abonnement", icone: "i-abonnement" },
@@ -181,18 +189,90 @@ const TOILE = Object.freeze({
   vitesseImpulsion: 0.012
 });
 
-/* ---------- Formules d'abonnement (affichage uniquement) ----------
-   Le front ne décide JAMAIS de la formule : elle viendra du compte vérifié
-   (étapes 11-14). Une seule fonction, libelleFormule(), l'affiche partout. */
+/* ---------- Formules d'abonnement (étape 11) ----------
+   Le front ne décide JAMAIS de la formule : il ne croit qu'un jeton signé par BâtiPlus
+   (voir ABONNEMENT_JETON). Une seule fonction, libelleFormule(), affiche le nom partout.
+   Formules du moins cher au plus cher ; prix en FCFA, fixés en ligne au moment du paiement
+   (le front n'envoie jamais de montant). « illimite » = toutes les fonctions Pro. */
 const FORMULES = Object.freeze({
-  gratuit: { nom: "Gratuit", prix: 0, illimite: false },
-  semaine: { nom: "Pass semaine", prix: 750, illimite: true },
-  mensuel: { nom: "Pro mensuel", prix: 2500, illimite: true },
-  annuel: { nom: "Pro annuel", prix: 25000, illimite: true },
-  vie: { nom: "Lifetime", prix: 60000, illimite: true }
+  gratuit: Object.freeze({
+    nom: "Gratuit", prix: 0, illimite: false, dureeJours: null, periode: "pour toujours",
+    ton: "gris", icone: "i-cadeau", badge: "POUR DÉMARRER",
+    arguments: Object.freeze(["5 devis par mois", "Calculs complets NF C 15-100", "Filigrane BâtiPlus sur les devis"])
+  }),
+  semaine: Object.freeze({
+    nom: "Pass semaine", prix: 750, illimite: true, dureeJours: 7, periode: "pour 7 jours",
+    ton: "jaune", icone: "i-eclair", badge: "SANS ENGAGEMENT",
+    arguments: Object.freeze(["7 jours illimités", "Toutes les fonctions Pro", "Aucun renouvellement automatique"])
+  }),
+  mensuel: Object.freeze({
+    nom: "Pro mensuel", prix: 2500, illimite: true, dureeJours: 30, periode: "par mois",
+    ton: "violet", icone: "i-trophee", badge: "LE PLUS CHOISI", vedette: true,
+    arguments: Object.freeze(["Devis illimités", "Sans filigrane", "Votre logo sur vos devis", "Statistiques détaillées"])
+  }),
+  annuel: Object.freeze({
+    nom: "Pro annuel", prix: 25000, illimite: true, dureeJours: 365, periode: "par an",
+    ton: "vert", icone: "i-calendrier", badge: "2 MOIS OFFERTS",
+    arguments: Object.freeze(["Tout le Pro pendant 12 mois", "25 000 FCFA au lieu de 30 000 FCFA", "Un seul paiement dans l'année"])
+  }),
+  vie: Object.freeze({
+    nom: "Lifetime", prix: 60000, illimite: true, dureeJours: null, periode: "une seule fois",
+    ton: "noir", icone: "i-infini", badge: "À VIE",
+    arguments: Object.freeze(["Tout le Pro, à vie", "Un seul paiement, plus jamais de renouvellement", "Réservé aux 200 premiers abonnés"])
+  })
 });
 const FORMULE_DEFAUT = "gratuit";
 const LIMITE_GRATUITE = 5;
+/* Devise des tarifs : le paiement se fait toujours en francs CFA (XOF). */
+const DEVISE_TARIFS = "XOF";
+
+/* Jeton d'abonnement : « charge.signature » en base64url. La charge (JSON) porte
+   { v, compteId, telephone, formule, debut, fin, emisLe } ; la signature ECDSA P-256 / SHA-256
+   couvre « prefixe + charge ». Seule la clé PUBLIQUE est dans l'application (balise meta
+   batiplus-cle-abonnement, injectée depuis .env) : elle permet de vérifier, jamais de signer.
+   Un jeton retouché, expiré, d'un autre compte ou sans clé configurée → formule Gratuit. */
+const ABONNEMENT_JETON = Object.freeze({
+  version: 1,
+  prefixe: "bp-abonnement-v1.",
+  longueurMax: 2048,
+  avanceHorlogeMs: 15 * 60 * 1000
+});
+
+/* Relances, sans harceler : jamais pour un abonné (sauf rappel J-3 et J-1), au plus une
+   invitation facultative toutes les 10 minutes, aucune le jour de la création du compte. */
+const RELANCES = Object.freeze({
+  intervalleMs: 10 * 60 * 1000,
+  devisAvantDernier: LIMITE_GRATUITE - 1,
+  rappelsJours: Object.freeze([3, 1]),
+  idNotification: 3100,
+  facultatives: Object.freeze(["jour", "envoi"]),
+  heureRappel: 9,
+  delaiApresEnvoiMs: 1200
+});
+
+/* « Ce que débloque le Pro » : le cadenas de chaque fonction ouvre l'invitation. */
+const AVANTAGES_PRO = Object.freeze([
+  Object.freeze({ id: "illimite", icone: "i-devis", titre: "Devis illimités", texte: "Plus de limite de 5 devis par mois." }),
+  Object.freeze({ id: "filigrane", icone: "i-document", titre: "Sans filigrane", texte: "Vos devis sortent sans la mention BâtiPlus en pied de page." }),
+  Object.freeze({ id: "logo", icone: "i-image", titre: "Votre logo sur vos devis", texte: "Le logo de votre entreprise en haut de chaque devis, à l'écran, à l'impression et en PDF." }),
+  Object.freeze({ id: "stats", icone: "i-graphique", titre: "Statistiques détaillées", texte: "Évolution du mois, montant par client, devis par statut." })
+]);
+
+const CONFIANCE_PAIEMENT = Object.freeze([
+  Object.freeze({ icone: "i-bouclier", texte: "Paiement sécurisé" }),
+  Object.freeze({ icone: "i-eclair", texte: "Activation automatique, même la nuit" }),
+  Object.freeze({ icone: "i-cadenas-ouvert", texte: "Sans engagement" }),
+  Object.freeze({ icone: "i-recu", texte: "Un reçu pour chaque paiement" })
+]);
+
+/* Paiements confirmés reçus en ligne (étape 12) : bornes de lecture. */
+const PAIEMENTS = Object.freeze({
+  max: 200,
+  reference: /^BP-[A-Z0-9]{6,20}$/,
+  statuts: Object.freeze({ paye: "Payé", rembourse: "Remboursé" }),
+  montantMax: 1000000,
+  delaiInitiationMs: 15000
+});
 
 const STATUTS_DEVIS = Object.freeze({
   brouillon: { libelle: "Brouillon", ton: "neutre" },
@@ -260,6 +340,8 @@ const RECHERCHE = Object.freeze([
   { libelle: "Mes chantiers", detail: "Études enregistrées et brouillon", ecran: "chantiers", mots: "chantiers etudes liste dupliquer supprimer rouvrir" },
   { libelle: "Mes clients", detail: "Carnet, appeler, WhatsApp", ecran: "clients", mots: "clients carnet contact telephone appeler whatsapp ajouter" },
   { libelle: "Statistiques", detail: "Chiffre devisé, taux d'acceptation, évolution", ecran: "stats", mots: "statistiques chiffres montant taux acceptation evolution mois client graphique" },
+  { libelle: "Mon abonnement", detail: "Formules, paiement, reçus", ecran: "abonnement", mots: "abonnement formule pro gratuit pass semaine mensuel annuel lifetime vie payer paiement recu orange moov wave telecel carte" },
+  { libelle: "Mes paiements", detail: "Mon abonnement", ecran: "abonnement", cible: "carte-paiements", mots: "paiements recus historique facture" },
   { libelle: "Sauvegarde", detail: "Exporter ou importer", ecran: "profil", cible: "carte-sauvegarde", mots: "sauvegarde export import fichier" },
   { libelle: "Changer de compte", detail: "Mon profil", ecran: "profil", cible: "carte-session", mots: "compte deconnexion changer" },
   { libelle: "À propos", detail: "BâtiPlus et BRG Électro+", ecran: "a-propos", mots: "propos version concepteur brg contact whatsapp" },
@@ -425,6 +507,8 @@ const PREFIXE_NUMERO_DEVIS = "BP";
 /* Pied de page du devis : en filigrane discret pour la formule gratuite, absent pour un abonné. */
 const PIED_DEVIS = "Devis réalisé avec BâtiPlus — application conçue par BRG Électro+ · +226 05 60 86 08 · +226 68 52 42 90";
 const OPACITE_FILIGRANE = 0.22;
+/* Pied du reçu de paiement (étape 11). */
+const PIED_RECU = "BâtiPlus — application conçue par BRG Électro+ · +226 05 60 86 08 · +226 68 52 42 90";
 const SIGNATURE_WHATSAPP = "Devis réalisé avec BâtiPlus";
 /* Android : Documents/BatiPlus/Devis_BP-2026-0042_NomClient.pdf */
 const DOSSIER_PDF = "BatiPlus";

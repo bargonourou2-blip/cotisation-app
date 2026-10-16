@@ -336,13 +336,15 @@
           </ul>
         </div>
 
-        <div class="bandeau-abonnement carte cascade" data-rang="1">
+        <div class="bandeau-abonnement carte cascade" data-rang="1" id="bandeau-abonnement">
           <span class="bandeau-abonnement-icone" aria-hidden="true"><svg class="icone"><use href="#i-abonnement"/></svg></span>
           <div class="bandeau-abonnement-texte">
             <strong>Formule <span data-formule></span></strong>
             <span id="accueil-quota"></span>
+            <div class="jauge jauge-mini" id="accueil-jauge" role="progressbar" aria-labelledby="accueil-quota" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"><span class="jauge-remplie" id="accueil-jauge-remplie"></span></div>
+            <span class="bandeau-rappel" id="accueil-rappel" role="status" hidden></span>
           </div>
-          <button type="button" class="bouton bouton-pro" id="bouton-passer-pro" data-ecran="abonnement"><span class="bouton-libelle">Passer en Pro</span></button>
+          <button type="button" class="bouton bouton-pro" id="bouton-passer-pro" data-ecran="abonnement"><span class="bouton-libelle" id="libelle-passer-pro">Passer en Pro</span></button>
         </div>
 
         <button type="button" class="bouton bouton-principal bouton-chantier cascade" data-rang="2" id="bouton-nouveau-chantier" data-ecran="nouveau-chantier">
@@ -918,6 +920,7 @@
             </a>
           </div>
           <p class="aide aide-whatsapp" id="feuille-aide-whatsapp"></p>
+          <button type="button" class="pastille-pro" id="feuille-pastille-pro" data-invitation="filigrane" hidden><svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg><span>Sans filigrane et avec votre logo : formule Pro</span></button>
           <p class="brouillon-etat" id="etat-feuille" role="status" aria-live="polite"></p>
         </div>
         <div class="feuille-cadre" id="feuille-cadre">
@@ -1039,6 +1042,16 @@
           <li class="carte stats-chiffre"><span class="stats-libelle">Montant accepté</span><strong class="stats-valeur insecable" id="stats-accepte">0</strong><span class="stats-detail" id="stats-accepte-detail"></span></li>
         </ul>
 
+        <section class="carte cadenas-pro" id="stats-verrou-pro" aria-labelledby="titre-stats-pro" hidden>
+          <span class="cadenas-pro-icone" aria-hidden="true"><svg class="icone"><use href="#i-cadenas"/></svg></span>
+          <div class="cadenas-pro-texte">
+            <h2 class="bloc-titre" id="titre-stats-pro">Statistiques détaillées : fonction Pro</h2>
+            <p>Évolution du mois jour par jour, montant par client et devis par statut. Vos chiffres clés restent visibles ci-dessus.</p>
+          </div>
+          <button type="button" class="bouton bouton-pro" data-invitation="stats"><svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg><span class="bouton-libelle">Débloquer avec le Pro</span></button>
+        </section>
+
+        <div class="stats-details" id="stats-details">
         <section class="carte panneau" aria-labelledby="titre-stats-mois">
           <h2 class="bloc-titre" id="titre-stats-mois">Évolution sur le mois</h2>
           <p class="stats-resume" id="stats-mois-texte"></p>
@@ -1056,6 +1069,7 @@
           <h2 class="bloc-titre" id="titre-stats-statuts">Devis par statut</h2>
           <ul class="stats-statuts" id="stats-statuts"></ul>
         </section>
+        </div>
       </div>
     </section>
 
@@ -1136,6 +1150,73 @@
       </div>
     </section>
 
+    <section class="ecran" id="ecran-abonnement" aria-labelledby="titre-abonnement">
+      <div class="resultat abonnement">
+        <div class="resultat-titres">
+          <p class="surtitre">Mon abonnement</p>
+          <h1 class="titre-ecran" id="titre-abonnement">Abonnement</h1>
+          <p class="aide abonnement-accroche">Choisissez votre formule, payez, et tout se débloque automatiquement.</p>
+        </div>
+
+        <section class="carte ma-formule" id="carte-ma-formule" aria-labelledby="titre-ma-formule">
+          <div class="ma-formule-tete">
+            <span class="ma-formule-icone" id="ma-formule-icone" aria-hidden="true"><svg class="icone"><use id="ma-formule-symbole" href="#i-cadeau"/></svg></span>
+            <div class="ma-formule-titres">
+              <h2 class="surtitre" id="titre-ma-formule">Ma formule</h2>
+              <strong class="ma-formule-nom" data-formule></strong>
+            </div>
+          </div>
+          <p class="ma-formule-fin" id="ma-formule-fin"></p>
+          <div class="jauge" id="jauge-formule" role="progressbar" aria-labelledby="jauge-formule-libelle" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"><span class="jauge-remplie" id="jauge-formule-remplie"></span></div>
+          <p class="jauge-libelle" id="jauge-formule-libelle"></p>
+        </section>
+
+        <section class="bloc-abonnement" aria-labelledby="titre-formules">
+          <h2 class="bloc-titre" id="titre-formules">Les 5 formules</h2>
+          <p class="aide">Tarifs en FCFA. Aucun prélèvement automatique : vous payez seulement quand vous le décidez.</p>
+          <ul class="formules" id="liste-formules"></ul>
+          <p class="message-formulaire" id="msg-paiement" role="status" aria-live="polite"></p>
+          <button type="button" class="bouton bouton-secondaire" id="bouton-reessayer-paiement" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Réessayer</span></button>
+        </section>
+
+        <section class="carte panneau" id="carte-moyens-paiement" aria-labelledby="titre-moyens">
+          <h2 class="bloc-titre" id="titre-moyens">Paiement</h2>
+          <p class="aide">Payez avec le moyen de votre choix, directement depuis votre téléphone.</p>
+          <ul class="paiements" id="logos-paiement" aria-label="Moyens de paiement acceptés"></ul>
+          <ul class="confiance" id="bande-confiance" aria-label="Nos engagements"></ul>
+        </section>
+
+        <section class="carte panneau" id="carte-avantages-pro" aria-labelledby="titre-avantages">
+          <h2 class="bloc-titre" id="titre-avantages">Ce que débloque le Pro</h2>
+          <ul class="avantages-pro" id="avantages-pro"></ul>
+        </section>
+
+        <section class="carte panneau" id="carte-paiements" aria-labelledby="titre-paiements">
+          <h2 class="bloc-titre" id="titre-paiements">Mes paiements</h2>
+          <ul class="liste-paiements" id="liste-paiements"></ul>
+          <p class="vide" id="paiements-vide">Aucun paiement pour l'instant. Chaque paiement confirmé apparaîtra ici avec son reçu à imprimer.</p>
+        </section>
+
+        <section class="carte panneau faq" aria-labelledby="titre-faq">
+          <h2 class="bloc-titre" id="titre-faq">Questions fréquentes</h2>
+          <details class="faq-question">
+            <summary>Comment se passe le paiement ?</summary>
+            <p>Choisissez votre formule, puis payez avec Orange Money, Moov Money, Wave, Telecel Money ou une carte bancaire. Votre formule s'active toute seule en quelques secondes, même la nuit. Aucune preuve de paiement à envoyer.</p>
+          </details>
+          <details class="faq-question">
+            <summary>Que se passe-t-il à la fin de ma formule ?</summary>
+            <p>Rien n'est perdu : vos chantiers, vos devis et vos clients restent sur votre téléphone. Vous repassez en formule Gratuit jusqu'à votre prochain paiement. Aucun prélèvement automatique : BâtiPlus vous prévient 3 jours puis 1 jour avant la fin.</p>
+          </details>
+          <details class="faq-question">
+            <summary>Mes devis restent-ils accessibles si je ne paie pas ?</summary>
+            <p>Oui. Au-delà de 5 devis dans le mois, seule la création d'un nouveau devis est bloquée : vos anciens devis restent consultables, imprimables et partageables, et votre étude en cours est conservée.</p>
+          </details>
+        </section>
+
+        <article class="recu-a4" id="recu-a4" aria-hidden="true"></article>
+      </div>
+    </section>
+
     <section class="ecran" id="ecran-profil" aria-labelledby="titre-profil">
       <div class="colonnes">
         <h1 class="titre-ecran cascade" id="titre-profil">Mon profil</h1>
@@ -1195,6 +1276,7 @@
         <div class="carte cascade" data-rang="3" id="carte-logo">
           <h2 class="bloc-titre">Logo de l'entreprise</h2>
           <p class="aide">Affiché en haut de vos devis avec une formule Pro. JPEG, PNG ou WebP, 5 Mo maximum.</p>
+          <button type="button" class="pastille-pro" id="logo-pastille-pro" data-invitation="logo" hidden><svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg><span>Fonction Pro : votre logo n'apparaît pas encore sur vos devis</span></button>
           <div class="logo-entreprise">
             <img id="apercu-logo" alt="Logo de votre entreprise" hidden>
             <span class="logo-entreprise-vide" id="logo-vide"><svg class="icone" aria-hidden="true"><use href="#i-image"/></svg>Aucun logo</span>

@@ -280,6 +280,7 @@ function preparerEcran(id) {
   else if (id === "chantiers") ouvrirMesChantiers();
   else if (id === "clients") ouvrirMesClients();
   else if (id === "stats") ouvrirStats();
+  else if (id === "abonnement") ouvrirAbonnement();
   else if (id === "verrou") preparerVerrou();
 }
 
@@ -308,6 +309,17 @@ function creerLienTiroir(entree) {
   const libelle = document.createElement("span");
   libelle.textContent = entree.libelle;
   bouton.appendChild(libelle);
+  if (entree.pro) {
+    /* Un SVG n'obéit pas à « hidden » : le cadenas est enveloppé dans un span. */
+    const cadenas = document.createElement("span");
+    cadenas.className = "tiroir-cadenas";
+    cadenas.dataset.cadenasPro = "";
+    const texte = document.createElement("span");
+    texte.className = "visuellement-cache";
+    texte.textContent = "fonction Pro";
+    cadenas.append(creerIcone("i-cadenas"), texte);
+    bouton.appendChild(cadenas);
+  }
   li.appendChild(bouton);
   return li;
 }
@@ -1142,8 +1154,9 @@ async function ouvrirSession(compte) {
   activite.ecrite = maintenant;
   etat.verrouille = false;
   etat.compte = compte;
-  etat.abonnement = abonnementCourant();
+  etat.abonnement = await abonnementCourant();
   afficherCompte(compte);
+  planifierRappels();
 }
 
 async function fermerSession() {
@@ -1158,6 +1171,7 @@ async function fermerSession() {
   resultat.id = null;
   await supprimerValeur(CLES_STOCKAGE.session);
   etat.compte = null;
+  etat.abonnement = { formule: FORMULE_DEFAUT, fin: null, verifie: false };
   etat.abonnement = null;
   etat.travailEnCours = null;
   afficherCompte(null);
@@ -1708,11 +1722,128 @@ function initiales(nom) {
   return initialesDe(nom);
 }
 
-/* Formule : le front ne lit JAMAIS la formule dans le stockage local (on ne peut
-   pas s'attribuer le Pro en modifiant un fichier). Elle viendra du compte vérifié
-   en ligne ; d'ici là, tout compte est en formule gratuite. */
-function abonnementCourant() {
-  return { formule: FORMULE_DEFAUT, fin: null };
+/* ==========================================================================
+   Abonnement (étape 11). Le front ne croit qu'un jeton SIGNÉ par BâtiPlus et vérifié ici
+   avec la clé publique de la balise meta : modifier le stockage local (formule, date de
+   fin, compteur) ne donne jamais le Pro. Sans jeton valide : formule Gratuit.
+   ========================================================================== */
+
+const abonnementEtat = { cle: undefined, horloge: 0, formuleChoisie: "", rappels: "" };
+const CHAMPS_JETON = Object.freeze(["v", "compteId", "telephone", "formule", "debut", "fin", "emisLe"]);
+
+function base64urlEnOctets(texte) {
+  if (typeof texte !== "string" || !/^[A-Za-z0-9_-]+$/.test(texte)) return null;
+  const base64 = texte.replace(/-/g, "+").replace(/_/g, "/");
+  try {
+    return depuisBase64(base64 + "=".repeat((4 - (base64.length % 4)) % 4));
+  } catch (erreur) {
+    return null;
+  }
+}
+
+/* Clé publique ECDSA P-256 (SPKI en base64) : elle vérifie, elle ne peut pas signer. */
+async function cleAbonnementPublique() {
+  if (abonnementEtat.cle !== undefined) return abonnementEtat.cle;
+  let cle = null;
+  const meta = document.querySelector("meta[name='batiplus-cle-abonnement']");
+  const brut = meta ? (meta.getAttribute("content") || "").trim() : "";
+  if (/^[A-Za-z0-9+/]{80,200}={0,2}$/.test(brut) && window.crypto && crypto.subtle) {
+    try {
+      cle = await crypto.subtle.importKey("spki", depuisBase64(brut), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    } catch (erreur) {
+      journal("clé d'abonnement illisible");
+    }
+  }
+  abonnementEtat.cle = cle;
+  return cle;
+}
+
+/* Instant de référence : jamais avant le plus tard déjà vu sur ce téléphone ni avant
+   l'émission du jeton. Reculer l'horloge ne prolonge pas une formule et ne rend pas
+   les devis gratuits d'un mois passé. */
+function maintenantFiable() {
+  return Math.max(Date.now(), abonnementEtat.horloge);
+}
+
+async function noterHorloge() {
+  const stockee = Number(await lireValeur(CLES_STOCKAGE.horloge));
+  const vue = Number.isFinite(stockee) && stockee > 0 ? stockee : 0;
+  const maintenant = Date.now();
+  abonnementEtat.horloge = Math.max(abonnementEtat.horloge, vue, maintenant);
+  if (maintenant > vue + 60000) await ecrireValeur(CLES_STOCKAGE.horloge, String(maintenant));
+}
+
+async function verifierJetonAbonnement(jeton, compte) {
+  if (typeof jeton !== "string" || jeton.length > ABONNEMENT_JETON.longueurMax || !compte) return null;
+  const parties = jeton.split(".");
+  if (parties.length !== 2) return null;
+  const octetsCharge = base64urlEnOctets(parties[0]);
+  const signature = base64urlEnOctets(parties[1]);
+  if (!octetsCharge || !signature || signature.length !== 64) return null;
+  const cle = await cleAbonnementPublique();
+  if (!cle) return null;
+  let signe = false;
+  try {
+    signe = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, cle, signature, new TextEncoder().encode(ABONNEMENT_JETON.prefixe + parties[0]));
+  } catch (erreur) {
+    signe = false;
+  }
+  if (!signe) return null;
+  let charge = null;
+  try {
+    charge = JSON.parse(new TextDecoder().decode(octetsCharge));
+  } catch (erreur) {
+    return null;
+  }
+  if (!charge || typeof charge !== "object" || Array.isArray(charge)) return null;
+  if (Object.keys(charge).some((nom) => !CHAMPS_JETON.includes(nom))) return null;
+  const formule = typeof charge.formule === "string" && charge.formule !== FORMULE_DEFAUT
+    && Object.prototype.hasOwnProperty.call(FORMULES, charge.formule) ? charge.formule : null;
+  if (charge.v !== ABONNEMENT_JETON.version || charge.compteId !== compte.id || charge.telephone !== compte.telephone || !formule) return null;
+  if (!dateIsoValide(charge.debut) || !dateIsoValide(charge.emisLe)) return null;
+  const sansFin = FORMULES[formule].dureeJours === null;
+  if (sansFin ? charge.fin !== null : !dateIsoValide(charge.fin)) return null;
+  const emis = Date.parse(charge.emisLe);
+  /* Jeton « émis dans le futur » : l'horloge du téléphone a été reculée. */
+  if (emis > Date.now() + ABONNEMENT_JETON.avanceHorlogeMs) return null;
+  abonnementEtat.horloge = Math.max(abonnementEtat.horloge, emis);
+  const fin = sansFin ? null : Date.parse(charge.fin);
+  if (fin !== null && (fin <= Date.parse(charge.debut) || fin <= maintenantFiable())) return null;
+  return { formule, debut: charge.debut, fin: sansFin ? null : charge.fin, emisLe: charge.emisLe, verifie: true };
+}
+
+/* La formule du compte ouvert : jeton signé valide, sinon Gratuit. */
+async function abonnementCourant() {
+  const gratuit = { formule: FORMULE_DEFAUT, fin: null, verifie: false };
+  const compte = etat.compte;
+  if (!compte) return gratuit;
+  await noterHorloge();
+  const jetons = await lireJson(CLES_STOCKAGE.abonnement);
+  const jeton = jetons && typeof jetons === "object" && !Array.isArray(jetons)
+    && Object.prototype.hasOwnProperty.call(jetons, compte.id) ? jetons[compte.id] : null;
+  return (await verifierJetonAbonnement(jeton, compte)) || gratuit;
+}
+
+async function actualiserAbonnement() {
+  if (!etat.compte) return;
+  etat.abonnement = await abonnementCourant();
+  afficherDroitsPro();
+  planifierRappels();
+}
+
+/* Dépôt d'un jeton reçu en ligne après un paiement confirmé (étape 12) : refusé s'il ne se vérifie pas. */
+async function enregistrerJetonAbonnement(jeton) {
+  const compte = etat.compte;
+  if (!compte || !(await verifierJetonAbonnement(jeton, compte))) return false;
+  const brut = await lireJson(CLES_STOCKAGE.abonnement);
+  const suivant = {};
+  if (brut && typeof brut === "object" && !Array.isArray(brut)) {
+    for (const [id, valeur] of Object.entries(brut)) if (typeof valeur === "string" && /^[a-z0-9-]{8,64}$/i.test(id)) suivant[id] = valeur;
+  }
+  suivant[compte.id] = jeton;
+  if (!await ecrireValeur(CLES_STOCKAGE.abonnement, JSON.stringify(suivant))) return false;
+  await actualiserAbonnement();
+  return true;
 }
 
 /* LA seule fonction qui produit le nom de la formule : accueil, profil, menu, abonnement. */
@@ -1725,7 +1856,635 @@ function joursRestants(abonnement) {
   if (!abonnement || !abonnement.fin) return null;
   const fin = Date.parse(abonnement.fin);
   if (Number.isNaN(fin)) return null;
-  return Math.max(0, Math.ceil((fin - Date.now()) / 86400000));
+  return Math.max(0, Math.ceil((fin - maintenantFiable()) / 86400000));
+}
+
+function dateLongue(instant, avecAnnee) {
+  return dateFrancaise(instant, avecAnnee);
+}
+
+function cleMoisLocal(instant) {
+  const d = new Date(instant);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+}
+
+function cleJourLocal(instant) {
+  const d = new Date(instant);
+  return cleMoisLocal(instant) + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function premierDuMoisSuivant(instant) {
+  const d = new Date(instant);
+  return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+}
+
+function nomDuMois(instant) {
+  return new Intl.DateTimeFormat("fr-FR", { month: "long" }).format(new Date(instant));
+}
+
+/* ---------- Quota de la formule Gratuit : 5 devis créés par mois ----------
+   Compteur du mois ET devis du mois : supprimer un devis ne rend pas de devis gratuit. */
+
+function compteursPropres(brut) {
+  const propres = {};
+  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return propres;
+  for (const [id, valeur] of Object.entries(brut)) {
+    if (/^[a-z0-9-]{8,64}$/i.test(id) && valeur && typeof valeur === "object" && typeof valeur.mois === "string"
+      && Number.isInteger(valeur.nombre) && valeur.nombre >= 0 && valeur.nombre <= 100000) propres[id] = { mois: valeur.mois, nombre: valeur.nombre };
+  }
+  return propres;
+}
+
+async function devisCreesCeMois(compteId) {
+  const mois = cleMoisLocal(maintenantFiable());
+  const dansLeMois = (await lireDevis(compteId)).filter((d) => cleMoisLocal(Date.parse(d.creeLe)) === mois).length;
+  const compteurs = compteursPropres(await lireJson(CLES_STOCKAGE.devisMois));
+  const note = compteurs[compteId] && compteurs[compteId].mois === mois ? compteurs[compteId].nombre : 0;
+  return Math.max(dansLeMois, note);
+}
+
+async function noterDevisCree(compteId) {
+  const mois = cleMoisLocal(maintenantFiable());
+  const compteurs = compteursPropres(await lireJson(CLES_STOCKAGE.devisMois));
+  const precedent = compteurs[compteId] && compteurs[compteId].mois === mois ? compteurs[compteId].nombre : 0;
+  const nombre = Math.max(await devisCreesCeMois(compteId), precedent + 1);
+  compteurs[compteId] = { mois, nombre };
+  await ecrireValeur(CLES_STOCKAGE.devisMois, JSON.stringify(compteurs));
+  return nombre;
+}
+
+/* Avant toute création de devis. Gratuit au-delà de 5 devis dans le mois : création
+   bloquée, invitation obligatoire ; l'étude et les anciens devis restent intacts. */
+async function autoriserNouveauDevis(nomTravail) {
+  await actualiserAbonnement();
+  if (formulePayante(etat.abonnement.formule)) return true;
+  if (await devisCreesCeMois(etat.compte.id) < LIMITE_GRATUITE) return true;
+  await inviterAbonnement("bloque", { travail: nomTravail });
+  return false;
+}
+
+async function apresDevisCree() {
+  const nombre = await noterDevisCree(etat.compte.id);
+  if (!formulePayante(etat.abonnement.formule) && nombre === RELANCES.devisAvantDernier) inviterAbonnement("quatrieme");
+}
+
+/* ---------- Invitations à l'abonnement (relances sans harceler) ---------- */
+
+async function lireRelances() {
+  const brut = await lireJson(CLES_STOCKAGE.relances);
+  const tout = {};
+  if (brut && typeof brut === "object" && !Array.isArray(brut)) {
+    for (const [id, valeur] of Object.entries(brut)) {
+      if (/^[a-z0-9-]{8,64}$/i.test(id) && valeur && typeof valeur === "object" && !Array.isArray(valeur)) {
+        tout[id] = { jour: typeof valeur.jour === "string" ? valeur.jour.slice(0, 10) : "", derniere: Number.isFinite(valeur.derniere) ? valeur.derniere : 0 };
+      }
+    }
+  }
+  return tout;
+}
+
+async function inviterAbonnement(raison, details) {
+  const compte = etat.compte;
+  if (!compte || etat.verrouille || !ecranExiste("abonnement")) return;
+  if (formulePayante((etat.abonnement || {}).formule)) return;
+  const maintenant = Date.now();
+  const relances = await lireRelances();
+  const propre = relances[compte.id] || { jour: "", derniere: 0 };
+  if (RELANCES.facultatives.includes(raison)) {
+    if (!$("modale").hidden || maintenant - propre.derniere < RELANCES.intervalleMs) return;
+    if (raison === "jour" && (propre.jour === cleJourLocal(maintenant) || cleJourLocal(Date.parse(compte.creeLe)) === cleJourLocal(maintenant))) return;
+  }
+  relances[compte.id] = { jour: raison === "jour" ? cleJourLocal(maintenant) : propre.jour, derniere: maintenant };
+  await ecrireValeur(CLES_STOCKAGE.relances, JSON.stringify(relances));
+  const invitation = contenuInvitation(raison, details || {});
+  const voir = await new Promise((resoudre) => {
+    ouvrirModale(invitation.titre, invitation.contenu, { ok: "Voir les formules", annuler: invitation.annuler, resoudre });
+  });
+  if (voir) montrer("abonnement");
+}
+
+function contenuInvitation(raison, details) {
+  const fragment = document.createDocumentFragment();
+  const paragraphe = (texte, classe) => {
+    const p = document.createElement("p");
+    if (classe) p.className = classe;
+    p.textContent = texte;
+    fragment.appendChild(p);
+  };
+  const maintenant = maintenantFiable();
+  const mois = nomDuMois(maintenant);
+  const reprise = dateLongue(premierDuMoisSuivant(maintenant), false);
+  let titre = "Passez en Pro";
+  let annuler = "Plus tard";
+  if (raison === "bloque") {
+    titre = "Vos " + LIMITE_GRATUITE + " devis gratuits sont utilisés";
+    annuler = "Fermer";
+    paragraphe("Vous avez créé " + LIMITE_GRATUITE + " devis en " + mois + " : la création d'un nouveau devis est bloquée jusqu'au " + reprise + ".");
+    paragraphe((details.travail ? "Votre étude « " + details.travail + " » est conservée" : "Votre travail est conservé")
+      + " et vos anciens devis restent consultables, imprimables et partageables.");
+    paragraphe("Passez en Pro pour créer ce devis tout de suite.");
+  } else if (raison === "quatrieme") {
+    titre = "Il vous reste 1 devis gratuit";
+    paragraphe("Vous avez créé " + RELANCES.devisAvantDernier + " devis en " + mois + ". Il vous reste 1 devis gratuit jusqu'au " + reprise + ".");
+  } else if (raison === "envoi" || raison === "filigrane") {
+    titre = "Vos devis, à votre image";
+    paragraphe("Avec le Pro, vos devis partent sans filigrane et avec le logo de votre entreprise.");
+  } else if (raison === "logo") {
+    titre = "Votre logo sur vos devis";
+    paragraphe("Avec le Pro, le logo de votre entreprise apparaît en haut de chaque devis, à l'écran, à l'impression et en PDF.");
+  } else if (raison === "stats") {
+    titre = "Statistiques détaillées";
+    paragraphe("Suivez votre activité jour par jour, votre montant par client et vos devis par statut avec le Pro.");
+  } else {
+    paragraphe("Devis illimités, sans filigrane, avec votre logo et vos statistiques détaillées.");
+  }
+  const liste = document.createElement("ul");
+  liste.className = "invitation-avantages";
+  liste.append(...AVANTAGES_PRO.map((avantage) => {
+    const li = document.createElement("li");
+    const libelle = document.createElement("span");
+    libelle.textContent = avantage.titre;
+    li.append(creerIcone("i-coche"), libelle);
+    return li;
+  }));
+  fragment.appendChild(liste);
+  paragraphe("À partir de " + formaterMontant(FORMULES.semaine.prix, DEVISE_TARIFS) + " pour 7 jours, sans engagement.", "aide");
+  return { titre, contenu: fragment, annuler };
+}
+
+/* 1re ouverture du jour de l'accueil (jamais le jour de la création du compte). */
+function relanceDuJour() {
+  setTimeout(() => {
+    if (montrer.ecranCourant === ECRAN_DEPART) inviterAbonnement("jour");
+  }, 900);
+}
+
+function programmerInvitationEnvoi() {
+  setTimeout(() => inviterAbonnement("envoi"), RELANCES.delaiApresEnvoiMs);
+}
+
+function surApresImpression() {
+  if (document.body.dataset.impression === "recu") {
+    delete document.body.dataset.impression;
+    $("recu-a4").replaceChildren();
+    return;
+  }
+  if (montrer.ecranCourant === "feuille") programmerInvitationEnvoi();
+}
+
+function surClicEnvoiWhatsApp(evenement) {
+  const lien = evenement.target.closest("a[href^='https://wa.me/']");
+  if (lien && lien.closest("#ecran-feuille, #ecran-fiche-devis, #liste-devis")) programmerInvitationEnvoi();
+}
+
+/* Fonctions Pro = cadenas : un toucher ouvre l'invitation. */
+function surClicInvitation(evenement) {
+  const cible = evenement.target.closest("[data-invitation]");
+  if (!cible || cible.disabled) return;
+  vibrer();
+  inviterAbonnement(cible.dataset.invitation);
+}
+
+function afficherDroitsPro() {
+  const pro = formulePayante((etat.abonnement || {}).formule);
+  document.querySelectorAll(".pastille-pro").forEach((element) => { element.hidden = pro || !etat.compte; });
+  document.querySelectorAll("[data-cadenas-pro]").forEach((element) => { element.hidden = pro; });
+  document.querySelectorAll("[data-formule]").forEach((element) => { element.textContent = libelleFormule(etat.abonnement); });
+}
+
+/* ---------- Écran Mon abonnement ---------- */
+
+async function ouvrirAbonnement() {
+  if (!etat.compte) return;
+  await actualiserAbonnement();
+  await afficherMaFormule();
+  afficherFormules();
+  if (!$("logos-paiement").childElementCount) {
+    $("logos-paiement").replaceChildren(...creerLogosPaiement());
+    afficherConfiance();
+  }
+  afficherAvantagesPro();
+  await afficherPaiements();
+}
+
+function texteFinFormule(abonnement) {
+  const formule = FORMULES[abonnement.formule] || FORMULES[FORMULE_DEFAUT];
+  if (!formule.illimite) return "Votre abonnement gratuit n'a pas de date de fin.";
+  if (!abonnement.fin) return "Votre formule " + formule.nom + " n'a pas de date de fin : le Pro est à vous pour toujours.";
+  return "Votre " + formule.nom + " se termine le " + dateLongue(Date.parse(abonnement.fin), true) + " — "
+    + accorderNombre(joursRestants(abonnement), "jour restant", "jours restants") + ".";
+}
+
+async function afficherMaFormule() {
+  const abonnement = etat.abonnement;
+  const id = Object.prototype.hasOwnProperty.call(FORMULES, abonnement.formule) ? abonnement.formule : FORMULE_DEFAUT;
+  const formule = FORMULES[id];
+  $("carte-ma-formule").dataset.ton = formule.ton;
+  $("ma-formule-symbole").setAttribute("href", "#" + formule.icone);
+  ecrireInsecable($("ma-formule-fin"), texteFinFormule(abonnement));
+  let valeur = 1;
+  let maximum = 1;
+  let libelle = "Accès Pro à vie, sans renouvellement.";
+  let niveau = "ok";
+  if (!formule.illimite) {
+    const maintenant = maintenantFiable();
+    const utilises = Math.min(await devisCreesCeMois(etat.compte.id), LIMITE_GRATUITE);
+    const restants = LIMITE_GRATUITE - utilises;
+    valeur = utilises;
+    maximum = LIMITE_GRATUITE;
+    niveau = restants === 0 ? "plein" : restants === 1 ? "presque" : "ok";
+    libelle = utilises + " devis sur " + LIMITE_GRATUITE + " utilisés en " + nomDuMois(maintenant) + " — "
+      + (restants ? accorderNombre(restants, "devis gratuit restant", "devis gratuits restants") : "plus aucun devis gratuit")
+      + " jusqu'au " + dateLongue(premierDuMoisSuivant(maintenant), false) + ".";
+  } else if (abonnement.fin) {
+    const jours = joursRestants(abonnement);
+    maximum = formule.dureeJours;
+    valeur = Math.min(jours, maximum);
+    niveau = jours <= Math.max(...RELANCES.rappelsJours) ? "presque" : "ok";
+    libelle = accorderNombre(jours, "jour restant", "jours restants") + " sur " + maximum + ".";
+  }
+  const jauge = $("jauge-formule");
+  jauge.setAttribute("aria-valuemax", String(maximum));
+  jauge.setAttribute("aria-valuenow", String(valeur));
+  jauge.dataset.niveau = niveau;
+  $("jauge-formule-remplie").style.setProperty("--remplissage", String(Math.min(1, valeur / maximum)));
+  ecrireInsecable($("jauge-formule-libelle"), libelle);
+}
+
+function libelleBoutonFormule(id, actuelle) {
+  if (id === actuelle) return "Ma formule actuelle";
+  if (id === FORMULE_DEFAUT) return "Formule de base";
+  if (FORMULES[actuelle] && FORMULES[actuelle].illimite && FORMULES[actuelle].dureeJours === null) return "Inclus dans votre " + FORMULES[actuelle].nom;
+  return "Choisir " + FORMULES[id].nom;
+}
+
+function creerCarteFormule(id, actuelle) {
+  const formule = FORMULES[id];
+  const li = document.createElement("li");
+  li.className = "formule formule-" + formule.ton + (formule.vedette ? " formule-vedette" : "") + (id === actuelle ? " formule-actuelle" : "");
+  li.dataset.formuleCarte = id;
+  const badge = document.createElement("span");
+  badge.className = "formule-badge";
+  badge.textContent = formule.badge;
+  const tete = document.createElement("div");
+  tete.className = "formule-tete";
+  const icone = document.createElement("span");
+  icone.className = "formule-icone";
+  icone.appendChild(creerIcone(formule.icone));
+  const nom = document.createElement("h3");
+  nom.className = "formule-nom";
+  nom.textContent = formule.nom;
+  tete.append(icone, nom);
+  const prix = document.createElement("p");
+  prix.className = "formule-prix";
+  const montant = document.createElement("strong");
+  montant.className = "insecable";
+  montant.textContent = formaterMontant(formule.prix, DEVISE_TARIFS);
+  const periode = document.createElement("span");
+  periode.textContent = formule.periode;
+  prix.append(montant, periode);
+  const liste = document.createElement("ul");
+  liste.className = "formule-arguments";
+  liste.append(...formule.arguments.map((argument) => {
+    const ligne = document.createElement("li");
+    const texte = document.createElement("span");
+    ecrireInsecable(texte, argument);
+    ligne.append(creerIcone("i-coche"), texte);
+    return ligne;
+  }));
+  const bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.className = "bouton " + (formule.vedette ? "bouton-principal" : "bouton-secondaire");
+  bouton.dataset.choisirFormule = id;
+  const libelle = document.createElement("span");
+  libelle.className = "bouton-libelle";
+  libelle.textContent = libelleBoutonFormule(id, actuelle);
+  bouton.appendChild(libelle);
+  bouton.disabled = libelle.textContent.indexOf("Choisir ") !== 0;
+  li.append(badge, tete, prix, liste, bouton);
+  return li;
+}
+
+function afficherFormules() {
+  const actuelle = etat.abonnement.formule;
+  $("liste-formules").replaceChildren(...Object.keys(FORMULES).map((id) => creerCarteFormule(id, actuelle)));
+}
+
+/* Logo officiel s'il est fourni ; sinon pastille unie à la couleur de la marque, nom en texte. */
+function creerLogosPaiement() {
+  return MOYENS_PAIEMENT.map((moyen) => {
+    const li = document.createElement("li");
+    li.className = "paiement";
+    if (LOGOS_PAIEMENT_FOURNIS.includes(moyen.id)) {
+      const image = document.createElement("img");
+      image.alt = moyen.nom;
+      image.height = 26;
+      image.decoding = "async";
+      image.addEventListener("error", () => pastillePaiement(li, moyen), { once: true });
+      image.src = "images/paiement/" + moyen.id + ".webp";
+      li.appendChild(image);
+    } else {
+      pastillePaiement(li, moyen);
+    }
+    return li;
+  });
+}
+
+function pastillePaiement(li, moyen) {
+  li.classList.add("paiement-pastille");
+  li.dataset.marque = moyen.id;
+  li.replaceChildren(document.createTextNode(moyen.nom));
+}
+
+function afficherConfiance() {
+  $("bande-confiance").replaceChildren(...CONFIANCE_PAIEMENT.map((engagement) => {
+    const li = document.createElement("li");
+    const texte = document.createElement("span");
+    texte.textContent = engagement.texte;
+    li.append(creerIcone(engagement.icone), texte);
+    return li;
+  }));
+}
+
+function afficherAvantagesPro() {
+  const pro = formulePayante(etat.abonnement.formule);
+  $("avantages-pro").replaceChildren(...AVANTAGES_PRO.map((avantage) => {
+    const li = document.createElement("li");
+    li.className = "avantage-pro";
+    li.dataset.etat = pro ? "inclus" : "verrouille";
+    const icone = document.createElement("span");
+    icone.className = "avantage-icone";
+    icone.appendChild(creerIcone(avantage.icone));
+    const texte = document.createElement("div");
+    texte.className = "avantage-texte";
+    const titre = document.createElement("strong");
+    titre.textContent = avantage.titre;
+    const detail = document.createElement("span");
+    detail.textContent = avantage.texte;
+    texte.append(titre, detail);
+    let etatAvantage;
+    if (pro) {
+      etatAvantage = document.createElement("span");
+      etatAvantage.className = "avantage-etat";
+      etatAvantage.append(creerIcone("i-coche"), document.createTextNode("Inclus"));
+    } else {
+      etatAvantage = document.createElement("button");
+      etatAvantage.type = "button";
+      etatAvantage.className = "avantage-etat avantage-cadenas";
+      etatAvantage.dataset.invitation = avantage.id;
+      etatAvantage.setAttribute("aria-label", "Débloquer : " + avantage.titre);
+      etatAvantage.append(creerIcone("i-cadenas"), document.createTextNode("Débloquer"));
+    }
+    li.append(icone, texte, etatAvantage);
+    return li;
+  }));
+}
+
+/* ---------- Mes paiements et reçus ---------- */
+
+function paiementValide(source) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+  if (typeof source.reference !== "string" || !PAIEMENTS.reference.test(source.reference)) return null;
+  if (typeof source.formule !== "string" || source.formule === FORMULE_DEFAUT || !Object.prototype.hasOwnProperty.call(FORMULES, source.formule)) return null;
+  if (!Number.isInteger(source.montant) || source.montant < 0 || source.montant > PAIEMENTS.montantMax) return null;
+  if (!dateIsoValide(source.payeLe) || typeof source.statut !== "string" || !Object.prototype.hasOwnProperty.call(PAIEMENTS.statuts, source.statut)) return null;
+  const moyen = MOYENS_PAIEMENT.find((m) => m.id === source.moyen);
+  return {
+    reference: source.reference, formule: source.formule, montant: source.montant, payeLe: source.payeLe, statut: source.statut,
+    moyen: moyen ? moyen.nom : "Paiement en ligne",
+    debut: dateIsoValide(source.debut) ? source.debut : "",
+    fin: dateIsoValide(source.fin) ? source.fin : ""
+  };
+}
+
+async function lirePaiements() {
+  const brut = await lireJson(CLES_STOCKAGE.paiements);
+  const id = etat.compte.id;
+  const liste = brut && typeof brut === "object" && !Array.isArray(brut) && Object.prototype.hasOwnProperty.call(brut, id) && Array.isArray(brut[id]) ? brut[id] : [];
+  return liste.slice(0, PAIEMENTS.max).map(paiementValide).filter(Boolean).sort((a, b) => Date.parse(b.payeLe) - Date.parse(a.payeLe));
+}
+
+async function afficherPaiements() {
+  const paiements = await lirePaiements();
+  $("liste-paiements").replaceChildren(...paiements.map((paiement) => {
+    const li = document.createElement("li");
+    li.className = "paiement-ligne";
+    const texte = document.createElement("div");
+    texte.className = "paiement-ligne-texte";
+    const nom = document.createElement("strong");
+    nom.textContent = FORMULES[paiement.formule].nom;
+    const detail = document.createElement("span");
+    ecrireInsecable(detail, dateLongue(Date.parse(paiement.payeLe), true) + " · " + paiement.moyen + " · " + PAIEMENTS.statuts[paiement.statut]);
+    texte.append(nom, detail);
+    const montant = document.createElement("strong");
+    montant.className = "paiement-ligne-montant insecable";
+    montant.textContent = formaterMontant(paiement.montant, DEVISE_TARIFS);
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "bouton bouton-discret";
+    bouton.dataset.recu = paiement.reference;
+    bouton.setAttribute("aria-label", "Imprimer le reçu " + paiement.reference);
+    const libelle = document.createElement("span");
+    libelle.className = "bouton-libelle";
+    libelle.textContent = "Reçu";
+    bouton.append(creerIcone("i-recu"), libelle);
+    li.append(texte, montant, bouton);
+    return li;
+  }));
+  $("paiements-vide").hidden = paiements.length > 0;
+}
+
+function remplirRecuA4(m) {
+  const element = (balise, classe, texte) => {
+    const noeud = document.createElement(balise);
+    if (classe) noeud.className = classe;
+    if (texte !== undefined) noeud.textContent = texte;
+    return noeud;
+  };
+  const tete = element("header", "recu-tete");
+  const marque = element("div", "recu-marque");
+  marque.append(element("strong", "", "BâtiPlus"), element("span", "", m.emis));
+  const titre = element("div", "recu-titre");
+  titre.append(element("h2", "", m.titre), element("span", "", m.numero));
+  tete.append(marque, titre);
+  const client = element("section", "recu-client");
+  client.append(element("h3", "", "Reçu établi pour"), ...m.client.map((ligne) => element("p", "", ligne)));
+  const liste = element("dl", "recu-lignes");
+  m.lignes.forEach(([libelle, valeur]) => {
+    const groupe = element("div");
+    groupe.append(element("dt", "", libelle), element("dd", "", valeur));
+    liste.appendChild(groupe);
+  });
+  const total = element("section", "recu-total");
+  const ligneTotal = element("div", "recu-total-ligne");
+  ligneTotal.append(element("span", "", "Montant payé"), element("strong", "insecable", m.montant));
+  total.append(ligneTotal, element("p", "", m.lettres));
+  $("recu-a4").replaceChildren(tete, client, liste, total, element("footer", "recu-pied", m.pied));
+}
+
+async function imprimerRecu(reference) {
+  const paiement = (await lirePaiements()).find((p) => p.reference === reference);
+  if (!paiement) return;
+  const compte = etat.compte;
+  const modele = modeleRecu(paiement, { nom: compte.nom, entreprise: compte.entreprise, telephone: telephoneAffiche(compte.telephone) });
+  vibrer();
+  if (estNatif()) {
+    /* La vue web d'Android n'imprime pas : reçu en PDF, puis partage (impression, WhatsApp…). */
+    try {
+      const nom = "Recu_" + paiement.reference + ".pdf";
+      const { uri } = await enregistrerPdfNatif(creerPdfRecu(modele), nom);
+      const partage = plugin("Share");
+      if (partage) await partage.share({ title: modele.titrePdf, files: [uri], dialogTitle: "Imprimer ou partager le reçu" });
+      else afficherToast("Reçu enregistré : " + nom);
+    } catch (erreur) {
+      if (!annulationPartage(erreur)) afficherToast("Le reçu n'a pas pu être créé. Réessayez.");
+    }
+    return;
+  }
+  remplirRecuA4(modele);
+  document.body.dataset.impression = "recu";
+  try {
+    window.print();
+  } catch (erreur) {
+    journal("impression impossible");
+  }
+}
+
+function surClicPaiements(evenement) {
+  const bouton = evenement.target.closest("[data-recu]");
+  if (bouton) imprimerRecu(bouton.dataset.recu);
+}
+
+/* ---------- Choix d'une formule et paiement (3 touchers) ----------
+   Le front n'envoie QUE le nom de la formule : le montant est fixé en ligne. */
+
+function surClicFormules(evenement) {
+  const bouton = evenement.target.closest("[data-choisir-formule]");
+  if (bouton && !bouton.disabled) surChoisirFormule(bouton.dataset.choisirFormule);
+}
+
+async function surChoisirFormule(id) {
+  if (id === FORMULE_DEFAUT || !Object.prototype.hasOwnProperty.call(FORMULES, id)) return;
+  const formule = FORMULES[id];
+  const contenu = document.createDocumentFragment();
+  const prix = document.createElement("p");
+  prix.className = "recap-prix";
+  const montant = document.createElement("strong");
+  montant.className = "insecable";
+  montant.textContent = formaterMontant(formule.prix, DEVISE_TARIFS);
+  prix.append(montant, document.createTextNode(" " + formule.periode));
+  const liste = document.createElement("ul");
+  liste.className = "invitation-avantages";
+  liste.append(...formule.arguments.map((argument) => {
+    const li = document.createElement("li");
+    const texte = document.createElement("span");
+    texte.textContent = argument;
+    li.append(creerIcone("i-coche"), texte);
+    return li;
+  }));
+  const moyens = document.createElement("ul");
+  moyens.className = "paiements paiements-recap";
+  moyens.setAttribute("aria-label", "Moyens de paiement acceptés");
+  moyens.append(...creerLogosPaiement());
+  const aide = document.createElement("p");
+  aide.className = "aide";
+  aide.textContent = "La page de paiement sécurisée s'ouvre ; votre formule s'active toute seule dès que le paiement est confirmé.";
+  contenu.append(prix, liste, moyens, aide);
+  const payer = await new Promise((resoudre) => ouvrirModale(formule.nom, contenu, { ok: "Payer maintenant", annuler: "Retour", resoudre }));
+  if (payer) await lancerPaiement(id);
+}
+
+function adressePaiementSure(texte) {
+  if (typeof texte !== "string" || texte.length > 2048) return "";
+  try {
+    const url = new URL(texte);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : "";
+  } catch (erreur) {
+    return "";
+  }
+}
+
+function messagePaiement(texte, reessayer) {
+  $("msg-paiement").textContent = texte;
+  $("bouton-reessayer-paiement").hidden = !reessayer;
+  afficherToast(texte);
+}
+
+async function lancerPaiement(id) {
+  if (id === FORMULE_DEFAUT || !Object.prototype.hasOwnProperty.call(FORMULES, id)) return;
+  abonnementEtat.formuleChoisie = id;
+  if (navigator.onLine === false) {
+    messagePaiement("Pas de connexion internet : le paiement demande une connexion. Touchez « Réessayer » une fois connecté.", true);
+    return;
+  }
+  messagePaiement("Préparation du paiement…", false);
+  const controleur = new AbortController();
+  const delai = setTimeout(() => controleur.abort(), PAIEMENTS.delaiInitiationMs);
+  try {
+    const reponse = await fetch(API_URL + "/api/paiements/initier", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ formule: id }),
+      credentials: "omit",
+      cache: "no-store",
+      signal: controleur.signal
+    });
+    const donnees = reponse.ok ? await reponse.json() : null;
+    const adresse = donnees ? adressePaiementSure(donnees.urlPaiement) : "";
+    const reference = donnees && typeof donnees.reference === "string" && PAIEMENTS.reference.test(donnees.reference) ? donnees.reference : "";
+    if (!adresse || !reference) throw new Error("réponse inattendue");
+    const navigateur = plugin("Browser");
+    if (navigateur) await navigateur.open({ url: adresse });
+    else window.open(adresse, "_blank", "noopener,noreferrer");
+    messagePaiement("Page de paiement ouverte (référence " + reference + "). Votre formule s'activera dès la confirmation du paiement.", false);
+  } catch (erreur) {
+    journal("paiement non démarré", erreur && erreur.message);
+    messagePaiement("Le paiement n'a pas pu démarrer. Vérifiez votre connexion internet puis touchez « Réessayer ».", true);
+  } finally {
+    clearTimeout(delai);
+  }
+}
+
+/* ---------- Rappels J-3 et J-1 (seules relances d'un abonné) ---------- */
+
+function texteRappel(abonnement) {
+  const formule = FORMULES[abonnement && abonnement.formule];
+  if (!formule || !formule.illimite || !abonnement.fin) return "";
+  const jours = joursRestants(abonnement);
+  if (jours > Math.max(...RELANCES.rappelsJours)) return "";
+  return "Votre " + formule.nom + " se termine dans " + accorderNombre(Math.max(1, jours), "jour", "jours") + ", le "
+    + dateLongue(Date.parse(abonnement.fin), false) + ". Renouvelez pour garder vos devis illimités.";
+}
+
+async function planifierRappels() {
+  const notifications = plugin("LocalNotifications");
+  if (!notifications || !etat.compte || !etat.abonnement) return;
+  const abonnement = etat.abonnement;
+  const formule = FORMULES[abonnement.formule] || FORMULES[FORMULE_DEFAUT];
+  const cle = etat.compte.id + "|" + abonnement.formule + "|" + (abonnement.fin || "");
+  if (abonnementEtat.rappels === cle) return;
+  abonnementEtat.rappels = cle;
+  try {
+    await notifications.cancel({ notifications: RELANCES.rappelsJours.map((j) => ({ id: RELANCES.idNotification + j })) });
+    if (!formule.illimite || !abonnement.fin) return;
+    const fin = Date.parse(abonnement.fin);
+    const aPlanifier = RELANCES.rappelsJours.map((j) => {
+      const jour = new Date(fin - j * 86400000);
+      jour.setHours(RELANCES.heureRappel, 0, 0, 0);
+      return {
+        id: RELANCES.idNotification + j,
+        title: "BâtiPlus",
+        body: "Votre " + formule.nom + " se termine dans " + accorderNombre(j, "jour", "jours") + ", le " + dateLongue(fin, false) + ". Renouvelez depuis Mon abonnement.",
+        schedule: { at: jour, allowWhileIdle: true }
+      };
+    }).filter((n) => n.schedule.at.getTime() > Date.now());
+    if (!aPlanifier.length) return;
+    let permission = await notifications.checkPermissions();
+    if (permission.display === "prompt" || permission.display === "prompt-with-rationale") permission = await notifications.requestPermissions();
+    if (permission.display === "granted") await notifications.schedule({ notifications: aPlanifier });
+  } catch (erreur) {
+    journal("rappels non planifiés");
+  }
 }
 
 function afficherImage(img, donnees) {
@@ -1744,7 +2503,7 @@ function afficherCompte(compte) {
   document.querySelectorAll("[data-nom]").forEach((el) => { ecrireInsecable(el, nom); });
   document.querySelectorAll("[data-initiales]").forEach((el) => { el.textContent = compte ? initiales(nom) : ""; });
   document.querySelectorAll("[data-photo]").forEach((img) => afficherImage(img, compte ? compte.photo : ""));
-  document.querySelectorAll("[data-formule]").forEach((el) => { el.textContent = libelleFormule(etat.abonnement); });
+  afficherDroitsPro();
   $("bouton-avatar").setAttribute("aria-label", compte ? "Mon profil — " + nom : "Mon profil");
   $("profil-telephone").textContent = compte ? formaterTelephone(compte.telephone, compte.pays) : "";
 }
@@ -1953,8 +2712,7 @@ async function afficherAccueil() {
   $("accueil-telephone").textContent = formaterTelephone(compte.telephone, compte.pays);
   $("accueil-ville").textContent = compte.ville;
   $("accueil-date").textContent = dateDuJour();
-  $("accueil-quota").textContent = formule.illimite ? "Devis illimités" : stats.mois + " / " + LIMITE_GRATUITE + " devis ce mois";
-  $("bouton-passer-pro").hidden = formule.illimite || !ecranExiste("abonnement");
+  await afficherQuotaAccueil(formule);
 
   animerCompteur($("cpt-montant"), stats.montant, (v) => formaterMontant(v, compte.devise));
   animerCompteur($("cpt-devis"), stats.mois, formaterEntier);
@@ -1971,8 +2729,40 @@ async function afficherAccueil() {
   const derniers = [...devis].sort((a, b) => Date.parse(b.creeLe) - Date.parse(a.creeLe)).slice(0, 3);
   $("accueil-devis").replaceChildren(...derniers.map((d) => creerLigneDevis(d, compte.devise)));
   $("accueil-devis-vide").hidden = derniers.length > 0;
-  $("astuce-texte").textContent = astuceDuJour();
+  ecrireInsecable($("astuce-texte"), astuceDuJour());
   await afficherEtudesAccueil(compte);
+  relanceDuJour();
+}
+
+/* Bandeau d'abonnement de l'accueil : quota du mois (Gratuit), date de fin (Pro),
+   rappel J-3 / J-1 avec bouton « Renouveler ». */
+async function afficherQuotaAccueil(formule) {
+  const abonnement = etat.abonnement;
+  const rappel = texteRappel(abonnement);
+  let valeur = 1;
+  let maximum = 1;
+  let quota;
+  if (!formule.illimite) {
+    valeur = Math.min(await devisCreesCeMois(etat.compte.id), LIMITE_GRATUITE);
+    maximum = LIMITE_GRATUITE;
+    quota = valeur + " / " + LIMITE_GRATUITE + " devis ce mois";
+  } else if (abonnement.fin) {
+    quota = "Devis illimités jusqu'au " + dateLongue(Date.parse(abonnement.fin), true);
+    maximum = formule.dureeJours;
+    valeur = Math.min(joursRestants(abonnement), maximum);
+  } else {
+    quota = "Devis illimités, à vie";
+  }
+  ecrireInsecable($("accueil-quota"), quota);
+  const jauge = $("accueil-jauge");
+  jauge.setAttribute("aria-valuemax", String(maximum));
+  jauge.setAttribute("aria-valuenow", String(valeur));
+  jauge.dataset.niveau = !formule.illimite ? (valeur >= LIMITE_GRATUITE ? "plein" : valeur === LIMITE_GRATUITE - 1 ? "presque" : "ok") : rappel ? "presque" : "ok";
+  $("accueil-jauge-remplie").style.setProperty("--remplissage", String(Math.min(1, valeur / maximum)));
+  $("accueil-rappel").hidden = !rappel;
+  $("accueil-rappel").textContent = rappel;
+  $("libelle-passer-pro").textContent = rappel ? "Renouveler" : "Passer en Pro";
+  $("bouton-passer-pro").hidden = !ecranExiste("abonnement") || (formule.illimite && !rappel);
 }
 
 /* ---------- Recherche ---------- */
@@ -3832,7 +4622,7 @@ function assemblerPdf(modele, logo, mise) {
     objet(id + 1, "<< /Length «LONGUEUR» >>", page.join("\n"));
   });
   const idInfo = premierePage + pages.length * 2;
-  objet(idInfo, "<< /Title " + chainePdf("Devis " + modele.numero) + " >>");
+  objet(idInfo, "<< /Title " + chainePdf(modele.titrePdf || "Devis " + modele.numero) + " >>");
   const debutXref = taille;
   const total = idInfo + 1;
   let xref = "xref\n0 " + total + "\n0000000000 65535 f \n";
@@ -3842,6 +4632,85 @@ function assemblerPdf(modele, logo, mise) {
   let position = 0;
   morceaux.forEach((m) => { resultat.set(m, position); position += m.length; });
   return resultat;
+}
+/* ---------- Reçu de paiement (étape 11) ----------
+   Même contenu à l'écran imprimé (navigateur) et en PDF (téléphone) : modeleRecu() décide
+   du texte, creerPdfRecu() le met en page sur une feuille A4. */
+
+/* « 1er novembre 2026 », « 12 novembre » : date en toutes lettres. */
+function dateFrancaise(instant, avecAnnee) {
+  const options = avecAnnee ? { day: "numeric", month: "long", year: "numeric" } : { day: "numeric", month: "long" };
+  return new Intl.DateTimeFormat("fr-FR", options).format(new Date(instant)).replace(/^1 /, "1er ");
+}
+
+function modeleRecu(paiement, emetteur) {
+  const formule = FORMULES[paiement.formule] || FORMULES[FORMULE_DEFAUT];
+  const lignes = [
+    ["Référence", paiement.reference],
+    ["Date du paiement", dateFrancaise(Date.parse(paiement.payeLe), true)],
+    ["Formule", formule.nom]
+  ];
+  if (paiement.debut && paiement.fin) {
+    lignes.push(["Période", "du " + dateFrancaise(Date.parse(paiement.debut), true) + " au " + dateFrancaise(Date.parse(paiement.fin), true)]);
+  }
+  lignes.push(["Moyen de paiement", paiement.moyen], ["Statut", PAIEMENTS.statuts[paiement.statut] || ""]);
+  return {
+    titre: "Reçu de paiement",
+    numero: paiement.reference,
+    titrePdf: "Reçu " + paiement.reference,
+    client: [emetteur.nom, emetteur.entreprise, emetteur.telephone].filter((t) => typeof t === "string" && t.trim()),
+    lignes,
+    montant: formaterMontant(paiement.montant, DEVISE_TARIFS),
+    lettres: montantEnLettres(paiement.montant, DEVISE_TARIFS),
+    emis: "Application conçue par BRG Électro+",
+    pied: PIED_RECU
+  };
+}
+
+function couleurPdf(hex, trait) {
+  const [r, v, b] = [1, 3, 5].map((i) => (parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(3));
+  return r + " " + v + " " + b + (trait ? " RG" : " rg");
+}
+
+function creerPdfRecu(m) {
+  const W = PDF_A4.largeur;
+  const H = PDF_A4.hauteur;
+  const M = PDF_A4.marge;
+  const CW = W - 2 * M;
+  const ops = [];
+  const texte = (x, y, chaine, gras, taille, hex) => {
+    ops.push(couleurPdf(hex || "#17131F") + " BT /" + (gras ? "F2" : "F1") + " " + taille + " Tf " + x.toFixed(2) + " " + y.toFixed(2) + " Td " + chainePdf(chaine) + " Tj ET");
+  };
+  const aDroite = (chaine, y, gras, taille, hex, marge) => texte(W - M - (marge || 0) - largeurPdf(chaine, gras, taille), y, chaine, gras, taille, hex);
+  let y = H - M;
+  ops.push(couleurPdf("#6A0DAD") + " " + M.toFixed(2) + " " + (y - 74).toFixed(2) + " " + CW.toFixed(2) + " 74 re f");
+  texte(M + 18, y - 34, "BâtiPlus", true, 24, "#FFFFFF");
+  texte(M + 18, y - 56, m.emis, false, 10, "#FFFFFF");
+  aDroite(m.titre, y - 34, true, 16, "#FFD400", 18);
+  aDroite(m.numero, y - 56, false, 10, "#FFFFFF", 18);
+  y -= 106;
+  texte(M, y, "Reçu établi pour", true, 10, "#5F5870");
+  y -= 18;
+  m.client.forEach((ligne) => {
+    couperPdf(ligne, CW, false, 12).forEach((morceau) => { texte(M, y, morceau, false, 12); y -= 16; });
+  });
+  y -= 16;
+  m.lignes.forEach(([libelle, valeur]) => {
+    const morceaux = couperPdf(valeur, CW * 0.62, true, 11);
+    texte(M, y, libelle, false, 11, "#5F5870");
+    morceaux.forEach((morceau, i) => aDroite(morceau, y - i * 14, true, 11));
+    y -= 14 * (morceaux.length - 1) + 10;
+    ops.push(couleurPdf("#DCD3EA", true) + " 0.8 w " + M.toFixed(2) + " " + y.toFixed(2) + " m " + (W - M).toFixed(2) + " " + y.toFixed(2) + " l S");
+    y -= 18;
+  });
+  const lettres = couperPdf(m.lettres, CW - 28, false, 10);
+  const hauteur = 46 + lettres.length * 13;
+  ops.push(couleurPdf("#F3E9FD") + " " + M.toFixed(2) + " " + (y - hauteur + 14).toFixed(2) + " " + CW.toFixed(2) + " " + hauteur.toFixed(2) + " re f");
+  texte(M + 14, y - 8, "Montant payé", true, 12, "#4E0A80");
+  aDroite(m.montant, y - 10, true, 18, "#6A0DAD", 14);
+  lettres.forEach((morceau, i) => texte(M + 14, y - 30 - i * 13, morceau, false, 10, "#5F5870"));
+  couperPdf(m.pied, CW, false, 8).reverse().forEach((morceau, i) => texte(M, M + i * 11, morceau, false, 8, "#5F5870"));
+  return assemblerPdf({ numero: m.numero, titrePdf: m.titrePdf }, null, { pages: [ops], avecLogo: false });
 }
 /* ==== FIN DU DOCUMENT ==== */
 
@@ -6839,6 +7708,7 @@ async function surCreerDevis() {
   if (!c || !compte) return;
   await enregistrerResultat();
   actualiserResultat();
+  if (!await autoriserNouveauDevis(c.nom || "Installation électrique")) return;
   const existants = await lireDevis(compte.id);
   const numero = await prochainNumeroDevis(compte.id, existants);
   const maintenant = new Date().toISOString();
@@ -6858,6 +7728,7 @@ async function surCreerDevis() {
   }
   ouvrirDevis(devis.id);
   afficherToast("Devis " + numero + " créé à partir de l'étude.");
+  await apresDevisCree();
 }
 
 function surOuvrirDevisResultat() {
@@ -6905,6 +7776,7 @@ async function surImprimerDevis() {
 
 async function ouvrirFeuille() {
   if (!etat.compte) return;
+  await actualiserAbonnement();
   const devis = (await lireDevis(etat.compte.id)).find((d) => d.complet && d.id === feuille.id);
   if (!devis) {
     montrer("accueil", { retour: true });
@@ -7061,6 +7933,7 @@ function ajusterApercuFeuille() {
 }
 
 function imprimerFeuille() {
+  delete document.body.dataset.impression;
   vibrer();
   window.print();
 }
@@ -7173,6 +8046,7 @@ function surEnregistrerPdf() {
         $("etat-feuille").textContent = "PDF téléchargé : " + nom;
       }
       vibrer();
+      programmerInvitationEnvoi();
     } catch (erreur) {
       echecPdf(erreur);
     }
@@ -7196,11 +8070,13 @@ function surPartagerPdf() {
         if (!partage) throw new Error("Share indisponible");
         if (!feuille.uri) feuille.uri = (await enregistrerPdfNatif(octets, nom)).uri;
         await partage.share({ title: titre, text: texte, files: [feuille.uri], dialogTitle: "Partager le devis" });
+        programmerInvitationEnvoi();
         return;
       }
       const fichier = new File([octets], nom, { type: "application/pdf" });
       if (navigator.canShare && navigator.share && navigator.canShare({ files: [fichier] })) {
         await navigator.share({ files: [fichier], title: titre, text: texte });
+        programmerInvitationEnvoi();
         return;
       }
       telechargerPdf(octets, nom);
@@ -7491,6 +8367,7 @@ async function dupliquerDevis(id) {
   const tous = await lireDevis(compte.id);
   const source = tous.find((d) => d.complet && d.id === id);
   if (!source) return;
+  if (!await autoriserNouveauDevis("")) return;
   const numero = await prochainNumeroDevis(compte.id, tous);
   const maintenant = new Date().toISOString();
   const { complet, total, ...contenu } = JSON.parse(JSON.stringify(source));
@@ -7506,6 +8383,7 @@ async function dupliquerDevis(id) {
   await afficherMesDevis();
   reperElement("liste-devis", copie.id);
   afficherToast("Copie créée : devis " + numero + " (brouillon), copie de " + source.numero + ".");
+  await apresDevisCree();
 }
 
 async function supprimerDevisListe(id) {
@@ -7887,6 +8765,10 @@ async function supprimerClientListe(id) {
 async function ouvrirStats() {
   const compte = etat.compte;
   if (!compte) return;
+  await actualiserAbonnement();
+  const pro = formulePayante(etat.abonnement.formule);
+  $("stats-verrou-pro").hidden = pro;
+  $("stats-details").hidden = !pro;
   const s = statistiquesDetaillees(await lireDevis(compte.id), new Date(), BORNES_LISTES.clientsGraphique);
   const devise = deviseCompte();
   ecrireMontantFort("stats-montant", s.montant);
@@ -8005,6 +8887,14 @@ function masquerSplashNatif() {
 
 function brancherEvenements() {
   document.addEventListener("click", surClicNavigation);
+  document.addEventListener("click", surClicInvitation);
+  document.addEventListener("click", surClicEnvoiWhatsApp);
+  window.addEventListener("afterprint", surApresImpression);
+  $("liste-formules").addEventListener("click", surClicFormules);
+  $("liste-paiements").addEventListener("click", surClicPaiements);
+  $("bouton-reessayer-paiement").addEventListener("click", () => {
+    if (abonnementEtat.formuleChoisie) lancerPaiement(abonnementEtat.formuleChoisie);
+  });
   /* Capture : la règle de saisie passe AVANT les écouteurs des écrans. */
   document.addEventListener("focusin", surFocusNumerique, true);
   document.addEventListener("input", surSaisieNumerique, true);
@@ -8220,8 +9110,9 @@ async function choisirPremierEcran() {
   const compte = session ? comptes.find((c) => c.id === session.compteId) : null;
   if (compte) {
     etat.compte = compte;
-    etat.abonnement = abonnementCourant();
+    etat.abonnement = await abonnementCourant();
     afficherCompte(compte);
+    planifierRappels();
     reprendreActivite(session);
   }
   if (!presentationVue) return "presentation";

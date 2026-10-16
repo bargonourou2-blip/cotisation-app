@@ -27,7 +27,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 8 | Feuille A4 imprimable, PDF natif, partage WhatsApp | ✔ livrée |
 | 9 | Clients, chantiers, historique des devis, statistiques | ✔ livrée |
 | 10 | Sécurité du front (XSS, CSP, chiffrement, verrouillage) | ✔ livrée |
-| 11 | Abonnement : 5 formules, limite de 5 devis, relances | à venir |
+| 11 | Abonnement : 5 formules, limite de 5 devis, relances | ✔ livrée |
 | 12 | Paiement automatique : adaptateurs d'agrégateur, webhook, idempotence | à venir |
 | 13 | Build Android, signature, Play Store, IOS.md | à venir |
 | 14 | Back-end Node.js complet, synchronisation, déploiement | à venir |
@@ -328,6 +328,46 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   ⚠ C'est aussi le cas dans un aperçu intégré : ouvrez l'aperçu dans son propre onglet.
 - **Contrôles** : ㊸ ㊹ ㊺ ㊻ VR CO SW AN CS dans `npm run verifier` (sources + pages rendues avec
   données piégées), VE (écran verrouillé) et CA (anti-encadrement) dans `npm run verifier:navigateur`.
+
+### Abonnement : 5 formules, limite de 5 devis, relances (étape 11)
+
+- **5 formules** (`FORMULES` dans `src/donnees.js`), du moins cher au plus cher : Gratuit (gris), Pass
+  semaine 750 FCFA (jaune, « SANS ENGAGEMENT »), Pro mensuel 2 500 FCFA (violet, « LE PLUS CHOISI »,
+  carte 6 % plus haute), Pro annuel 25 000 FCFA (vert, « 2 MOIS OFFERTS »), Lifetime 60 000 FCFA (noir
+  et jaune, « À VIE »). Les prix affichés sont indicatifs : le montant est fixé en ligne au paiement.
+- **Le Pro n'est donné que par un jeton signé** : `charge.signature` en base64url, signature
+  ECDSA P-256 / SHA-256 de `bp-abonnement-v1.` + charge. L'application le vérifie avec la **clé
+  publique** de la balise `<meta name="batiplus-cle-abonnement">`, remplie par l'assembleur depuis
+  `.env` (`ABONNEMENT_CLE_PUBLIQUE`). Sans clé, aucun jeton ne passe : tout compte reste en Gratuit
+  (échec fermé). Refusés : formule en clair, autre clé, charge modifiée, autre compte ou numéro,
+  jeton expiré, émis dans le futur, champ inconnu. L'horloge ne recule pas : la date la plus tardive
+  déjà vue sur le téléphone (`bp_v1_horloge`) sert de plancher.
+- **Clés** : `node src/scripts/cles-abonnement.mjs generer` crée `.cles/abonnement-privee.pem`
+  (ignorée par Git, jamais dans `www/`) et affiche la ligne `ABONNEMENT_CLE_PUBLIQUE=…` à mettre dans
+  `.env`. `… signer <compteId> <téléphone> <formule> [jours]` produit un jeton d'essai (le back-end de
+  l'étape 14 signera de la même façon).
+- **Limite Gratuit** : 5 devis **créés** par mois (compteur du mois + devis du mois : supprimer un devis
+  ne rend pas de devis gratuit). 4e devis → « Il vous reste 1 devis gratuit » ; 6e → **création
+  bloquée** (depuis l'étude comme par « Dupliquer »), invitation obligatoire, étude enregistrée, anciens
+  devis toujours consultables, imprimables et partageables.
+- **Relances sans harceler** : bandeau permanent sur l'accueil (quota + jauge) ; invitation à la 1re
+  ouverture du jour (jamais le jour de la création du compte), après une impression, un PDF, un partage
+  ou un envoi WhatsApp (au plus une toutes les 10 min) ; les cadenas des fonctions Pro (statistiques
+  détaillées, logo, sans filigrane) ouvrent l'invitation. Abonné : aucune invitation, seulement le
+  rappel J-3 / J-1 sur l'accueil (« Renouveler ») et en notification locale à 9 h.
+- **Écran Abonnement** : Ma formule (date de fin + jauge), 5 cartes, moyens de paiement (logo officiel
+  s'il est déposé dans `www/images/paiement/<id>.webp`, sinon pastille à la couleur de la marque),
+  bande de confiance, « Ce que débloque le Pro », Mes paiements avec reçu, FAQ en accordéon.
+- **Paiement (préparé pour l'étape 12)** : « Choisir » → récapitulatif → « Payer maintenant ». Le
+  front envoie `POST /api/paiements/initier` avec **seulement** `{"formule":"…"}` (sans montant, sans
+  cookie, délai 15 s) et n'ouvre qu'une adresse `https://` accompagnée d'une référence `BP-…`. Sinon :
+  message clair et « Réessayer ». `enregistrerJetonAbonnement()` dépose un jeton reçu après paiement,
+  seulement s'il se vérifie.
+- **Reçu** : dans le navigateur, une feuille A4 dédiée est imprimée seule ; sur téléphone (la vue web
+  Android n'imprime pas), un PDF du reçu est créé puis partagé.
+- **Contrôles** : ㊼ ㊽ ㊾ ㊿ AB RL PV RC PI dans `npm run verifier` (clé d'essai générée à chaque
+  vérification, jamais livrée), AV (écran Abonnement 360/768/1440 px, clair et sombre, textes ≥ 13 px,
+  carte vedette 6 % plus haute, reçu imprimé sur 1 page) dans `npm run verifier:navigateur`.
 
 ## Structure
 

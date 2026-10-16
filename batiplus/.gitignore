@@ -8,6 +8,8 @@ node_modules/
 *.keystore
 *.jks
 keystore.properties
+.cles/
+*.pem
 
 # Android — fichiers générés
 android/.gradle/

@@ -32,6 +32,8 @@ const etape9 = { fait: false, supprimer: [], recherche: [], fournisseurs: [], cl
 const etape8 = { fait: false, a4: [], filigrane: [], whatsapp: [], octetsPdf: 0 };
 /* Constats de l'étape 10 (sécurité du front) relevés dans jsdom. */
 const etape10 = { fait: false, verrou: [], saisie: [], dom: [], codes: [], champsVus: 0, pagesVues: 0, cas: [] };
+/* Constats de l'étape 11 (abonnement) relevés dans jsdom. */
+const etape11 = { fait: false, formules: [], logos: [], jeton: [], quota: [], relances: [], cadenas: [], recu: [], paiement: [], cas: [] };
 const REGLES = lireRegles();
 
 /* Lecture d'un PDF produit par l'application : en-tête, table xref (chaque position
@@ -164,6 +166,20 @@ async function controlesExecution() {
   process.on("uncaughtException", surRejet);
   const fenetres = [];
 
+  /* Étape 11 : paire de clés d'ESSAI créée pour la vérification. La page livrée n'a aucune clé
+     (échec fermé : tout compte en Gratuit) ; htmlPro porte la clé publique d'essai. */
+  const paireAbo = await webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const autrePaire = await webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const spkiAbo = Buffer.from(await webcrypto.subtle.exportKey("spki", paireAbo.publicKey)).toString("base64");
+  const metaVide = '<meta name="batiplus-cle-abonnement" content="">';
+  const htmlPro = html.replace(metaVide, '<meta name="batiplus-cle-abonnement" content="' + spkiAbo + '">');
+  const b64url = (octets) => Buffer.from(octets).toString("base64url");
+  async function jetonAbo(charge, cle) {
+    const corps = b64url(Buffer.from(JSON.stringify(charge), "utf8"));
+    const signature = await webcrypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, cle || paireAbo.privateKey, new TextEncoder().encode("bp-abonnement-v1." + corps));
+    return corps + "." + b64url(new Uint8Array(signature));
+  }
+
   /* options.activiteFigee : garder la date d'activité de la session telle quelle (test du verrouillage) ;
      sinon une session reprise vient d'être utilisée. options.decalage : objet { ms } ajouté à Date.now(). */
   function ouvrirPage(stockage, capacitor, options) {
@@ -178,7 +194,7 @@ async function controlesExecution() {
       if (/Not implemented: (HTMLCanvasElement(\.prototype\.|'s )getContext|(window\.|Window's )scrollTo|navigation to another Document)/.test(msg)) ignorees.push(msg.split("\n")[0]);
       else erreurs.push(msg.split("\n")[0]);
     });
-    const dom = new JSDOM(html, {
+    const dom = new JSDOM(reglages.html || html, {
       url: "https://batiplus.local/",
       runScripts: "dangerously",
       pretendToBeVisual: true,
@@ -194,6 +210,7 @@ async function controlesExecution() {
         if (window.isSecureContext !== true) Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
         if (!window.Element.prototype.scrollIntoView) window.Element.prototype.scrollIntoView = function () {};
         if (capacitor) window.Capacitor = capacitor;
+        if (reglages.preparer) reglages.preparer(window);
         window.localStorage.clear();
         for (const [cle, valeur] of Object.entries(stockage || {})) {
           let ecrite = valeur;
@@ -1570,8 +1587,10 @@ async function controlesExecution() {
         { id: "cm2", compteId: compte.id, nom: "m. kabore", telephone: "+22605608608", creeLe: iso(1), modifieLe: iso(1) },
         { id: "<b>x</b>", compteId: compte.id, nom: "Pirate" }, { id: "cm3", compteId: "autre-compte", nom: "Pas à moi" }, { id: "cm4", compteId: compte.id, nom: "" }, "texte", null, [1]
       ];
+      /* Compte Lifetime (jeton signé) : statistiques détaillées visibles, aucune invitation pendant les manipulations. */
+      const jetonVie9 = await jetonAbo({ v: 1, compteId: compte.id, telephone: compte.telephone, formule: "vie", debut: iso(30), fin: null, emisLe: iso(30) });
       const e = ouvrirPage({ ...q.stockage(), [K.devis]: JSON.stringify(fixtures), bp_v1_chantiers: JSON.stringify(chantiers9),
-        bp_v1_brouillon_chantier: JSON.stringify(brouillon9), bp_v1_clients: JSON.stringify(clients9) });
+        bp_v1_brouillon_chantier: JSON.stringify(brouillon9), bp_v1_clients: JSON.stringify(clients9), bp_v1_abonnement: JSON.stringify({ [compte.id]: jetonVie9 }) }, null, { html: htmlPro });
       await pause(3600);
       const ids = (liste) => [...e.doc.querySelectorAll("#" + liste + " > li")].map((li) => li.dataset.element);
       const stocke = (cle) => JSON.parse(e.stockage()[cle] || "null");
@@ -1951,6 +1970,351 @@ async function controlesExecution() {
       etape10.cas.push(triviaux.length + " codes triviaux");
       t.w.close();
       etape10.fait = true;
+    }
+
+    /* ---------- Étape 11 : abonnement (jeton signé, quota, relances, cadenas, reçu, paiement) ---------- */
+    {
+      const moteur11 = chargerMoteur();
+      const jour = 86400000;
+      const t0 = Date.now();
+      const isoDe = (ms) => new Date(ms).toISOString();
+      const nb11 = (x) => String(x || "").replace(/[\u00a0\u202f]/g, " ");
+      const base11 = { [K.pres]: "1", [K.comptes]: stockageInscrit[K.comptes], [K.session]: sessionActive };
+      const charge = (extra) => ({ v: 1, compteId: compte.id, telephone: compte.telephone, formule: "mensuel", debut: isoDe(t0 - 6 * jour), fin: isoDe(t0 + 24 * jour), emisLe: isoDe(t0 - 6 * jour), ...extra });
+      const aboDe = (jeton) => ({ bp_v1_abonnement: JSON.stringify({ [compte.id]: jeton }) });
+      const menu = async (page, ecran, ms) => { const lien = page.doc.querySelector("#tiroir-menu [data-ecran='" + ecran + "']"); if (lien) lien.click(); await pause(ms || 500); return Boolean(lien); };
+      const modaleOuverte = (page) => !page.$("modale").hidden;
+
+      /* A. Seul un jeton signé par BâtiPlus, pour CE compte, non expiré, donne le Pro. */
+      const jetonValide = await jetonAbo(charge());
+      const [corpsValide, signatureValide] = jetonValide.split(".");
+      const cas11 = [
+        ["jeton signé valide", aboDe(jetonValide), htmlPro, "Pro mensuel"],
+        ["formule écrite en clair dans le stockage", { bp_v1_abonnement: JSON.stringify({ formule: "vie", fin: null }) }, htmlPro, "Gratuit"],
+        ["formule en clair sous l'identifiant du compte", aboDe("vie"), htmlPro, "Gratuit"],
+        ["jeton signé par une autre clé", aboDe(await jetonAbo(charge(), autrePaire.privateKey)), htmlPro, "Gratuit"],
+        ["charge modifiée (mensuel → vie), signature d'origine", aboDe(b64url(Buffer.from(JSON.stringify(charge({ formule: "vie", fin: null })), "utf8")) + "." + signatureValide), htmlPro, "Gratuit"],
+        ["jeton d'un autre compte", aboDe(await jetonAbo(charge({ compteId: "autre-compte-1234" }))), htmlPro, "Gratuit"],
+        ["jeton d'un autre numéro", aboDe(await jetonAbo(charge({ telephone: "+22670000000" }))), htmlPro, "Gratuit"],
+        ["jeton expiré", aboDe(await jetonAbo(charge({ fin: isoDe(t0 - 3600000) }))), htmlPro, "Gratuit"],
+        ["jeton émis dans le futur (horloge reculée)", aboDe(await jetonAbo(charge({ emisLe: isoDe(t0 + jour), debut: isoDe(t0 + jour), fin: isoDe(t0 + 30 * jour) }))), htmlPro, "Gratuit"],
+        ["horloge déjà vue après la date de fin", { ...aboDe(await jetonAbo(charge({ fin: isoDe(t0 + 2 * jour) }))), bp_v1_horloge: String(t0 + 3 * jour) }, htmlPro, "Gratuit"],
+        ["champ inconnu ajouté", aboDe(await jetonAbo({ ...charge(), admin: true })), htmlPro, "Gratuit"],
+        ["Lifetime avec date de fin", aboDe(await jetonAbo(charge({ formule: "vie" }))), htmlPro, "Gratuit"],
+        ["Pro mensuel sans date de fin", aboDe(await jetonAbo(charge({ fin: null }))), htmlPro, "Gratuit"],
+        ["formule « gratuit » signée", aboDe(await jetonAbo(charge({ formule: "gratuit" }))), htmlPro, "Gratuit"],
+        ["signature tronquée", aboDe(corpsValide + "." + signatureValide.slice(0, 40)), htmlPro, "Gratuit"],
+        ["jeton valide mais application livrée sans clé (échec fermé)", aboDe(jetonValide), html, "Gratuit"],
+        ["Lifetime signé valide", aboDe(await jetonAbo(charge({ formule: "vie", fin: null }))), htmlPro, "Lifetime"]
+      ];
+      for (const [nom, extra, source, attendu] of cas11) {
+        const pg = ouvrirPage({ ...base11, ...extra }, null, { html: source });
+        await pause(900);
+        const vu = (pg.doc.querySelector("#bandeau-abonnement [data-formule]") || {}).textContent;
+        if (vu !== attendu) etape11.jeton.push(nom + " → « " + vu + " » au lieu de « " + attendu + " »");
+        pg.w.close();
+      }
+      if (!html.includes(metaVide)) etape11.jeton.push("la page livrée porte une clé d'abonnement non prévue");
+      if (/PRIVATE KEY|privateKey/.test(html)) etape11.jeton.push("clé privée dans le front");
+      etape11.cas.push(cas11.length + " jetons (15 falsifiés refusés)");
+
+      /* B. Compte Pro mensuel : textes, jauge, cartes, aucune relance, aucun cadenas. */
+      const finTexte = nb11(moteur11.dateFrancaise(t0 + 24 * jour, true));
+      const pro = ouvrirPage({ ...base11, ...aboDe(jetonValide) }, null, { html: htmlPro });
+      await pause(2000);
+      if (nb11(pro.texte("accueil-quota")) !== "Devis illimités jusqu'au " + finTexte) etape11.quota.push("accueil Pro : « " + pro.texte("accueil-quota") + " »");
+      if (!pro.$("bouton-passer-pro").hidden || !pro.$("accueil-rappel").hidden) etape11.relances.push("abonné à 24 jours de la fin : bouton ou rappel affiché");
+      if (!pro.$("logo-pastille-pro").hidden || !pro.doc.querySelector("#tiroir-menu [data-ecran='stats'] [data-cadenas-pro]").hidden) etape11.cadenas.push("abonné : cadenas encore affichés");
+      await menu(pro, "stats", 600);
+      if (!pro.$("stats-verrou-pro").hidden || pro.$("stats-details").hidden) etape11.cadenas.push("abonné : statistiques détaillées masquées");
+      await menu(pro, "abonnement", 600);
+      const finAttendue = "Votre Pro mensuel se termine le " + finTexte + " — 24 jours restants.";
+      if (pro.actif() !== "ecran-abonnement" || nb11(pro.texte("ma-formule-fin")) !== finAttendue) etape11.formules.push("Ma formule (Pro) : « " + pro.texte("ma-formule-fin") + " » au lieu de « " + finAttendue + " »");
+      if (pro.$("jauge-formule").getAttribute("aria-valuenow") !== "24" || pro.$("jauge-formule").getAttribute("aria-valuemax") !== "30") etape11.formules.push("jauge Pro : " + pro.$("jauge-formule").getAttribute("aria-valuenow") + "/" + pro.$("jauge-formule").getAttribute("aria-valuemax"));
+      const btnPro = (id) => pro.doc.querySelector("[data-choisir-formule='" + id + "']");
+      if (!btnPro("mensuel").disabled || btnPro("mensuel").textContent !== "Ma formule actuelle" || btnPro("semaine").disabled) etape11.formules.push("boutons des cartes pour un abonné mensuel");
+      if (pro.doc.querySelectorAll("#avantages-pro [data-etat='inclus']").length !== 4 || pro.doc.querySelector("#avantages-pro [data-invitation]")) etape11.cadenas.push("abonné : avantages non marqués « Inclus »");
+      pro.w.close();
+
+      /* C. Compte gratuit : 3 devis ce mois → 4e (invitation « il reste 1 »), 5e, 6e BLOQUÉ (étude conservée). */
+      const cat11 = Object.fromEntries(Object.entries(moteur11.CATALOGUE_DEFAUT).map(([r, art]) => [r, { ...art }]));
+      const studio11 = CHANTIERS_TYPES.find((t) => t.cle === "studio");
+      const contenu11 = moteur11.devisDepuisChiffrage(moteur11.chiffrerChantier(studio11.chantier, cat11, "XOF", null));
+      const an11 = new Date().getFullYear();
+      const ici11 = new Date();
+      const ceMois = (n) => isoDe(new Date(ici11.getFullYear(), ici11.getMonth(), 1, 0, n).getTime());
+      const moisDernier = isoDe(new Date(ici11.getFullYear(), ici11.getMonth() - 1, 15, 9).getTime());
+      const devis11 = (id, n, creeLe) => ({ ...contenu11, id, compteId: compte.id, numero: "BP-" + an11 + "-000" + n, statut: "brouillon", creeLe, modifieLe: creeLe,
+        titre: "Studio " + n, client: "Client " + n, clientTelephone: "", lieu: "Ouagadougou", chantierId: null, conditions: "", note: "" });
+      const chantier11 = { ...JSON.parse(JSON.stringify(studio11.chantier)), id: "chantier-quota-11", compteId: compte.id, statut: "etudie", etape: 5, etapeMax: 5,
+        nom: "Studio Tanghin", lieu: "Ouagadougou", type: "studio", client: { nom: "M. Ouédraogo", telephone: "" }, creeLe: moisDernier, modifieLe: moisDernier };
+      const stockQuota = { ...base11, [K.devis]: JSON.stringify([devis11("q1", 1, ceMois(1)), devis11("q2", 2, ceMois(2)), devis11("q3", 3, ceMois(3)), devis11("q0", 4, moisDernier)]),
+        bp_v1_chantiers: JSON.stringify([chantier11]) };
+      const g = ouvrirPage(stockQuota);
+      await pause(2000);
+      const nbDevis = (page) => JSON.parse(page.stockage()[K.devis]).length;
+      const etude = (page) => JSON.parse(page.stockage().bp_v1_chantiers || "[]").find((c) => c.id === "chantier-quota-11");
+      const ouvrirEtude = async (page) => { await menu(page, "chantiers", 400); const b = page.doc.querySelector("#liste-chantiers [data-ouvrir-chantier='chantier-quota-11']"); if (b) b.click(); await pause(700); };
+      if (nb11(g.texte("accueil-quota")) !== "3 / 5 devis ce mois" || g.$("accueil-jauge").getAttribute("aria-valuenow") !== "3") etape11.quota.push("accueil gratuit : « " + g.texte("accueil-quota") + " »");
+      if (modaleOuverte(g)) etape11.relances.push("invitation le jour de la création du compte : « " + g.texte("modale-titre") + " »");
+      if (g.$("bouton-passer-pro").hidden || g.texte("libelle-passer-pro") !== "Passer en Pro") etape11.relances.push("bandeau gratuit : bouton « Passer en Pro » absent");
+      if (g.$("logo-pastille-pro").hidden || g.doc.querySelector("#tiroir-menu [data-ecran='stats'] [data-cadenas-pro]").hidden) etape11.cadenas.push("gratuit : cadenas absents (logo, menu Statistiques)");
+      await ouvrirEtude(g);
+      g.$("bouton-creer-devis").click();
+      await pause(1300);
+      if (nbDevis(g) !== 5 || !modaleOuverte(g) || g.texte("modale-titre") !== "Il vous reste 1 devis gratuit" || g.texte("libelle-modale-ok") !== "Voir les formules")
+        etape11.quota.push("4e devis : " + nbDevis(g) + " devis, invitation « " + (modaleOuverte(g) ? g.texte("modale-titre") : "") + " »");
+      g.$("bouton-modale-annuler").click();
+      await pause(200);
+      await ouvrirEtude(g);
+      g.$("bouton-creer-devis").click();
+      await pause(1300);
+      if (nbDevis(g) !== 6 || modaleOuverte(g) || g.actif() !== "ecran-fiche-devis") etape11.quota.push("5e devis : " + nbDevis(g) + " devis, modale « " + (modaleOuverte(g) ? g.texte("modale-titre") : "") + " », écran " + g.actif());
+      await ouvrirEtude(g);
+      const avant6 = etude(g).modifieLe;
+      g.$("bouton-creer-devis").click();
+      await pause(1300);
+      const contenuBloque = nb11(g.texte("modale-contenu"));
+      if (nbDevis(g) !== 6) etape11.quota.push("6e devis créé malgré le quota");
+      if (!modaleOuverte(g) || g.texte("modale-titre") !== "Vos 5 devis gratuits sont utilisés" || !contenuBloque.includes("Votre étude « Studio Tanghin » est conservée") || !contenuBloque.includes("anciens devis restent consultables, imprimables"))
+        etape11.quota.push("6e devis : invitation obligatoire absente ou incomplète (« " + g.texte("modale-titre") + " »)");
+      if (g.actif() !== "ecran-resultat" || !etude(g) || etude(g).modifieLe === avant6 && avant6 === moisDernier) etape11.quota.push("6e devis : étude non conservée (écran " + g.actif() + ")");
+      g.$("bouton-modale-ok").click();
+      await pause(600);
+      if (g.actif() !== "ecran-abonnement") etape11.quota.push("« Voir les formules » → " + g.actif());
+      if (nb11(g.texte("ma-formule-fin")) !== "Votre abonnement gratuit n'a pas de date de fin." || g.$("jauge-formule").getAttribute("aria-valuenow") !== "5" || g.$("jauge-formule").dataset.niveau !== "plein")
+        etape11.formules.push("Ma formule (gratuit) : « " + g.texte("ma-formule-fin") + " », jauge " + g.$("jauge-formule").getAttribute("aria-valuenow"));
+
+      /* ㊼ cartes de formules et ㊽ moyens de paiement, sur l'écran du compte gratuit. */
+      const cartes = [...g.doc.querySelectorAll("#liste-formules > li")];
+      const ordre11 = ["gratuit", "semaine", "mensuel", "annuel", "vie"];
+      const tons = ["gris", "jaune", "violet", "vert", "noir"];
+      const icones = ["i-cadeau", "i-eclair", "i-trophee", "i-calendrier", "i-infini"];
+      const badges = ["POUR DÉMARRER", "SANS ENGAGEMENT", "LE PLUS CHOISI", "2 MOIS OFFERTS", "À VIE"];
+      const prix = cartes.map((c) => Number(nb11(c.querySelector(".formule-prix strong").textContent).replace(/\D/g, "")));
+      if (cartes.map((c) => c.dataset.formuleCarte).join() !== ordre11.join()) etape11.formules.push("ordre des cartes : " + cartes.map((c) => c.dataset.formuleCarte).join());
+      cartes.forEach((c, i) => {
+        const use = c.querySelector(".formule-icone svg use");
+        if (!c.classList.contains("formule-" + tons[i])) etape11.formules.push(ordre11[i] + " : couleur « " + tons[i] + " » absente");
+        if (!use || use.getAttribute("href") !== "#" + icones[i] || !g.$(icones[i])) etape11.formules.push(ordre11[i] + " : icône " + icones[i] + " absente");
+        if (c.querySelector(".formule-badge").textContent !== badges[i]) etape11.formules.push(ordre11[i] + " : badge « " + c.querySelector(".formule-badge").textContent + " »");
+        if (c.querySelectorAll(".formule-arguments li").length < 3) etape11.formules.push(ordre11[i] + " : arguments absents");
+      });
+      if (prix.join() !== "0,750,2500,25000,60000") etape11.formules.push("prix : " + prix.join());
+      if (cartes.filter((c) => c.classList.contains("formule-vedette")).map((c) => c.dataset.formuleCarte).join() !== "mensuel") etape11.formules.push("carte vedette ≠ Pro mensuel");
+      const styleLivre11 = g.doc.querySelector("head style").textContent;
+      for (const regle of [".formule-jaune .formule-badge", ".formule-vert .formule-badge", ".formule-vedette { border-color: var(--violet)", ".formule-noir { background: #17131F", ".formule-vedette { transform: scale(1.06)"]) {
+        if (!styleLivre11.includes(regle)) etape11.formules.push("style « " + regle + " » absent");
+      }
+      if (!g.doc.querySelector("[data-choisir-formule='gratuit']").disabled || g.doc.querySelector("[data-choisir-formule='mensuel']").textContent !== "Choisir Pro mensuel") etape11.formules.push("boutons des cartes (gratuit)");
+      const logos = [...g.doc.querySelectorAll("#logos-paiement > li")];
+      const moyens = [["orange-money", "Orange Money"], ["moov-money", "Moov Money"], ["wave", "Wave"], ["telecel-money", "Telecel Money"], ["visa", "Visa"], ["mastercard", "Mastercard"], ["cinetpay", "CinetPay"]];
+      if (logos.length !== moyens.length) etape11.logos.push(logos.length + " moyens affichés");
+      logos.forEach((li, i) => {
+        const img = li.querySelector("img");
+        const [id, nom] = moyens[i] || [];
+        const officiel = img && img.getAttribute("src") === "images/paiement/" + id + ".webp" && img.alt === nom;
+        const pastille = !img && li.classList.contains("paiement-pastille") && li.dataset.marque === id && li.textContent === nom && styleLivre11.includes('.paiement-pastille[data-marque="' + id + '"]');
+        if (!officiel && !pastille) etape11.logos.push(nom + " : ni logo officiel ni pastille de marque");
+      });
+      if (g.doc.querySelectorAll("#bande-confiance > li svg").length !== 4) etape11.logos.push("bande de confiance incomplète");
+      etape11.cas.push(logos.filter((li) => li.querySelector("img")).length + " logos officiels, " + logos.filter((li) => li.classList.contains("paiement-pastille")).length + " pastilles de marque");
+      if (g.doc.querySelectorAll("#avantages-pro [data-invitation]").length !== 4) etape11.cadenas.push("gratuit : 4 cadenas « Débloquer » attendus");
+      if (g.$("paiements-vide").hidden || g.doc.querySelectorAll("#liste-paiements > li").length) etape11.recu.push("gratuit sans paiement : message « Aucun paiement » absent");
+      if (g.doc.querySelectorAll("#ecran-abonnement .faq-question").length !== 3) etape11.formules.push("FAQ : 3 questions attendues");
+      inspecterPage(g, "abonnement");
+
+      /* Anciens devis toujours consultables et imprimables ; Dupliquer est bloqué aussi. */
+      await menu(g, "devis", 500);
+      const ouvrirQ1 = g.doc.querySelector("#liste-devis [data-ouvrir-devis='q1']");
+      if (ouvrirQ1) ouvrirQ1.click();
+      await pause(700);
+      if (g.actif() !== "ecran-fiche-devis") etape11.quota.push("ancien devis non consultable (" + g.actif() + ")");
+      else {
+        g.$("devis-bouton-imprimer").click();
+        await pause(900);
+        if (g.actif() !== "ecran-feuille" || g.$("feuille-bouton-imprimer").disabled || !g.texte("feuille-a4").includes("BP-" + an11 + "-0001")) etape11.quota.push("ancien devis non imprimable (" + g.actif() + ")");
+        if (g.$("feuille-pastille-pro").hidden) etape11.cadenas.push("gratuit : cadenas « sans filigrane » absent de la feuille");
+      }
+      await menu(g, "devis", 500);
+      const dupliquer = g.doc.querySelector("#liste-devis [data-dupliquer-devis='q1']");
+      if (dupliquer) dupliquer.click();
+      await pause(900);
+      if (nbDevis(g) !== 6 || !modaleOuverte(g) || g.texte("modale-titre") !== "Vos 5 devis gratuits sont utilisés") etape11.quota.push("Dupliquer au-delà du quota : " + nbDevis(g) + " devis");
+      g.$("bouton-modale-annuler").click();
+      await pause(200);
+      /* Fonction Pro sous cadenas → invitation → écran Abonnement. */
+      await menu(g, "stats", 600);
+      if (g.$("stats-verrou-pro").hidden || !g.$("stats-details").hidden) etape11.cadenas.push("gratuit : statistiques détaillées non verrouillées");
+      g.doc.querySelector("#stats-verrou-pro [data-invitation='stats']").click();
+      await pause(400);
+      if (!modaleOuverte(g) || g.texte("modale-titre") !== "Statistiques détaillées" || g.texte("libelle-modale-ok") !== "Voir les formules") etape11.cadenas.push("cadenas Statistiques : invitation absente");
+      g.$("bouton-modale-ok").click();
+      await pause(500);
+      if (g.actif() !== "ecran-abonnement") etape11.cadenas.push("invitation → " + g.actif());
+      const apresQuota = g.stockage();
+      g.w.close();
+
+      /* Supprimer des devis ne rend pas de devis gratuit (compteur du mois). */
+      const sansDeux = JSON.parse(apresQuota[K.devis]).filter((d) => d.id !== "q1" && d.id !== "q2");
+      const h = ouvrirPage({ ...apresQuota, [K.devis]: JSON.stringify(sansDeux) });
+      await pause(2000);
+      await ouvrirEtude(h);
+      h.$("bouton-creer-devis").click();
+      await pause(1200);
+      if (nbDevis(h) !== sansDeux.length || !modaleOuverte(h)) etape11.quota.push("après suppression de 2 devis : création de nouveau possible");
+      h.w.close();
+      /* Abonné : aucune limite. */
+      const hp = ouvrirPage({ ...apresQuota, ...aboDe(jetonValide) }, null, { html: htmlPro });
+      await pause(2000);
+      await ouvrirEtude(hp);
+      hp.$("bouton-creer-devis").click();
+      await pause(1200);
+      if (nbDevis(hp) !== 7 || modaleOuverte(hp)) etape11.quota.push("abonné bloqué au-delà de 5 devis");
+      hp.w.close();
+      etape11.cas.push("4e, 5e, 6e devis, Dupliquer, suppression");
+
+      /* D. Relances : 1re ouverture du jour (une fois), après un envoi (une fois / 10 min), rappel J-3. */
+      const comptesAnciens = JSON.stringify(JSON.parse(stockageInscrit[K.comptes]).map((c) => ({ ...c, creeLe: isoDe(t0 - 2 * jour) })));
+      const r1 = ouvrirPage({ ...base11, [K.comptes]: comptesAnciens, [K.devis]: JSON.stringify([devis11("q1", 1, ceMois(1))]) });
+      await pause(3000);
+      if (!modaleOuverte(r1) || r1.texte("libelle-modale-ok") !== "Voir les formules" || r1.texte("libelle-modale-annuler") !== "Plus tard") etape11.relances.push("1re ouverture du jour : invitation absente");
+      r1.$("bouton-modale-annuler").click();
+      await pause(200);
+      const r2 = ouvrirPage(r1.stockage());
+      await pause(3000);
+      if (modaleOuverte(r2)) etape11.relances.push("invitation du jour répétée à la 2e ouverture");
+      /* Après impression d'un devis (« afterprint » sur la feuille). */
+      const lireRelance = (page) => JSON.parse(page.stockage().bp_v1_relances || "{}")[compte.id] || {};
+      const r3 = ouvrirPage({ ...r1.stockage(), bp_v1_relances: JSON.stringify({ [compte.id]: { ...lireRelance(r1), derniere: 0 } }) });
+      r1.w.close();
+      r2.w.close();
+      await pause(2000);
+      await menu(r3, "devis", 500);
+      r3.doc.querySelector("#liste-devis [data-ouvrir-devis='q1']").click();
+      await pause(700);
+      r3.$("devis-bouton-imprimer").click();
+      await pause(900);
+      r3.w.dispatchEvent(new r3.w.Event("afterprint"));
+      await pause(1600);
+      if (r3.actif() !== "ecran-feuille" || !modaleOuverte(r3) || r3.texte("modale-titre") !== "Vos devis, à votre image") etape11.relances.push("après impression : invitation absente (" + r3.actif() + ")");
+      r3.$("bouton-modale-annuler").click();
+      await pause(200);
+      r3.w.dispatchEvent(new r3.w.Event("afterprint"));
+      await pause(1600);
+      if (modaleOuverte(r3)) etape11.relances.push("2e invitation moins de 10 minutes après la 1re");
+      r3.w.close();
+      /* Abonné : jamais d'invitation, rappel J-3 sur l'accueil et notifications J-3 / J-1 à 9 h. */
+      const r4 = ouvrirPage({ ...base11, [K.comptes]: comptesAnciens, ...aboDe(jetonValide) }, null, { html: htmlPro });
+      await pause(3000);
+      if (modaleOuverte(r4)) etape11.relances.push("abonné invité : « " + r4.texte("modale-titre") + " »");
+      r4.w.close();
+      const jetonJ3 = await jetonAbo(charge({ fin: isoDe(t0 + 2.5 * jour) }));
+      const r5 = ouvrirPage({ ...base11, ...aboDe(jetonJ3) }, null, { html: htmlPro });
+      await pause(2000);
+      if (r5.$("accueil-rappel").hidden || !nb11(r5.texte("accueil-rappel")).startsWith("Votre Pro mensuel se termine dans 3 jours") || r5.$("bouton-passer-pro").hidden || r5.texte("libelle-passer-pro") !== "Renouveler")
+        etape11.relances.push("rappel J-3 : « " + r5.texte("accueil-rappel") + " », bouton « " + r5.texte("libelle-passer-pro") + " »");
+      r5.w.close();
+      const finNotif = t0 + 10 * jour;
+      const preferences11 = new Map(Object.entries({ ...base11, ...aboDe(await jetonAbo(charge({ fin: isoDe(finNotif) }))) }));
+      const notifs = { annulees: [], planifiees: [] };
+      const natif11 = {
+        isNativePlatform: () => true,
+        getPlatform: () => "android",
+        Plugins: {
+          App: { addListener: () => Promise.resolve({ remove() {} }), exitApp() {} },
+          Preferences: {
+            get: async ({ key }) => ({ value: preferences11.has(key) ? preferences11.get(key) : null }),
+            set: async ({ key, value }) => { preferences11.set(key, value); },
+            remove: async ({ key }) => { preferences11.delete(key); }
+          },
+          LocalNotifications: {
+            checkPermissions: async () => ({ display: "granted" }),
+            requestPermissions: async () => ({ display: "granted" }),
+            cancel: async ({ notifications }) => { notifs.annulees.push(...notifications.map((n) => n.id)); },
+            schedule: async ({ notifications }) => { notifs.planifiees.push(...notifications); }
+          }
+        }
+      };
+      const r6 = ouvrirPage({}, natif11, { html: htmlPro });
+      await pause(3000);
+      const heures = notifs.planifiees.map((n) => n.id + "@" + new Date(n.schedule.at).getHours() + "h-" + Math.round((finNotif - new Date(n.schedule.at).getTime()) / jour) + "j");
+      if (notifs.planifiees.length !== 2 || heures.join() !== "3103@9h-3j,3101@9h-1j" || !notifs.annulees.includes(3103) || notifs.planifiees.some((n) => !/se termine dans/.test(n.body)))
+        etape11.relances.push("notifications J-3 / J-1 : " + (heures.join(" ") || "aucune") + " (annulées : " + notifs.annulees.join(",") + ")");
+      r6.w.close();
+      etape11.cas.push("relances : jour, impression, abonné, J-3, notifications");
+
+      /* E. Mes paiements et reçu imprimable (données piégées ignorées). */
+      const paiementOk = { reference: "BP-RECU2026A", formule: "mensuel", montant: 2500, payeLe: isoDe(t0 - 6 * jour), statut: "paye", moyen: "orange-money", debut: isoDe(t0 - 6 * jour), fin: isoDe(t0 + 24 * jour) };
+      const pieges = [paiementOk, { ...paiementOk, reference: "<img src=x onerror=alert(1)>" }, { ...paiementOk, reference: "BP-AUTRE01", montant: "2500" },
+        { ...paiementOk, reference: "BP-AUTRE02", formule: "gratuit" }, { ...paiementOk, reference: "BP-AUTRE03", statut: "offert" }, { ...paiementOk, reference: "BP-AUTRE04", montant: -5 }, null, "texte", [1]];
+      let impressions = 0;
+      const rc = ouvrirPage({ ...base11, ...aboDe(jetonValide), bp_v1_paiements: JSON.stringify({ [compte.id]: pieges, "autre-compte-1234": [{ ...paiementOk, reference: "BP-PASAMOI1" }] }) }, null,
+        { html: htmlPro, preparer(w) { w.print = () => { impressions += 1; }; } });
+      await pause(2000);
+      await menu(rc, "abonnement", 600);
+      const lignesPaiement = [...rc.doc.querySelectorAll("#liste-paiements > li")];
+      const textePaiement = nb11(lignesPaiement.map((li) => li.textContent).join(" | "));
+      if (lignesPaiement.length !== 1 || !textePaiement.includes("Pro mensuel") || !textePaiement.includes("2 500 FCFA") || !textePaiement.includes("Orange Money") || !textePaiement.includes("Payé") || !rc.$("paiements-vide").hidden)
+        etape11.recu.push("Mes paiements : " + lignesPaiement.length + " ligne(s) « " + textePaiement + " »");
+      const boutonRecu = rc.doc.querySelector("[data-recu='BP-RECU2026A']");
+      if (boutonRecu) boutonRecu.click();
+      await pause(300);
+      const recu = nb11(rc.texte("recu-a4"));
+      if (impressions !== 1 || rc.doc.body.dataset.impression !== "recu") etape11.recu.push("« Reçu » n'imprime pas le reçu (" + impressions + ")");
+      for (const attendu of ["Reçu de paiement", "BP-RECU2026A", "2 500 FCFA", nb11(moteur11.montantEnLettres(2500, "XOF")), "Orange Money", "Pro mensuel", compte.nom, "+226 05 60 86 08"]) {
+        if (!recu.includes(nb11(attendu))) etape11.recu.push("reçu sans « " + attendu + " »");
+      }
+      if (rc.doc.querySelector("#recu-a4 img, #recu-a4 script")) etape11.recu.push("nom du compte interprété comme du HTML dans le reçu");
+      rc.w.dispatchEvent(new rc.w.Event("afterprint"));
+      await pause(100);
+      if (rc.doc.body.dataset.impression || rc.$("recu-a4").childElementCount) etape11.recu.push("reçu non nettoyé après impression");
+      if (!styleLivre11.includes('body[data-impression="recu"] .recu-a4 { display: grid')) etape11.recu.push("règle d'impression du reçu absente");
+      inspecterPage(rc, "mes paiements");
+      rc.w.close();
+      const pdfRecu = analyserPdf(moteur11.creerPdfRecu(moteur11.modeleRecu({ ...paiementOk, moyen: "Orange Money" }, { nom: "Awa Ouédraogo-Kaboré", entreprise: "BRG Électro+", telephone: "+226 70 11 22 33" })));
+      if (pdfRecu.erreurs.length || pdfRecu.pages !== 1 || !pdfRecu.texte.includes(moteur11.chainePdf("Reçu de paiement")) || !pdfRecu.texte.includes("/Title " + moteur11.chainePdf("Reçu BP-RECU2026A"))
+        || !pdfRecu.texte.includes(moteur11.chainePdf("Awa Ouédraogo-Kaboré")))
+        etape11.recu.push("PDF du reçu (téléphone) : " + pdfRecu.pages + " page(s) " + pdfRecu.erreurs.join(", "));
+
+      /* F. Paiement : le front n'envoie QUE la formule ; seule une adresse https est ouverte. */
+      const appels = [];
+      const ouvertures = [];
+      let reponse = null;
+      const pp = ouvrirPage({ ...base11 }, null, { preparer(w) {
+        w.fetch = async (url, init) => { appels.push({ url: String(url), init }); if (reponse instanceof Error) throw reponse; return { ok: true, json: async () => reponse }; };
+        w.open = (...args) => { ouvertures.push(args); return null; };
+      } });
+      await pause(2000);
+      await menu(pp, "abonnement", 600);
+      const choisir = async (id) => { pp.doc.querySelector("[data-choisir-formule='" + id + "']").click(); await pause(150); };
+      await choisir("mensuel");
+      if (!modaleOuverte(pp) || pp.texte("modale-titre") !== "Pro mensuel" || pp.texte("libelle-modale-ok") !== "Payer maintenant" || !nb11(pp.texte("modale-contenu")).includes("2 500 FCFA"))
+        etape11.paiement.push("récapitulatif : « " + pp.texte("modale-titre") + " » / « " + pp.texte("libelle-modale-ok") + " »");
+      reponse = { urlPaiement: "https://paiement.exemple.bf/p/123", reference: "BP-ABC123" };
+      pp.$("bouton-modale-ok").click();
+      await pause(400);
+      const premier = appels[0] || { init: {} };
+      if (!premier.url.endsWith("/api/paiements/initier") || premier.init.method !== "POST" || premier.init.body !== '{"formule":"mensuel"}' || premier.init.credentials !== "omit")
+        etape11.paiement.push("requête : " + premier.url + " " + premier.init.method + " " + premier.init.body + " " + premier.init.credentials);
+      if (ouvertures.length !== 1 || ouvertures[0][0] !== "https://paiement.exemple.bf/p/123" || ouvertures[0][2] !== "noopener,noreferrer" || !pp.texte("msg-paiement").includes("BP-ABC123"))
+        etape11.paiement.push("page de paiement non ouverte (" + JSON.stringify(ouvertures) + ")");
+      for (const [nom, valeur] of [["javascript:", { urlPaiement: "javascript:alert(1)", reference: "BP-ABC124" }], ["http://", { urlPaiement: "http://paiement.exemple.bf/p/1", reference: "BP-ABC125" }],
+        ["référence invalide", { urlPaiement: "https://paiement.exemple.bf/p/2", reference: "<b>x</b>" }], ["coupure réseau", new Error("réseau")]]) {
+        reponse = valeur;
+        await choisir("semaine");
+        pp.$("bouton-modale-ok").click();
+        await pause(300);
+        if (ouvertures.length !== 1 || !pp.texte("msg-paiement").includes("n'a pas pu démarrer") || pp.$("bouton-reessayer-paiement").hidden) etape11.paiement.push(nom + " : " + ouvertures.length + " ouverture(s), « " + pp.texte("msg-paiement") + " »");
+      }
+      reponse = { urlPaiement: "https://paiement.exemple.bf/p/9", reference: "BP-ABC129" };
+      pp.$("bouton-reessayer-paiement").click();
+      await pause(400);
+      if (ouvertures.length !== 2 || appels[appels.length - 1].init.body !== '{"formule":"semaine"}' || !pp.$("bouton-reessayer-paiement").hidden) etape11.paiement.push("« Réessayer » ne relance pas la formule choisie");
+      if (appels.some((a) => /montant|prix|\d{3}/.test(String(a.init.body)))) etape11.paiement.push("un montant part dans la requête");
+      pp.w.close();
+      etape11.cas.push(appels.length + " demandes de paiement");
+      etape11.fait = true;
     }
 
     /* ㉑ bouton retour Android : modale → recherche → tiroir → historique → accueil → quitter */
@@ -2557,6 +2921,44 @@ function controlesListes() {
     stats.join(" ; ") || "une seule fonction pour l'accueil, le profil et l'écran Statistiques (mêmes chiffres vérifiés à l'écran) ; payé compté comme accepté ; clients au-delà de 8 regroupés « N autres clients » ; histogramme du mois en SVG (jours à venir distincts) ; comparaison à date égale avec le mois précédent ; bornes de mois en heure locale ; aucun devis → « — »");
 }
 
+/* ---------- Étape 11 : abonnement ---------- */
+function controlesEtape11() {
+  const absent = etape11.fait ? [] : ["parcours jsdom de l'étape 11 non exécuté"];
+  const formules = [...absent, ...etape11.formules];
+  controle("㊼", "les 5 formules ont une couleur, une icône, un badge", formules.length === 0,
+    formules.join(" ; ") || "Gratuit gris (cadeau, POUR DÉMARRER), Pass semaine jaune (éclair, SANS ENGAGEMENT), Pro mensuel violet (trophée, LE PLUS CHOISI, 6 % plus haute), Pro annuel vert (calendrier, 2 MOIS OFFERTS), Lifetime noir et jaune (infini, À VIE) ; prix croissants 0 → 60 000 FCFA ; Ma formule : « Votre abonnement gratuit n'a pas de date de fin. » / « Votre Pro mensuel se termine le … — 24 jours restants. » + jauge ; FAQ 3 questions");
+  const logos = [...absent, ...etape11.logos];
+  controle("㊽", "les logos de paiement sont présents", logos.length === 0,
+    logos.join(" ; ") || "7 moyens (Orange Money, Moov Money, Wave, Telecel Money, Visa, Mastercard, CinetPay) : logo officiel s'il est fourni dans www/images/paiement/, sinon pastille à la couleur de la marque ; " + (etape11.cas.find((c) => /logos officiels/.test(c)) || "") + " ; bande de confiance (4 engagements)");
+
+  /* ㊾ Toutes les tailles de texte de l'abonnement (écran, cadenas, invitations, reçu imprimé) ≥ 13 px. */
+  const debut = css.indexOf("7j. Abonnement");
+  const section = debut < 0 ? "" : css.slice(debut, css.indexOf("/* ---------- 9.", debut));
+  const impression = css.slice(css.indexOf('body[data-impression="recu"] { background'), css.indexOf("11. Respect"));
+  const petites = [...(section + impression).matchAll(/font-size:\s*([\d.]+)(px|pt)/g)]
+    .filter((m) => (m[2] === "px" ? Number(m[1]) : Number(m[1]) * 4 / 3) < 13).map((m) => m[0]);
+  controle("㊾", "le texte contient 13 px minimum", debut > 0 && impression.length > 0 && petites.length === 0,
+    petites.length ? "tailles trop petites : " + petites.join(", ") : "toutes les tailles de l'écran Abonnement, des cadenas, des invitations et du reçu imprimé ≥ 13 px (10 pt) ; mesure réelle à 360 et 1440 px dans verifier-navigateur.mjs (AV)");
+  const quota = [...absent, ...etape11.quota];
+  controle("㊿", "le blocage au 6e devis fonctionne et conserve le brouillon", quota.length === 0,
+    quota.join(" ; ") || "gratuit : accueil « 3 / 5 devis ce mois » + jauge ; 4e devis → « Il vous reste 1 devis gratuit » ; 5e créé ; 6e → création BLOQUÉE, invitation obligatoire, étude « Studio Tanghin » enregistrée, l'écran Résultat reste ouvert ; Dupliquer bloqué aussi ; anciens devis consultables et imprimables ; supprimer des devis ne rend pas de devis gratuit ; abonné sans limite");
+  const jeton = [...absent, ...etape11.jeton];
+  controle("AB", "le Pro n'est donné que par un jeton signé valide", jeton.length === 0,
+    jeton.join(" ; ") || "ECDSA P-256 vérifié sur l'appareil avec la clé PUBLIQUE de la balise meta (vide dans la page livrée : échec fermé) ; refusés : formule en clair, autre clé, charge modifiée, autre compte, autre numéro, expiré, émis dans le futur, horloge reculée sous la dernière date vue, champ inconnu, Lifetime daté, mensuel sans fin, signature tronquée ; aucune clé privée dans le front");
+  const relances = [...absent, ...etape11.relances];
+  controle("RL", "relances sans harceler", relances.length === 0,
+    relances.join(" ; ") || "bandeau permanent (gratuit) ; invitation à la 1re ouverture du jour (jamais le jour de la création du compte, une seule fois) ; après impression ou envoi (au plus une toutes les 10 min) ; abonné : aucune invitation, rappel J-3 / J-1 sur l'accueil (« Renouveler ») et notifications locales à 9 h (ids 3103, 3101)");
+  const cadenas = [...absent, ...etape11.cadenas];
+  controle("PV", "fonctions Pro sous cadenas → invitation", cadenas.length === 0,
+    cadenas.join(" ; ") || "gratuit : cadenas sur Statistiques (menu + carte), logo, feuille sans filigrane, 4 « Débloquer » ; un toucher ouvre l'invitation → « Voir les formules » → Abonnement ; abonné : aucun cadenas, avantages « Inclus », statistiques détaillées visibles");
+  const recu = [...absent, ...etape11.recu];
+  controle("RC", "Mes paiements et reçu imprimable", recu.length === 0,
+    recu.join(" ; ") || "paiements relus champ par champ (références piégées, montants texte ou négatifs, formule gratuite, statut inconnu, autre compte ignorés) ; « Reçu » remplit la feuille A4 du reçu (texte seulement) puis imprime, nettoyée après impression ; sur téléphone : PDF du reçu (1 page, structure vérifiée) partagé");
+  const paiement = [...absent, ...etape11.paiement];
+  controle("PI", "paiement : la formule seule, une adresse https seule", paiement.length === 0,
+    paiement.join(" ; ") || "3 touchers (Choisir → Payer maintenant → page de paiement) ; corps envoyé = {\"formule\":\"…\"} sans montant, sans cookie ; seule une adresse https:// avec une référence BP-… est ouverte (noopener) ; javascript:, http://, référence piégée et coupure réseau → message clair + « Réessayer » qui relance la même formule");
+}
+
 /* ---------- Rapport ---------- */
 await controlesExecution();
 controlesMoteur();
@@ -2568,9 +2970,10 @@ controleCapacitor();
 controleGitignore();
 controlesSecurite();
 controlesEtape10();
+controlesEtape11();
 controlesIdentite();
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+", "㊸", "㊹", "㊺", "㊻", "VR", "CO", "SW", "AN", "CS"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+", "㊸", "㊹", "㊺", "㊻", "VR", "CO", "SW", "AN", "CS", "㊼", "㊽", "㊾", "㊿", "AB", "RL", "PV", "RC", "PI"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
