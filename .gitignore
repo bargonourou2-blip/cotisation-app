@@ -1,0 +1,40 @@
+# Dépendances
+node_modules/
+
+# Secrets — ne JAMAIS versionner
+.env
+.env.*
+!.env.exemple
+*.keystore
+*.jks
+keystore.properties
+.cles/
+*.pem
+
+# Backend — base de données (jamais dans le dépôt)
+backend/donnees/
+backend/sauvegardes/
+*.sqlite.chiffre
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Android — fichiers générés
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/
+*.apk
+*.aab
+
+# Python (scripts d'outillage)
+__pycache__/
+*.pyc
+
+# Éditeurs et système
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log

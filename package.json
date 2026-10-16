@@ -1,0 +1,46 @@
+{
+  "name": "batiplus",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BâtiPlus — l'assistant d'étude et de devis pour électriciens, conçu et développé par BRG Électro+",
+  "author": "BRG Électro+",
+  "license": "UNLICENSED",
+  "scripts": {
+    "assembler": "node src/scripts/assembler.mjs",
+    "verifier": "node --disable-warning=ExperimentalWarning src/scripts/verifier.mjs",
+    "verifier:navigateur": "node src/scripts/verifier-navigateur.mjs",
+    "valider:moteur": "node src/scripts/valider-moteur.mjs",
+    "construire": "node src/scripts/confidentialite.mjs && node src/scripts/regles-api.mjs --verifier && node src/scripts/assembler.mjs && node src/scripts/valider-moteur.mjs && node --disable-warning=ExperimentalWarning src/scripts/verifier.mjs && npm run tester:backend",
+    "tester:backend": "cd backend && npm run --silent tester",
+    "apercu": "node src/scripts/apercu.mjs",
+    "sync": "npm run construire && npx cap sync android",
+    "android": "npm run sync && npx cap open android",
+    "icones": "python3 src/scripts/preparer_icones.py && capacitor-assets generate --android --assetPath assets --iconBackgroundColor \"#FFFFFF\" --iconBackgroundColorDark \"#FFFFFF\" --splashBackgroundColor \"#4E0A80\" --splashBackgroundColorDark \"#4E0A80\"",
+    "verifier:android": "node src/scripts/verifier-android.mjs",
+    "confidentialite": "node src/scripts/confidentialite.mjs",
+    "play-store": "node src/scripts/play-store.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/browser": "^7.0.0",
+    "@capacitor/camera": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.0",
+    "@capacitor/network": "^7.0.0",
+    "@capacitor/preferences": "^7.0.0",
+    "@capacitor/share": "^7.0.0",
+    "@capacitor/splash-screen": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "sharp": "^0.33.5"
+  }
+}

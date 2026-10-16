@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Politique de confidentialité de BâtiPlus — BRG Électro+</title>
+<style>
+  :root { color-scheme: light dark; --violet: #6A0DAD; --fond: #F4F2F9; --carte: #FFFFFF; --texte: #17131F; --texte-2: #5F5870; --ligne: #E8E4F0; }
+  @media (prefers-color-scheme: dark) { :root { --violet: #D2B0F7; --fond: #08070C; --carte: #16121E; --texte: #F6F4FA; --texte-2: #B9B2C9; --ligne: #2A2336; } }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 20px 56px; background: var(--carte); }
+  h1 { color: var(--violet); font-size: 1.8rem; line-height: 1.25; margin: 0 0 8px; }
+  h2 { color: var(--violet); font-size: 1.3rem; margin: 2rem 0 0.6rem; }
+  h3 { font-size: 1.05rem; margin: 1.4rem 0 0.4rem; }
+  p, li { color: var(--texte); }
+  ul { padding-left: 1.3rem; }
+  table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--ligne); }
+  th { color: var(--violet); }
+  code { font-size: 0.92em; }
+  hr { border: 0; border-top: 1px solid var(--ligne); margin: 2rem 0 1rem; }
+  @media (max-width: 520px) { table, thead, tbody, tr, th, td { display: block; } thead { display: none; } td:first-child { font-weight: 700; border-bottom: 0; padding-bottom: 0; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Politique de confidentialité de BâtiPlus</h1>
+<p>Dernière mise à jour : 16 octobre 2026 — version 1.0</p>
+<p>BâtiPlus est une application d'étude et de devis d'installations électriques destinée aux électriciens. Cette politique explique, simplement et complètement, quelles informations l'application utilise, pourquoi, où elles sont conservées, pendant combien de temps, qui peut y accéder et comment les faire supprimer.</p>
+<h2>1. Éditeur et contact</h2>
+<ul>
+  <li><strong>Éditeur</strong> : BRG Électro+, entreprise d'électricité, Burkina Faso — conceptrice et éditrice de BâtiPlus.</li>
+  <li><strong>Application</strong> : BâtiPlus, identifiant Google Play <code>com.brgelectro.batiplus</code>.</li>
+  <li><strong>Contact pour toute question sur vos données</strong> : +226 05 60 86 08 (appel ou WhatsApp) · +226 68 52 42 90.</li>
+</ul>
+<h2>2. Données collectées</h2>
+<h3>Ce que vous saisissez pour votre compte</h3>
+<ul>
+  <li>votre nom et, si vous le souhaitez, le nom de votre entreprise ;</li>
+  <li>votre numéro de téléphone (il sert d'identifiant de connexion) ;</li>
+  <li>votre ville, votre pays et votre devise ;</li>
+  <li>votre photo de profil et le logo de votre entreprise, seulement si vous les ajoutez ;</li>
+  <li>votre code secret : il n'est <strong>jamais</strong> conservé tel quel. Seule une empreinte chiffrée (PBKDF2-SHA-256, 150 000 itérations, sel aléatoire) est enregistrée ; personne, pas même BRG Électro+, ne peut retrouver votre code à partir de cette empreinte.</li>
+</ul>
+<h3>Ce que vous créez dans l'application</h3>
+<ul>
+  <li>vos chantiers (pièces, surfaces, appareils, options) et leurs études ;</li>
+  <li>vos devis (lignes de matériel, prix, main-d'œuvre, conditions, notes, statut) ;</li>
+  <li>les coordonnées de vos clients que vous saisissez : nom, téléphone, lieu du chantier ;</li>
+  <li>vos prix habituels et vos fournisseurs (« Mes prix ») ;</li>
+  <li>les photos de tableau électrique que vous joignez à un devis.</li>
+</ul>
+<h3>Abonnement et paiement</h3>
+<ul>
+  <li>la formule choisie, ses dates de début et de fin, la référence et le résultat de chaque paiement, le moyen utilisé (par exemple Orange Money ou carte) et le montant ;</li>
+  <li>un jeton d'abonnement signé par BâtiPlus, qui prouve votre formule sans jamais contenir de donnée de paiement.</li>
+</ul>
+<h3>Ce que BâtiPlus ne collecte pas</h3>
+<ul>
+  <li>aucune localisation GPS, aucun contact du téléphone, aucun fichier en dehors de ceux que vous choisissez ;</li>
+  <li>aucun identifiant publicitaire, aucun outil de mesure d'audience, aucun traceur, aucune publicité ;</li>
+  <li>aucun code Mobile Money, aucun numéro de carte bancaire : ils sont saisis uniquement sur la page sécurisée de l'agrégateur de paiement.</li>
+</ul>
+<h2>3. Pourquoi ces données sont utilisées</h2>
+<table>
+  <thead><tr><th scope="col">Donnée</th><th scope="col">Utilisation</th></tr></thead>
+  <tbody>
+    <tr><td>Nom, entreprise, téléphone, ville, pays</td><td>Créer et protéger votre compte ; les afficher en en-tête de vos devis</td></tr>
+    <tr><td>Code secret (empreinte)</td><td>Vérifier que c'est bien vous qui ouvrez l'application</td></tr>
+    <tr><td>Chantiers, devis, clients, prix</td><td>Faire l'étude NF C 15-100, chiffrer et produire vos devis</td></tr>
+    <tr><td>Photo du tableau électrique</td><td>La joindre en annexe de la feuille A4 et du PDF du devis</td></tr>
+    <tr><td>Formule, paiements</td><td>Activer, prolonger et prouver votre abonnement ; établir vos reçus</td></tr>
+    <tr><td>Notifications</td><td>Vous rappeler la fin de votre abonnement (3 jours avant, la veille, le jour même)</td></tr>
+  </tbody>
+</table>
+<p>Vos données ne sont <strong>jamais vendues</strong>, jamais louées, jamais utilisées pour de la publicité ni pour établir un profil commercial.</p>
+<h2>4. Où les données sont stockées</h2>
+<ul>
+  <li><strong>Sur votre téléphone</strong> : toutes vos données sont enregistrées dans l'espace privé de l'application, inaccessible aux autres applications.</li>
+  <li><strong>Pas de sauvegarde Android automatique</strong> : l'application interdit la copie de ses données dans les sauvegardes Google et lors du transfert vers un nouveau téléphone, pour éviter toute fuite.</li>
+  <li><strong>Votre copie de sauvegarde</strong> : depuis « Mon profil → Sauvegarde », vous pouvez exporter vos données dans un fichier que vous gardez où vous voulez. Les photos de tableau n'y figurent pas (fichier léger).</li>
+  <li><strong>Paiement</strong> : lors d'un achat, la référence du paiement, la formule, votre identifiant de compte et votre numéro de téléphone sont transmis, de façon chiffrée (HTTPS), au service en ligne de BâtiPlus et à l'agrégateur de paiement choisi, uniquement pour réaliser et confirmer le paiement.</li>
+  <li><strong>Synchronisation</strong> : lorsque la synchronisation de compte sera proposée dans une mise à jour, vos données seront copiées de façon chiffrée sur le service en ligne de BâtiPlus pour les retrouver sur un autre téléphone. Cette politique sera mise à jour avant toute mise en service, et vous en serez informé dans l'application.</li>
+</ul>
+<p>Toutes les communications de l'application passent par HTTPS ; aucune connexion non chiffrée n'est autorisée.</p>
+<h2>5. Appareil photo</h2>
+<p>L'appareil photo ne s'ouvre que lorsque vous touchez « Prendre la photo » dans un devis. BâtiPlus utilise l'application Appareil photo de votre téléphone : il ne demande pas la permission d'accéder à la caméra et ne prend jamais de photo à votre insu. La photo n'est pas enregistrée dans votre galerie ; elle est redessinée, réduite (1 280 pixels au plus) et conservée uniquement dans le devis concerné. Vous pouvez la retirer à tout moment (« Retirer la photo »).</p>
+<h2>6. Notifications</h2>
+<p>Sur Android 13 et plus récent, l'application vous demande l'autorisation d'afficher des notifications. Elles servent uniquement aux rappels de fin d'abonnement. Vous pouvez refuser ou les désactiver à tout moment dans les réglages du téléphone : l'application continue de fonctionner normalement.</p>
+<h2>7. Paiement</h2>
+<p>Le paiement est réalisé sur la page sécurisée d'un agrégateur de paiement agréé (par exemple CinetPay, FedaPay, LigdiCash, PayDunya ou Stripe pour les cartes). BâtiPlus ne voit et ne conserve jamais votre code Mobile Money, votre code PIN ni votre numéro de carte. L'agrégateur traite ces informations selon sa propre politique de confidentialité. BâtiPlus reçoit seulement la référence, le montant, la formule et le résultat (payé, échoué, annulé).</p>
+<h2>8. Qui a accès aux données</h2>
+<ul>
+  <li><strong>Vous</strong>, sur votre téléphone, après saisie de votre code secret.</li>
+  <li><strong>Vos clients</strong>, uniquement pour les devis que vous choisissez de leur envoyer (WhatsApp, partage du PDF, impression).</li>
+  <li><strong>BRG Électro+</strong>, uniquement pour les informations d'abonnement et de paiement nécessaires au service et au support, et seulement lorsque vous le contactez.</li>
+  <li><strong>L'agrégateur de paiement</strong>, pour les seules informations du paiement en cours.</li>
+</ul>
+<p>Aucune autre entreprise n'a accès à vos données. Elles ne sont communiquées à une autorité que si la loi l'exige.</p>
+<h2>9. Durée de conservation</h2>
+<ul>
+  <li><strong>Sur le téléphone</strong> : tant que vous gardez l'application et que vous ne supprimez pas les éléments concernés. Supprimer un devis supprime aussi sa photo de tableau. Désinstaller l'application efface toutes les données de ce téléphone.</li>
+  <li><strong>Session</strong> : l'application se verrouille après 15 minutes d'inactivité ; votre code secret est alors redemandé.</li>
+  <li><strong>Paiements et abonnement</strong> (service en ligne) : la durée de l'abonnement, puis 5 ans pour les obligations comptables (preuve des paiements, reçus).</li>
+  <li><strong>Demandes au support</strong> : effacées dans les 12 mois suivant leur traitement.</li>
+</ul>
+<h2>10. Suppression de vos données</h2>
+<ul>
+  <li><strong>Sur le téléphone</strong> : supprimez un devis, un chantier ou un client depuis l'application ; ou désinstallez BâtiPlus pour tout effacer.</li>
+  <li><strong>Suppression du compte et des données détenues en ligne</strong> : envoyez « Suppression de mon compte BâtiPlus » par WhatsApp au +226 05 60 86 08 depuis le numéro de votre compte. Nous confirmons la suppression sous 30 jours au plus. Seules les preuves de paiement que la loi impose de garder sont conservées, pour la durée légale, puis supprimées.</li>
+</ul>
+<h2>11. Vos droits</h2>
+<p>Vous pouvez à tout moment demander à accéder à vos données, à les corriger, à les exporter (« Mon profil → Sauvegarde → Exporter »), à limiter leur utilisation ou à les faire supprimer, et retirer votre accord aux notifications. Pour toute demande : +226 05 60 86 08 (WhatsApp) ou +226 68 52 42 90. Si vous estimez que vos droits ne sont pas respectés, vous pouvez saisir l'autorité de protection des données personnelles de votre pays (au Burkina Faso : la Commission de l'Informatique et des Libertés, CIL).</p>
+<h2>12. Sécurité</h2>
+<ul>
+  <li>code secret jamais conservé en clair (empreinte PBKDF2) ; blocage temporaire après plusieurs codes faux ;</li>
+  <li>verrouillage automatique après 15 minutes d'inactivité ;</li>
+  <li>données dans l'espace privé de l'application, exclues des sauvegardes Android ;</li>
+  <li>communications uniquement en HTTPS, certificats du système seulement ;</li>
+  <li>abonnement prouvé par une signature numérique vérifiée sur le téléphone : il ne peut pas être modifié à la main ;</li>
+  <li>aucune clé secrète dans l'application ; paiements confirmés uniquement par le service en ligne de BâtiPlus.</li>
+</ul>
+<p>Aucun système n'est invulnérable : protégez votre téléphone par un verrouillage d'écran et ne communiquez jamais votre code secret.</p>
+<h2>13. Enfants</h2>
+<p>BâtiPlus est un outil professionnel destiné aux électriciens adultes. Il ne s'adresse pas aux enfants de moins de 16 ans et ne collecte pas sciemment leurs données.</p>
+<h2>14. Modifications de cette politique</h2>
+<p>Cette politique peut évoluer, notamment lors de l'arrivée de la synchronisation de compte. La date de mise à jour figure en haut de la page. En cas de changement important, vous en serez informé dans l'application avant qu'il ne s'applique.</p>
+<hr>
+<p>BâtiPlus est une application conçue et développée par BRG Électro+ — +226 05 60 86 08 · +226 68 52 42 90.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BâtiPlus : aucune donnée de l'application ne part dans une sauvegarde Android (cloud
+     ou transfert vers un autre téléphone). Les empreintes des codes secrets restent sur cet
+     appareil ; les données suivent le compte par la synchronisation (étape 14) et par
+     l'export du profil (Profil → Sauvegarde → Exporter). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

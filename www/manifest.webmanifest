@@ -1,0 +1,20 @@
+{
+  "name": "BâtiPlus — études et devis pour électriciens",
+  "short_name": "BâtiPlus",
+  "description": "L'assistant d'étude et de devis pour électriciens, conçu et développé par BRG Électro+.",
+  "id": "/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "fr",
+  "dir": "ltr",
+  "background_color": "#4E0A80",
+  "theme_color": "#6A0DAD",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "images/logo/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "images/logo/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "images/logo/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

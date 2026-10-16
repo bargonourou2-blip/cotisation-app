@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fichiers que BâtiPlus peut confier à une autre application (partage, appareil photo) :
+     seulement ses propres dossiers, jamais toute la mémoire du téléphone.
+     - devis et reçus PDF : Documents/BatiPlus (Filesystem, répertoire DOCUMENTS) ;
+     - photo du tableau prise par l'appareil photo : dossier privé Pictures de l'application ;
+     - cache de l'application (PDF de repli, photo recadrée). -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-path name="devis" path="Documents/BatiPlus/" />
+    <external-files-path name="photos" path="Pictures/" />
+    <cache-path name="cache" path="." />
+</paths>

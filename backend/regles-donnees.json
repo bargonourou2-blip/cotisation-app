@@ -1,0 +1,330 @@
+{
+  "format": "batiplus-regles-api",
+  "version": 1,
+  "saisie": {
+    "format": "batiplus-regles-saisie",
+    "version": 1,
+    "decimalesMax": 2,
+    "nombres": {
+      "surface": {
+        "libelle": "La surface",
+        "min": 0.5,
+        "max": 2000,
+        "decimales": 2,
+        "unite": "m²"
+      },
+      "distance": {
+        "libelle": "La distance",
+        "min": 0,
+        "max": 500,
+        "decimales": 2,
+        "unite": "m"
+      },
+      "hauteur": {
+        "libelle": "La hauteur",
+        "min": 2,
+        "max": 6,
+        "decimales": 2,
+        "unite": "m"
+      },
+      "pieces": {
+        "libelle": "Le nombre de pièces",
+        "min": 1,
+        "max": 500,
+        "decimales": 0
+      },
+      "prises": {
+        "libelle": "Le nombre de prises",
+        "min": 0,
+        "max": 50,
+        "decimales": 0
+      },
+      "points": {
+        "libelle": "Le nombre de points lumineux",
+        "min": 0,
+        "max": 50,
+        "decimales": 0
+      },
+      "appareils": {
+        "libelle": "Le nombre d'appareils",
+        "min": 0,
+        "max": 20,
+        "decimales": 0
+      },
+      "quantite": {
+        "libelle": "La quantité",
+        "min": 0,
+        "max": 100000,
+        "decimales": 0
+      },
+      "ouvriers": {
+        "libelle": "Le nombre d'ouvriers",
+        "min": 0,
+        "max": 50,
+        "decimales": 0
+      },
+      "jours": {
+        "libelle": "Le nombre de jours",
+        "min": 0,
+        "max": 365,
+        "decimales": 1
+      },
+      "prix": {
+        "libelle": "Le montant",
+        "min": 0,
+        "max": 1000000000,
+        "decimales": 2,
+        "devise": true
+      },
+      "pourcentage": {
+        "libelle": "Le pourcentage",
+        "min": 0,
+        "max": 100,
+        "decimales": 2,
+        "unite": "%"
+      },
+      "tva": {
+        "libelle": "Le taux de TVA",
+        "min": 0,
+        "max": 30,
+        "decimales": 2,
+        "unite": "%"
+      }
+    },
+    "textes": {
+      "court": {
+        "min": 1,
+        "max": 120
+      },
+      "fournisseur": {
+        "min": 1,
+        "max": 60
+      },
+      "recherche": {
+        "min": 0,
+        "max": 60
+      },
+      "long": {
+        "min": 0,
+        "max": 2000
+      }
+    },
+    "telephone": {
+      "chiffresMin": 8,
+      "chiffresMax": 15,
+      "saisieMax": 22
+    },
+    "fichiers": {
+      "sauvegardeOctets": 2097152,
+      "imageOctets": 5242880
+    }
+  },
+  "code": {
+    "longueurMin": 4,
+    "longueurMax": 6
+  },
+  "blocage": {
+    "essaisLibres": 5,
+    "durees": [
+      30000,
+      60000,
+      300000,
+      900000
+    ]
+  },
+  "bornes": {
+    "texteMin": 1,
+    "texteMax": 120,
+    "conditionsMax": 2000,
+    "telephoneMin": 8,
+    "telephoneMax": 15
+  },
+  "chantier": {
+    "surfaceMin": 0.5,
+    "surfaceMax": 2000,
+    "piecesMax": 500,
+    "prisesMax": 50,
+    "pointsMax": 50,
+    "appareilsMax": 20,
+    "distanceMax": 500,
+    "hauteurMin": 2,
+    "hauteurMax": 6,
+    "hauteurDefaut": 2.8,
+    "quantiteMax": 100000,
+    "prixMax": 1000000000,
+    "ouvriersMax": 50,
+    "joursMax": 365,
+    "lignesLibresMax": 20
+  },
+  "catalogue": {
+    "articlesMax": 300,
+    "fournisseursMax": 5,
+    "fournisseurMax": 60,
+    "designationMax": 120
+  },
+  "devis": {
+    "lignesMax": 150,
+    "noteMax": 2000,
+    "titreMax": 120,
+    "quantiteMax": 100000
+  },
+  "clientsMax": 5000,
+  "limiteGratuite": 5,
+  "tvaMax": 30,
+  "imageDonneesMax": 307200,
+  "statutsDevis": [
+    "brouillon",
+    "envoye",
+    "accepte",
+    "refuse",
+    "paye"
+  ],
+  "unites": [
+    "u",
+    "m",
+    "lot",
+    "forfait"
+  ],
+  "categories": [
+    "tableau",
+    "cables",
+    "appareillage",
+    "terre",
+    "autres"
+  ],
+  "typesPieces": [
+    "sejour",
+    "chambre",
+    "cuisine",
+    "salle-eau",
+    "wc",
+    "couloir",
+    "veranda",
+    "garage",
+    "magasin",
+    "bureau",
+    "exterieur"
+  ],
+  "typesChantier": [
+    "villa",
+    "appartement",
+    "boutique",
+    "bureau",
+    "renovation"
+  ],
+  "alimentations": [
+    "mono",
+    "tri"
+  ],
+  "appareils": [
+    "climatiseur",
+    "chauffe-eau",
+    "cuisiniere",
+    "four",
+    "lave-linge",
+    "lave-vaisselle",
+    "pompe",
+    "congelateur",
+    "portail"
+  ],
+  "pointsMainOeuvre": [
+    "prise",
+    "interrupteur",
+    "va-et-vient",
+    "point",
+    "dedie",
+    "tableau",
+    "depose",
+    "terre"
+  ],
+  "articlesDefaut": [
+    "coffret-1r",
+    "coffret-2r",
+    "coffret-3r",
+    "coffret-4r",
+    "coffret-5r",
+    "coffret-6r",
+    "peigne",
+    "bornier",
+    "disjoncteur-10",
+    "disjoncteur-16",
+    "disjoncteur-20",
+    "disjoncteur-32",
+    "differentiel-2p-40-AC",
+    "differentiel-2p-63-AC",
+    "differentiel-2p-40-A",
+    "differentiel-2p-63-A",
+    "differentiel-4p-40-AC",
+    "differentiel-4p-63-AC",
+    "differentiel-4p-40-A",
+    "differentiel-4p-63-A",
+    "parafoudre-2p",
+    "parafoudre-4p",
+    "cable-1.5",
+    "cable-2.5",
+    "cable-6",
+    "gaine-20",
+    "gaine-25",
+    "alimentation-3g10",
+    "alimentation-5g10",
+    "prise",
+    "prise-etanche",
+    "interrupteur",
+    "va-et-vient",
+    "point",
+    "boite",
+    "derivation",
+    "piquet",
+    "cable-terre",
+    "barrette",
+    "regard"
+  ],
+  "devises": {
+    "XOF": 0,
+    "XAF": 0,
+    "GNF": 0,
+    "NGN": 2,
+    "GHS": 2,
+    "MRU": 2,
+    "CDF": 2,
+    "KES": 2,
+    "MAD": 2,
+    "DZD": 2,
+    "TND": 3,
+    "ZAR": 2,
+    "EUR": 2,
+    "CAD": 2,
+    "USD": 2
+  },
+  "pays": {
+    "BF": "XOF",
+    "CI": "XOF",
+    "SN": "XOF",
+    "ML": "XOF",
+    "TG": "XOF",
+    "BJ": "XOF",
+    "NE": "XOF",
+    "GW": "XOF",
+    "CM": "XAF",
+    "GA": "XAF",
+    "CG": "XAF",
+    "TD": "XAF",
+    "CF": "XAF",
+    "GQ": "XAF",
+    "GN": "GNF",
+    "NG": "NGN",
+    "GH": "GHS",
+    "MR": "MRU",
+    "CD": "CDF",
+    "KE": "KES",
+    "MA": "MAD",
+    "DZ": "DZD",
+    "TN": "TND",
+    "ZA": "ZAR",
+    "FR": "EUR",
+    "BE": "EUR",
+    "CA": "CAD",
+    "US": "USD"
+  },
+  "etapesChantier": 5
+}

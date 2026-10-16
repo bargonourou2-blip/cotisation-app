@@ -1,0 +1,22 @@
+{
+  "appId": "com.brgelectro.batiplus",
+  "appName": "BâtiPlus",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#F4F2F9"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#4E0A80",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#6A0DAD"
+    }
+  }
+}
