@@ -47,7 +47,6 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 ## Lancer le projet
 
 ```bash
-cd batiplus
 npm install                 # dépendances Capacitor
 npm run construire          # assemble www/index.html puis lance les contrôles
 npm run apercu              # aperçu dans le navigateur : http://localhost:8080

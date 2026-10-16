@@ -104,7 +104,6 @@ montant faux (1 FCFA), notification perdue (rattrapée par la tâche planifiée)
 est simulé dans les tests.
 
 ```bash
-cd batiplus
 npm run tester:backend      # 19 contrôles paiement (S1–S5, P1–P13, AD) + 20 contrôles comptes/synchronisation/admin
 npm run construire          # assemble l'application + contrôles jsdom (dont SY1–SY10 contre la vraie API) + ceux du backend
 ```

@@ -10,7 +10,7 @@ De l'ordinateur au Google Play Store, en 12 étapes. Chaque étape dit **quoi fa
 | Android | 6.0 et plus (minSdk 23) — cible Android 15 (targetSdk 35, exigé par Google Play depuis le 31 août 2025) |
 | Permissions | INTERNET, POST_NOTIFICATIONS, ACCESS_NETWORK_STATE — rien d'autre |
 
-> Toutes les commandes se lancent dans le dossier `batiplus/` du dépôt, sauf mention contraire.
+> Toutes les commandes se lancent à la racine du projet BâtiPlus (le dossier qui contient `package.json`), sauf mention contraire.
 
 ---
 

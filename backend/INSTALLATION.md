@@ -6,7 +6,7 @@ L'API tourne derrière un proxy HTTPS (Caddy ou Nginx) et redémarre seule avec 
 
 ## 1. Clés de signature des abonnements
 
-Depuis le dossier `batiplus/` :
+Depuis la racine du projet BâtiPlus :
 
 ```bash
 node src/scripts/cles-abonnement.mjs generer
@@ -14,15 +14,15 @@ node src/scripts/cles-abonnement.mjs generer
 
 - `.cles/abonnement-privee.pem` → reste **sur le serveur uniquement** (ignorée par Git, droits 600).
 - La ligne `ABONNEMENT_CLE_PUBLIQUE=…` affichée → dans le `.env` de **l'application**
-  (`batiplus/.env`), puis `npm run construire` : la clé publique est inscrite dans `www/index.html`.
+  (`.env` à la racine du projet), puis `npm run construire` : la clé publique est inscrite dans `www/index.html`.
 - Adresse de l'API vue par l'application : `API_URL=https://api.votredomaine.com` dans ce même
-  `batiplus/.env` (https, sans chemin ; par défaut `https://api.batiplus.bf`). Elle est aussi
+  `.env` à la racine du projet (https, sans chemin ; par défaut `https://api.batiplus.bf`). Elle est aussi
   ajoutée à la CSP (`connect-src`).
 
 ## 2. Fichier `backend/.env`
 
 ```bash
-cd batiplus/backend
+cd backend
 cp .env.exemple .env
 chmod 600 .env
 openssl rand -hex 32     # → JETON_SECRET
@@ -65,11 +65,11 @@ SIMULATION_SECRET=une-valeur-de-test-assez-longue-et-variee
 ```
 
 ```bash
-npm run demarrer         # depuis batiplus/backend
+npm run demarrer         # depuis le dossier backend/
 npm run tester           # 19 contrôles paiement + 20 contrôles comptes/synchronisation/admin
 ```
 
-Depuis `batiplus/`, `npm run construire` lance aussi un parcours complet **application ↔ API**
+Depuis la racine du projet, `npm run construire` lance aussi un parcours complet **application ↔ API**
 (contrôles SY1 à SY10 : deux téléphones, coupure réseau, administration, suppression de compte).
 
 ## 4. Production
