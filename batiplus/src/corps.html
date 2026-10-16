@@ -1195,6 +1195,20 @@
           <button type="button" class="bouton bouton-secondaire" id="bouton-reessayer-paiement" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Réessayer</span></button>
         </section>
 
+        <section class="carte panneau" id="carte-code-activation" aria-labelledby="titre-code-activation">
+          <h2 class="bloc-titre" id="titre-code-activation">J'ai un code d'activation</h2>
+          <p class="aide" id="aide-code-activation">Code offert par BRG Électro+ (par exemple lors d'une formation). Il s'utilise une seule fois et se vérifie en ligne.</p>
+          <form class="formulaire-ligne" id="form-code-activation" novalidate autocomplete="off">
+            <div class="champ">
+              <label for="abo-code">Code d'activation</label>
+              <input id="abo-code" type="text" maxlength="17" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="BP-A2B3-C4D5-E6F7" aria-describedby="aide-code-activation err-abo-code">
+              <p class="champ-erreur" id="err-abo-code"></p>
+            </div>
+            <button type="submit" class="bouton bouton-pro" id="bouton-activer-code"><svg class="icone" aria-hidden="true"><use href="#i-cle"/></svg><span class="bouton-libelle">Activer</span></button>
+          </form>
+          <p class="message-formulaire" id="msg-activation" role="status" aria-live="polite"></p>
+        </section>
+
         <section class="carte panneau" id="carte-moyens-paiement" aria-labelledby="titre-moyens">
           <h2 class="bloc-titre" id="titre-moyens">Paiement</h2>
           <p class="aide">Payez avec le moyen de votre choix, directement depuis votre téléphone.</p>
@@ -1407,6 +1421,19 @@
           <p class="message-formulaire" id="msg-sauvegarde" role="status"></p>
         </div>
 
+        <div class="carte cascade" data-rang="8" id="carte-en-ligne" data-liaison="a_creer">
+          <h2 class="bloc-titre">Compte en ligne</h2>
+          <p class="liaison-etat" id="texte-liaison" role="status"></p>
+          <p class="aide" id="detail-liaison"></p>
+          <p class="aide">Deux téléphones au plus par compte : en relier un troisième déconnecte le plus ancien. Sans internet, tout continue de marcher ; vos changements partent au retour du réseau.</p>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-synchroniser" hidden><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Synchroniser maintenant</span></button>
+            <button type="button" class="bouton bouton-secondaire" id="bouton-deconnecter-tout" hidden><svg class="icone" aria-hidden="true"><use href="#i-sortie"/></svg><span class="bouton-libelle">Déconnecter tous mes appareils</span></button>
+          </div>
+          <p class="message-formulaire" id="msg-en-ligne" role="status" aria-live="polite"></p>
+          <button type="button" class="bouton bouton-discret bouton-supprimer-compte" id="bouton-supprimer-compte"><svg class="icone" aria-hidden="true"><use href="#i-poubelle"/></svg><span class="bouton-libelle">Supprimer mon compte</span></button>
+        </div>
+
         <div class="carte cascade" data-rang="8" id="carte-session">
           <h2 class="bloc-titre">Mon compte</h2>
           <div class="actions-ligne">
@@ -1491,19 +1518,126 @@
 
     <!-- Administration (accès caché : appui long de 3 s sur le logo de « À propos ») -->
     <section class="ecran" id="ecran-admin" aria-labelledby="titre-admin">
-      <div class="colonnes colonne-etroite">
+      <div class="colonnes colonne-etroite" id="admin-entree">
         <h1 class="titre-ecran" id="titre-admin">Administration</h1>
         <form class="carte formulaire" id="form-admin" novalidate autocomplete="off">
-          <p class="aide">Accès réservé à BRG Électro+. Le code est vérifié en ligne et n'est jamais enregistré sur ce téléphone.</p>
+          <p class="aide">Accès réservé à BRG Électro+. Le code est vérifié en ligne et n'est jamais enregistré sur ce téléphone. Après 3 codes faux, plus aucun essai pendant 1 heure.</p>
           <div class="champ">
             <label for="adm-code">Code d'administration</label>
-            <input id="adm-code" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64" required aria-describedby="err-adm-code">
+            <input id="adm-code" class="champ-code-admin" type="password" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64" required aria-describedby="err-adm-code">
             <p class="champ-erreur" id="err-adm-code"></p>
           </div>
           <p class="message-formulaire" id="msg-admin" role="alert"></p>
           <button type="submit" class="bouton bouton-principal" id="bouton-admin"><svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg><span class="bouton-libelle">Valider</span></button>
           <button type="button" class="bouton bouton-discret" data-ecran="a-propos"><svg class="icone" aria-hidden="true"><use href="#i-retour"/></svg><span class="bouton-libelle">Retour</span></button>
         </form>
+      </div>
+
+      <div class="admin-tableau" id="admin-tableau" hidden>
+        <div class="admin-tete">
+          <div>
+            <p class="surtitre">Administration</p>
+            <h1 class="titre-ecran" id="titre-tableau-admin">Tableau de bord</h1>
+            <p class="aide" id="admin-expire"></p>
+          </div>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-adm-actualiser"><svg class="icone" aria-hidden="true"><use href="#i-actualiser"/></svg><span class="bouton-libelle">Actualiser</span></button>
+            <button type="button" class="bouton bouton-danger" id="bouton-adm-quitter"><svg class="icone" aria-hidden="true"><use href="#i-sortie"/></svg><span class="bouton-libelle">Quitter</span></button>
+          </div>
+        </div>
+        <p class="message-formulaire" id="msg-tableau-admin" role="status" aria-live="polite"></p>
+
+        <section class="carte panneau admin-bloc" aria-labelledby="titre-adm-anomalies">
+          <h2 class="bloc-titre" id="titre-adm-anomalies">Paiements à vérifier</h2>
+          <ul class="admin-liste" id="admin-anomalies"></ul>
+          <p class="vide" id="admin-anomalies-vide">Aucune anomalie de paiement sur les 30 derniers jours.</p>
+        </section>
+
+        <section class="carte panneau admin-bloc" aria-labelledby="titre-adm-chiffres">
+          <h2 class="bloc-titre" id="titre-adm-chiffres">Chiffres clés</h2>
+          <ul class="admin-tuiles" id="admin-chiffres"></ul>
+        </section>
+
+        <div class="admin-colonnes">
+          <section class="carte panneau admin-bloc" aria-labelledby="titre-adm-formules">
+            <h2 class="bloc-titre" id="titre-adm-formules">Formules</h2>
+            <ul class="etat-liste" id="admin-formules"></ul>
+          </section>
+          <section class="carte panneau admin-bloc" aria-labelledby="titre-adm-pays">
+            <h2 class="bloc-titre" id="titre-adm-pays">Pays</h2>
+            <ul class="etat-liste" id="admin-pays"></ul>
+          </section>
+        </div>
+
+        <section class="carte panneau admin-bloc" aria-labelledby="titre-adm-electriciens">
+          <h2 class="bloc-titre" id="titre-adm-electriciens">Électriciens</h2>
+          <form class="formulaire-ligne" id="form-adm-recherche" role="search" novalidate autocomplete="off">
+            <div class="champ">
+              <label for="adm-recherche">Nom, téléphone ou ville</label>
+              <input id="adm-recherche" type="search" maxlength="60" autocomplete="off" spellcheck="false">
+            </div>
+            <button type="submit" class="bouton bouton-secondaire" id="bouton-adm-rechercher"><svg class="icone" aria-hidden="true"><use href="#i-recherche"/></svg><span class="bouton-libelle">Rechercher</span></button>
+          </form>
+          <ul class="admin-liste" id="admin-electriciens"></ul>
+          <p class="vide" id="admin-electriciens-vide" hidden>Aucun électricien trouvé.</p>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-discret" id="bouton-adm-precedent"><span class="bouton-libelle">Page précédente</span></button>
+            <button type="button" class="bouton bouton-discret" id="bouton-adm-suivant"><span class="bouton-libelle">Page suivante</span></button>
+            <button type="button" class="bouton bouton-secondaire" id="bouton-adm-csv"><svg class="icone" aria-hidden="true"><use href="#i-exporter"/></svg><span class="bouton-libelle">Exporter en CSV</span></button>
+          </div>
+        </section>
+
+        <section class="carte panneau admin-bloc" aria-labelledby="titre-adm-codes">
+          <h2 class="bloc-titre" id="titre-adm-codes">Générer des codes d'activation</h2>
+          <form class="formulaire" id="form-adm-codes" novalidate autocomplete="off">
+            <div class="admin-colonnes">
+              <div class="champ">
+                <label for="adm-codes-formule">Formule</label>
+                <select id="adm-codes-formule">
+                  <option value="semaine">Pro Semaine</option>
+                  <option value="mensuel" selected>Pro Mensuel</option>
+                  <option value="annuel">Pro Annuel</option>
+                  <option value="vie">Lifetime</option>
+                </select>
+              </div>
+              <div class="champ">
+                <label for="adm-codes-nombre">Nombre de codes</label>
+                <select id="adm-codes-nombre">
+                  <option value="1" selected>1</option>
+                  <option value="5">5</option>
+                  <option value="10">10</option>
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                </select>
+              </div>
+              <div class="champ">
+                <label for="adm-codes-validite">Utilisables pendant</label>
+                <select id="adm-codes-validite">
+                  <option value="7">7 jours</option>
+                  <option value="30" selected>30 jours</option>
+                  <option value="90">90 jours</option>
+                  <option value="365">365 jours</option>
+                </select>
+              </div>
+            </div>
+            <div class="champ">
+              <label for="adm-codes-motif">Motif (obligatoire, journalisé)</label>
+              <input id="adm-codes-motif" type="text" maxlength="120" autocomplete="off" aria-describedby="err-adm-codes-motif">
+              <p class="champ-erreur" id="err-adm-codes-motif"></p>
+            </div>
+            <button type="submit" class="bouton bouton-pro" id="bouton-adm-codes"><svg class="icone" aria-hidden="true"><use href="#i-cle"/></svg><span class="bouton-libelle">Générer</span></button>
+          </form>
+          <ul class="admin-codes" id="admin-codes-generes" aria-label="Codes créés"></ul>
+        </section>
+
+        <section class="carte panneau admin-bloc" aria-labelledby="titre-adm-journal">
+          <h2 class="bloc-titre" id="titre-adm-journal">Journal des activités</h2>
+          <ul class="admin-journal" id="admin-journal"></ul>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-discret" id="bouton-journal-recent"><span class="bouton-libelle">Plus récent</span></button>
+            <button type="button" class="bouton bouton-discret" id="bouton-journal-ancien"><span class="bouton-libelle">Plus ancien</span></button>
+          </div>
+        </section>
       </div>
     </section>
   </main>

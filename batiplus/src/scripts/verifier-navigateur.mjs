@@ -215,6 +215,15 @@ async function main() {
       { name: "prefers-reduced-motion", value: reduit ? "reduce" : "no-preference" }
     ]);
     await page.setViewport({ width: largeur, height: hauteur, deviceScaleFactor: 1, isMobile: largeur < 768, hasTouch: largeur < 1024 });
+    /* L'API en ligne n'est pas joignable depuis ce banc d'essai (comme un téléphone sans données) :
+       ses appels échouent comme une coupure réseau, sans le message réseau de Chromium. L'application
+       doit rester silencieuse et continuer hors ligne (la liaison réelle est testée par SY1–SY10). */
+    await page.evaluateOnNewDocument(() => {
+      const natif = window.fetch.bind(window);
+      window.fetch = (adresse, options) => (String(adresse).startsWith("https://api.batiplus.bf/")
+        ? Promise.reject(new TypeError("Failed to fetch"))
+        : natif(adresse, options));
+    });
     await page.goto(ADRESSE + "manifest.webmanifest", { waitUntil: "load" });
     /* Une session reprise vient d'être utilisée (sinon le verrouillage des 15 min s'appliquerait). */
     await page.evaluate((valeurs, figee) => {

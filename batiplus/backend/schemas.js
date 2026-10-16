@@ -288,7 +288,7 @@ export const SCHEMA_RENOUVELLEMENT = S.objet({ actif: S.booleen() });
 /* ---------- Administration ---------- */
 
 const motif = S.texte({ min: 5, max: 300 });
-export const SCHEMA_ADMIN_CONNEXION = S.objet({ code: S.texte({ min: 6, max: 64 }), appareil });
+export const SCHEMA_ADMIN_CONNEXION = S.objet({ code: S.texte({ min: 8, max: 64, motif: /^\d{8,64}$/ }), appareil });
 export const SCHEMA_ADMIN_CODES = S.objet({
   formule: S.parmi(["semaine", "mensuel", "annuel", "vie"]), nombre: S.entier(1, 50), validiteJours: S.entier(1, 365), motif
 });

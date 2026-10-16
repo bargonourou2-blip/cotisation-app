@@ -29,8 +29,8 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 10 | Sécurité du front (XSS, CSP, chiffrement, verrouillage) | ✔ livrée |
 | 11 | Abonnement : 5 formules, limite de 5 devis, relances | ✔ livrée |
 | 12 | Paiement automatique : adaptateurs d'agrégateur, webhook, idempotence | ✔ livrée |
-| 13 | Build Android, signature, Play Store, IOS.md | ✔ |
-| 14 | Back-end Node.js complet, synchronisation, déploiement | à venir |
+| 13 | Build Android, signature, Play Store, IOS.md | ✔ livrée |
+| 14 | Back-end Node.js complet, synchronisation, déploiement | ✔ livrée |
 
 ---
 
@@ -51,10 +51,10 @@ cd batiplus
 npm install                 # dépendances Capacitor
 npm run construire          # assemble www/index.html puis lance les contrôles
 npm run apercu              # aperçu dans le navigateur : http://localhost:8080
-npm run tester:backend      # contrôles du backend de paiement (aussi lancés par « construire »)
+npm run tester:backend      # contrôles de l'API : paiement, comptes, synchronisation (aussi lancés par « construire »)
 ```
 
-Backend de paiement : voir [`backend/INSTALLATION.md`](backend/INSTALLATION.md) et
+API (comptes, synchronisation, paiement, administration) : voir [`backend/INSTALLATION.md`](backend/INSTALLATION.md) et
 [`PAIEMENTS.md`](PAIEMENTS.md).
 
 Sur Android (Android Studio installé) :
@@ -114,7 +114,8 @@ CHROME_PATH=/chemin/vers/chrome CAPTURES=/tmp/captures npm run verifier:navigate
   (150 000 itérations, sel aléatoire de 16 octets) est conservée. Les codes trop simples
   (1234, 0000, 1212…) sont refusés.
 - Après 5 échecs, la connexion est bloquée 30 s, puis 1 min, 5 min et 15 min.
-  Ce compteur est local tant que l'API (étape 14) n'existe pas.
+  Pour un compte relié, l'API applique en plus ses propres limites (5 connexions / 15 min par
+  adresse et par numéro) et le téléphone retient la plus longue des deux attentes.
 - Le pays et la devise sont déduits de l'indicatif (226 avant 22) ; le numéro est enregistré
   au format international `+22605608608` et affiché `+226 05 60 86 08`.
 
@@ -306,8 +307,9 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
 
 - **Règles de saisie uniques** : `src/regles-saisie.json` (13 règles numériques, longueurs des textes,
   téléphone, fichiers). L'assembleur l'injecte gelé dans `REGLES_SAISIE` ; `BORNES*`, `IMAGES` et
-  `SAUVEGARDE` en sont dérivées. L'API de l'étape 14 lira **ce même fichier** : mêmes bornes au
-  téléphone et en ligne.
+  `SAUVEGARDE` en sont dérivées. L'API de l'étape 14 lit **ce même fichier** (via
+  `backend/regles-donnees.json`, généré par `src/scripts/regles-api.mjs`) : mêmes bornes au téléphone
+  et en ligne.
 - **Chaque champ numérique** porte `data-regle="…"`. Une saisie hors règle (négatif, `1e3`, trop de
   décimales, centimes en FCFA, hors bornes, lettres) est refusée tout de suite : le champ passe en
   `aria-invalid`, le message « Saisie refusée : … » explique la règle **sans recopier la saisie**, et
@@ -327,7 +329,8 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
 - **CSP** : `default-src 'self'`, empreintes SHA-256 pour l'unique script et l'unique style,
   `connect-src 'self'` + l'API en https, `frame-src`/`object-src`/`media-src 'none'`, `base-uri` et
   `form-action 'none'`, `upgrade-insecure-requests`. `frame-ancestors` est ignoré dans une balise
-  meta : il sera posé dans les en-têtes HTTP du site à l'étape 14. En attendant, **dans le cadre
+  meta : l'API le pose dans ses en-têtes HTTP (`X-Frame-Options: DENY`) et le site
+  le posera dans les siens. En attendant, **dans le cadre
   d'une autre page l'application ne s'affiche pas** et propose « Ouvrir BâtiPlus » (nouvel onglet).
   ⚠ C'est aussi le cas dans un aperçu intégré : ouvrez l'aperçu dans son propre onglet.
 - **Contrôles** : ㊸ ㊹ ㊺ ㊻ VR CO SW AN CS dans `npm run verifier` (sources + pages rendues avec
@@ -348,8 +351,8 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   déjà vue sur le téléphone (`bp_v1_horloge`) sert de plancher.
 - **Clés** : `node src/scripts/cles-abonnement.mjs generer` crée `.cles/abonnement-privee.pem`
   (ignorée par Git, jamais dans `www/`) et affiche la ligne `ABONNEMENT_CLE_PUBLIQUE=…` à mettre dans
-  `.env`. `… signer <compteId> <téléphone> <formule> [jours]` produit un jeton d'essai (le back-end de
-  l'étape 14 signera de la même façon).
+  `.env`. `… signer <compteId> <téléphone> <formule> [jours]` produit un jeton d'essai (l'API de
+  l'étape 14 signe de la même façon).
 - **Limite Gratuit** : 5 devis **créés** par mois (compteur du mois + devis du mois : supprimer un devis
   ne rend pas de devis gratuit). 4e devis → « Il vous reste 1 devis gratuit » ; 6e → **création
   bloquée** (depuis l'étude comme par « Dupliquer »), invitation obligatoire, étude enregistrée, anciens
@@ -434,6 +437,36 @@ iPhone : **[IOS.md](IOS.md)** (pourquoi la PWA d'abord).
   (aussi lancés par `npm run verifier`), HL (hors connexion) et PH (photo, annexe, PDF) dans
   `npm run verifier:navigateur`.
 
+## Étape 14 — API et synchronisation
+
+Installation et déploiement : **[backend/INSTALLATION.md](backend/INSTALLATION.md)** (PM2, proxy
+HTTPS, code administrateur haché, sauvegarde chiffrée).
+
+- **API Node 22.13+, zéro dépendance** (`node:http`, `node:crypto`, `node:fs`, `node:sqlite` en WAL) :
+  comptes, profil, devis, chantiers, clients, Mes prix, file de synchronisation, codes d'activation,
+  paiement (étape 12) et administration. Toutes les requêtes SQL sont préparées ; chaque route
+  vérifie jeton → compte non suspendu → appartenance (sinon 404) ; aucun hachage, sel ni jeton ne
+  sort ; démarrage refusé si un secret manque ou est faible.
+- **Hors ligne d'abord** : tout s'enregistre sur le téléphone. Un compte « relié » met chaque
+  changement dans une file (`bp_v1_file_sync`) envoyée 2 s après l'enregistrement, au retour à
+  l'application, toutes les 5 min et par « Synchroniser maintenant » (Profil → Compte en ligne).
+  Coupure réseau : la file attend. Conflits : la modification la plus récente gagne.
+- **Liaison** : à la première connexion avec internet, le compte local est créé en ligne (même
+  identifiant) et toutes ses données partent. Sur un deuxième téléphone, la connexion en ligne
+  recrée le compte et rapatrie tout. **Deux téléphones au plus** : le troisième déconnecte le plus
+  ancien. Changer de code ou de numéro se confirme en ligne ; « Se déconnecter » ferme la session
+  de ce téléphone ; « Supprimer mon compte » efface tout, en ligne et sur le téléphone.
+- **Formule et compteur** : la formule vient toujours d'un jeton signé par l'API (une formule
+  falsifiée sur le téléphone est refusée, journalisée et remplacée) ; le compteur de devis du mois
+  est commun aux deux téléphones. Code d'activation offert (`BP-XXXX-XXXX-XXXX`) : écran Abonnement.
+- **Administration** (appui long de 3 s sur le logo d'« À propos ») : code vérifié par l'API
+  seulement, jeton de 2 h en mémoire ; anomalies de paiement, chiffres clés, électriciens
+  (recherche, export CSV, suspension, jours offerts), codes d'activation, journal. Toute action
+  sensible exige un motif et une confirmation retapée.
+- **Contrôles** : SY1–SY10 dans `npm run verifier` (application jsdom ↔ vraie API sur une base
+  temporaire : deux téléphones, coupure réseau, falsification, administration, suppression) ;
+  ⑬–⑰ et H.2/H.4 dans `npm run tester:backend`.
+
 ## Structure
 
 ```
@@ -450,11 +483,19 @@ batiplus/
 │   └── assets/polices/      Inter et Montserrat en local (licence OFL)
 ├── src/                     sources de www/index.html
 │   └── scripts/             assembler, vérifier (jsdom + Chromium), moteur, aperçu, logos, photos
-├── backend/                 API de paiement (Node 22.13+, zéro dépendance)
-│   ├── serveur.js           routes, sécurité HTTP, tâche planifiée
+├── backend/                 API (Node 22.13+, zéro dépendance)
+│   ├── serveur.js           routes, sécurité HTTP, tâches planifiées
+│   ├── base.js              schéma SQLite (WAL, clés étrangères) et migrations
+│   ├── comptes.js           comptes, appareils, données, synchronisation
+│   ├── admin.js             tableau d'administration
+│   ├── codes.js · jetons.js scrypt, jetons de session et d'abonnement
+│   ├── schemas.js           validation stricte (bornes de regles-donnees.json)
+│   ├── sauvegarde.js        sauvegarde quotidienne chiffrée (AES-256-GCM)
 │   ├── formules.js          prix officiels (seule source)
 │   ├── paiements/           contrat commun + 6 adaptateurs + service
-│   ├── tests/               contrôles du backend
+│   ├── outils/              hacher le code admin, déchiffrer une sauvegarde
+│   ├── tests/               contrôles de l'API
+│   ├── ecosystem.config.cjs PM2 (redémarrage automatique)
 │   ├── .env.exemple         variables du serveur (aucune vraie clé)
 │   └── INSTALLATION.md
 ├── store/                   fiche Play Store : textes, icône, bannière, captures, confidentialité
@@ -482,6 +523,7 @@ batiplus/
 - `webContentsDebuggingEnabled` reste à `false` dans la version publiée.
 - Toute nouvelle saisie numérique reçoit une règle dans `src/regles-saisie.json` et un `data-regle`.
 - Aucune sauvegarde Android des données : la durabilité passe par l'export du profil et la
-  synchronisation (étape 14).
+  synchronisation en ligne (étape 14).
+- Le code administrateur n'existe que haché (scrypt) dans `backend/.env` : jamais dans l'application.
 - Le fichier `.env` et les keystores (`*.keystore`, `*.jks`) ne sont **jamais** versionnés.
   Sauvegardez le keystore ailleurs : sans lui, plus aucune mise à jour possible sur le Play Store.

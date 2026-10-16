@@ -105,13 +105,27 @@ est simulé dans les tests.
 
 ```bash
 cd batiplus
-npm run tester:backend      # 19 contrôles : S1–S5, P1–P13, AD
-npm run construire          # assemble l'application + 75 contrôles jsdom + les 19 du backend
+npm run tester:backend      # 19 contrôles paiement (S1–S5, P1–P13, AD) + 20 contrôles comptes/synchronisation/admin
+npm run construire          # assemble l'application + contrôles jsdom (dont SY1–SY10 contre la vraie API) + ceux du backend
 ```
 
-## 7. Ce qui reste pour l'étape 14
+## 7. Session en ligne, codes d'activation et administration (étape 14)
 
-La route de **connexion en ligne** qui délivre le jeton de session (`bp_v1_jeton_api`) arrive avec
-le backend complet (comptes et synchronisation). D'ici là, `POST /api/paiements/initier` répond
-`non_authentifie` et l'application affiche « Votre session en ligne a expiré : reconnectez-vous… ».
-Les contrôles utilisent un jeton d'essai.
+- **Jeton de session** : délivré par `POST /api/compte/creer` ou `POST /api/compte/connexion` (dès la
+  première connexion de l'électricien avec internet), gardé par compte dans `bp_v1_jeton_api`, lié à
+  l'identifiant aléatoire du téléphone (en-tête `X-Appareil`). `POST /api/paiements/initier` et
+  `GET /api/paiements/:reference` l'exigent ; un jeton expiré ou révoqué (code changé, déconnexion,
+  suspension) → « Votre session en ligne a expiré : déconnectez-vous puis reconnectez-vous avec
+  internet ».
+- **La formule suit le compte**, pas le téléphone : à chaque synchronisation l'API renvoie le jeton
+  d'abonnement signé du compte ; le deuxième téléphone reçoit donc le Pro payé sur le premier. Un
+  jeton falsifié renvoyé par l'application est refusé, journalisé (`abonnement_falsifie`, compté
+  dans l'administration) et remplacé par celui de la base.
+- **Codes d'activation** (formations, partenariats) : créés dans l'administration (1 à 50, formule,
+  validité, motif obligatoire), stockés **hachés** et affichés une seule fois. L'électricien le saisit
+  dans Mon abonnement → `POST /api/abonnement/activer-code` → même jeton signé qu'un paiement.
+  5 essais par heure ; un code ne sert qu'une fois.
+- **Administration des paiements** : les anomalies (montant ou devise faux) apparaissent en tête du
+  tableau de bord avec **Revérifier** (re-consultation de l'agrégateur) et **Rembourser** (motif +
+  référence retapée ; la formule correspondante est retirée dans la même transaction). Chaque action
+  est journalisée avec son motif.

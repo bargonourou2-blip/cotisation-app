@@ -519,7 +519,7 @@ try {
     const fauxJeton = await appel("GET", "/api/admin/electriciens", { ip: ipAttaque, appareil: appareilAleatoire(), jeton: "adm.faux.faux" });
     if (sansCode.statut !== 401 || fauxJeton.statut !== 401 || /telephone|electriciens"/.test(sansCode.texte + fauxJeton.texte)) p.push("écran admin sans code : " + sansCode.statut + " / " + fauxJeton.statut);
     const essais = [];
-    for (let i = 0; i < 4; i += 1) essais.push((await appel("POST", "/api/admin/connexion", { corps: { code: "mauvais-code-" + i, appareil: appareilAleatoire() }, ip: ipAttaque })).statut);
+    for (let i = 0; i < 4; i += 1) essais.push((await appel("POST", "/api/admin/connexion", { corps: { code: "1357924680" + i, appareil: appareilAleatoire() }, ip: ipAttaque })).statut);
     const bonBloque = await appel("POST", "/api/admin/connexion", { corps: { code: CODE_ADMIN, appareil: appareilAleatoire() }, ip: ipAttaque });
     if (essais.join() !== "401,401,429,429" || bonBloque.statut !== 429 || Number(bonBloque.entetes.get("retry-after")) < 3500 || !activites("admin_bloque").length) p.push("3 échecs admin : " + essais.join() + " puis " + bonBloque.statut);
     const volé = await appel("GET", "/api/admin/stats", { jeton: jetonAdmin, appareil: appareilAleatoire(), ip: "10.200.0.1" });
@@ -589,7 +589,7 @@ try {
     for (let i = 0; i < 11; i += 1) paiements.push((await appel("POST", "/api/paiements/initier", sur2({ jeton: creations[1].json.jeton, appareil: identites[1].appareil, corps: { formule: "inconnue" }, ip: "10.53.0." + (i + 1) }))).statut);
     if (paiements[10] !== 429 || paiements[9] === 429) p.push("10 paiements / h : " + paiements.join());
     const adm = [];
-    for (let i = 0; i < 11; i += 1) adm.push((await appel("POST", "/api/admin/connexion", sur2({ corps: { code: "x".repeat(8) + i, appareil: appareilAleatoire() }, ip: "10.50.0.4" }))).statut);
+    for (let i = 0; i < 11; i += 1) adm.push((await appel("POST", "/api/admin/connexion", sur2({ corps: { code: "97531864" + i, appareil: appareilAleatoire() }, ip: "10.50.0.4" }))).statut);
     if (adm[10] !== 429) p.push("admin : " + adm.join());
     const ipG = "10.50.0.5";
     let premier429 = 0;

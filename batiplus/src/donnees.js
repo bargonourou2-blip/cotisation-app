@@ -45,7 +45,12 @@ const CLES_STOCKAGE = Object.freeze({
   renouvellement: "bp_v1_renouvellement",
   /* Étape 13 : photo du tableau électrique jointe à un devis — une clé par devis
      (préfixe + identifiant du devis), pour ne jamais réécrire toutes les photos à chaque ajout. */
-  photoTableau: "bp_v1_photo_tableau_"
+  photoTableau: "bp_v1_photo_tableau_",
+  /* Étape 14 : identifiant aléatoire de CE téléphone (envoyé en X-Appareil, jamais un identifiant
+     matériel), état de la liaison en ligne par compte, file d'attente des envois hors ligne par compte. */
+  appareil: "bp_v1_appareil",
+  liaison: "bp_v1_sync",
+  fileSync: "bp_v1_file_sync"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -644,11 +649,63 @@ const SAUVEGARDE = Object.freeze({
   octetsMax: REGLES_SAISIE.fichiers.sauvegardeOctets
 });
 
-/* ---------- Administration : le code est vérifié par l'API, jamais ici ---------- */
+/* ---------- Administration : le code est vérifié par l'API, jamais ici ----------
+   Saisie masquée en 16 px, clavier numérique (partie E.1). Jeton d'administration gardé en
+   MÉMOIRE seulement (jamais stocké), 2 heures, lié à l'identifiant de ce téléphone.
+   3 codes faux : plus aucun essai pendant 1 heure (la même règle est tenue en ligne). */
 const ADMIN = Object.freeze({
-  chemin: "/api/admin/session",
+  chemin: "/api/admin/connexion",
+  base: "/api/admin/",
   delaiMs: 10000,
-  codeMin: 6,
-  codeMax: 64
+  codeMin: 8,
+  codeMax: 64,
+  echecsMax: 3,
+  blocageMs: 60 * 60 * 1000,
+  dureeJetonMs: 2 * 60 * 60 * 1000,
+  parPage: 50,
+  jeton: /^v1\.[A-Za-z0-9_-]{10,500}\.[A-Za-z0-9_-]{43}$/,
+  motifMin: 5,
+  motifMax: 300
+});
+
+/* ---------- Compte en ligne et synchronisation (étape 14) ----------
+   Tout reste utilisable hors ligne. Un compte « relié » envoie ses changements (file d'attente
+   gardée sur le téléphone) et reçoit ceux de son autre appareil : à la connexion, au démarrage,
+   au retour du réseau, au retour dans l'application, 2 s après chaque enregistrement et toutes
+   les 5 minutes. La formule et le compteur de devis viennent TOUJOURS de la réponse en ligne. */
+const SYNC = Object.freeze({
+  delaiMs: 15000,
+  apresEnregistrementMs: 2000,
+  intervalleMs: 5 * 60 * 1000,
+  toursMax: 20,
+  lot: 60,
+  fileMax: 30000,
+  nouvelEssaiMs: 24 * 60 * 60 * 1000,
+  liaisons: Object.freeze(["liee", "a_creer", "refusee", "expiree"]),
+  appareil: /^[a-f0-9]{32}$/,
+  compteId: /^[A-Za-z0-9-]{8,64}$/,
+  operation: /^[A-Za-z0-9_-]{1,64}$/
+});
+
+/* Codes d'activation offerts par BRG Électro+ : « BP- » puis 3 groupes de 4 signes (sans 0, O, 1 ni I). */
+const CODE_ACTIVATION = /^BP-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/;
+
+/* Réponses de l'API (comptes, code, activation, suppression) : code → message de l'application.
+   Le texte reçu n'est jamais affiché. */
+const MESSAGES_COMPTE = Object.freeze({
+  hors_ligne: "Connexion internet nécessaire : votre compte est relié, ce changement doit être confirmé en ligne.",
+  non_relie: "Votre compte n'est pas encore relié en ligne. Connectez-vous avec internet puis réessayez.",
+  identifiants_incorrects: "Code incorrect.",
+  trop_de_tentatives_connexion: "Trop d'essais. Réessayez plus tard.",
+  trop_de_requetes: "Trop de demandes : patientez une minute puis réessayez.",
+  compte_suspendu: "Ce compte est suspendu. Contactez BRG Électro+ au +226 05 60 86 08.",
+  code_trop_simple: "Code trop simple : évitez les suites (1234) et les chiffres répétés (1111).",
+  telephone_indisponible: "Ce numéro ne peut pas être utilisé pour ce compte.",
+  code_invalide: "Code d'activation invalide, expiré ou déjà utilisé.",
+  deja_a_vie: "Votre formule Lifetime couvre déjà tout le Pro.",
+  places_vie_epuisees: "Les 200 places Lifetime sont toutes prises.",
+  non_authentifie: "Votre session en ligne a expiré : déconnectez-vous puis reconnectez-vous avec internet.",
+  appareil_deconnecte: "Ce téléphone a été déconnecté de votre compte en ligne : reconnectez-vous avec internet.",
+  defaut: "Action impossible pour le moment. Vérifiez votre connexion puis réessayez."
 });
 

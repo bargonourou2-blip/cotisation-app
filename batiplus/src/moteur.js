@@ -116,7 +116,8 @@ async function lireValeur(cle) {
   }
 }
 
-async function ecrireValeur(cle, valeur) {
+/* Écriture directe, sans file de synchronisation (données reçues en ligne, état interne). */
+async function ecrireBrut(cle, valeur) {
   const preferences = plugin("Preferences");
   try {
     if (preferences) {
@@ -129,6 +130,18 @@ async function ecrireValeur(cle, valeur) {
     journal("écriture impossible", cle);
     return false;
   }
+}
+
+/* Toute écriture de l'application. Pour un compte relié (étape 14), un enregistrement des devis,
+   chantiers, clients, prix ou du profil met aussi ses changements en file d'attente d'envoi. */
+async function ecrireValeur(cle, valeur) {
+  const type = typeSuivi(cle);
+  if (!type || !suiviActif()) return ecrireBrut(cle, valeur);
+  const compteId = etat.compte.id;
+  const avant = await lireValeur(cle);
+  const ok = await ecrireBrut(cle, valeur);
+  if (ok) noterChangementsLocaux(type, avant, String(valeur), compteId).catch(() => journal("file d'attente indisponible"));
+  return ok;
 }
 
 async function supprimerValeur(cle) {
@@ -584,6 +597,7 @@ function surAppuiOnde(evenement) {
 /* ---------- Réseau ---------- */
 
 function afficherReseau(enLigne) {
+  if (enLigne) planifierSynchro(500);
   const indicateur = $("etat-reseau");
   indicateur.textContent = enLigne ? "En ligne" : "Hors ligne";
   indicateur.classList.toggle("ok", enLigne);
@@ -1174,6 +1188,7 @@ async function ouvrirSession(compte) {
   etat.abonnement = await abonnementCourant();
   afficherCompte(compte);
   planifierRappels();
+  await chargerLiaison(compte.id);
 }
 
 async function fermerSession() {
@@ -1187,6 +1202,7 @@ async function fermerSession() {
   resultat.chantier = null;
   resultat.id = null;
   await supprimerValeur(CLES_STOCKAGE.session);
+  oublierLiaisonMemoire();
   etat.compte = null;
   etat.abonnement = { formule: FORMULE_DEFAUT, fin: null, verifie: false };
   etat.abonnement = null;
@@ -1484,8 +1500,9 @@ async function surInscription(evenement) {
       trembler($("msg-inscription"));
       return;
     }
+    const codeChoisi = codes["ins-code"];
     const sel = crypto.getRandomValues(new Uint8Array(CODE.octetsSel));
-    const empreinte = await deriverEmpreinte(codes["ins-code"], sel, CODE.iterations);
+    const empreinte = await deriverEmpreinte(codeChoisi, sel, CODE.iterations);
     const compte = {
       id: identifiantAleatoire(),
       ...donnees,
@@ -1506,6 +1523,7 @@ async function surInscription(evenement) {
     await ouvrirSession(compte);
     vibrer();
     montrer(ECRAN_DEPART);
+    lierCompte(compte, codeChoisi);
   } finally {
     bouton.removeAttribute("aria-busy");
   }
@@ -1562,7 +1580,8 @@ async function surConnexion(evenement) {
   const bouton = $("bouton-connexion");
   bouton.setAttribute("aria-busy", "true");
   try {
-    const compte = await verifierIdentifiants(versE164(analyse), code);
+    const telephone = versE164(analyse);
+    const compte = await verifierIdentifiants(telephone, code);
     viderCode("cnx-code");
     if (compte) {
       await reinitialiserVerrou();
@@ -1571,9 +1590,39 @@ async function surConnexion(evenement) {
       await ouvrirSession(compte);
       vibrer();
       montrer(ECRAN_DEPART);
+      lierCompte(compte, code);
       return;
     }
-    const nouveau = await enregistrerEchec();
+    /* Numéro ou code inconnu de ce téléphone : avec internet, le compte en ligne est essayé
+       (nouveau téléphone, code changé sur l'autre appareil). */
+    let attenteEnLigne = 0;
+    if (apiJoignable()) {
+      const enLigne = await connexionEnLigne(telephone, code);
+      if (enLigne.compte) {
+        await reinitialiserVerrou();
+        $("cnx-telephone").value = "";
+        $("apercu-cnx-telephone").textContent = "";
+        await ouvrirSession(enLigne.compte);
+        await afficherComptesAppareil();
+        vibrer();
+        montrer(ECRAN_DEPART);
+        terminerLiaison(enLigne.compte, enLigne.reponse, enLigne.mode).catch(() => journal("liaison impossible"));
+        return;
+      }
+      if (enLigne.erreur === "compte_suspendu") {
+        $("msg-connexion").textContent = MESSAGES_COMPTE.compte_suspendu;
+        return;
+      }
+      if (enLigne.erreur === "trop_de_tentatives_connexion") {
+        const bloque = await prolongerVerrou(enLigne.attente);
+        $("msg-connexion").textContent = MESSAGES_COMPTE.trop_de_tentatives_connexion;
+        afficherBlocage(bloque.jusqua);
+        return;
+      }
+      attenteEnLigne = enLigne.attente || 0;
+    }
+    await enregistrerEchec();
+    const nouveau = await prolongerVerrou(attenteEnLigne);
     if (nouveau.jusqua > Date.now()) {
       $("msg-connexion").textContent = "Téléphone ou code incorrect.";
       afficherBlocage(nouveau.jusqua);
@@ -1715,6 +1764,7 @@ async function surDeverrouillage(evenement) {
       vibrer();
       montrer(activite.ecranAvant || ECRAN_DEPART);
       activite.ecranAvant = null;
+      lierCompte(compte, code);
       return;
     }
     const nouveau = await enregistrerEchec();
@@ -2780,6 +2830,7 @@ function ecouterRetourPaiement() {
 function surRetourApplication() {
   controlerInactivite();
   verifierPaiementEnAttente();
+  planifierSynchro(800);
 }
 
 /* Renouveler en 1 toucher : même formule, même parcours de paiement. */
@@ -3328,6 +3379,8 @@ function remplirProfil() {
   activerCode("pro-ancien");
   afficherStatistiques();
   afficherRenouvellement();
+  message("msg-en-ligne", "");
+  afficherEtatLiaison();
 }
 
 function lireFormulaireProfil() {
@@ -3364,7 +3417,23 @@ async function surEnregistrerProfil(evenement) {
     afficherErreur("pro-telephone", "Ce numéro ne peut pas être utilisé pour ce compte.");
     return;
   }
+  let enLigne = null;
+  if (donnees.telephone !== etat.compte.telephone) {
+    const bouton = $("bouton-enregistrer-profil");
+    if (bouton) bouton.setAttribute("aria-busy", "true");
+    enLigne = await changerTelephoneEnLigne({ ...etat.compte, ...donnees });
+    if (bouton) bouton.removeAttribute("aria-busy");
+    if (!enLigne.ok) {
+      if (enLigne.champ) afficherErreur("pro-telephone", enLigne.texte);
+      else message("msg-profil", enLigne.texte);
+      return;
+    }
+  }
   const ok = await enregistrerCompte({ ...etat.compte, ...donnees });
+  if (ok && enLigne && enLigne.abonnement !== undefined) {
+    await adopterAbonnement(etat.compte.id, enLigne.abonnement);
+    await noterQuotaDistant(etat.compte.id, enLigne.quota);
+  }
   message("msg-profil", ok ? "Informations enregistrées." : "Enregistrement impossible. Réessayez.", ok);
   if (ok) {
     vibrer();
@@ -3390,6 +3459,52 @@ async function surEnregistrerConditions(evenement) {
   const ok = await enregistrerCompte({ ...etat.compte, conditions });
   message("msg-conditions", ok ? "Conditions enregistrées." : "Enregistrement impossible. Réessayez.", ok);
   if (ok) $("pro-conditions").value = conditions;
+}
+
+/* true = le code peut changer sur ce téléphone (compte non relié, ou changé en ligne). */
+async function changerCodeEnLigne(compte, ancien, nouveau) {
+  const liaison = await lireLiaison(compte.id);
+  if (liaison.etat !== "liee" && liaison.etat !== "expiree") return true;
+  const jeton = await jetonApiPour(compte.id);
+  if (!jeton) {
+    message("msg-code", MESSAGES_COMPTE.non_authentifie);
+    return false;
+  }
+  if (!apiJoignable()) {
+    message("msg-code", MESSAGES_COMPTE.hors_ligne);
+    return false;
+  }
+  const r = await appelApi("POST", "/api/compte/code", { ancien, nouveau }, { jeton });
+  if (r.ok && r.donnees) {
+    if (typeof r.donnees.jeton === "string" && PAIEMENTS.jetonApi.test(r.donnees.jeton)) await ecrireJetonApi(compte.id, r.donnees.jeton);
+    return true;
+  }
+  if (r.statut === 401 && r.erreur === "identifiants_incorrects") {
+    await enregistrerEchec();
+    await prolongerVerrou(r.attente);
+    afficherErreur("pro-ancien", "Code actuel incorrect.");
+    return false;
+  }
+  if (r.statut === 400 && r.erreur === "code_trop_simple") {
+    afficherErreur("pro-nouveau", MESSAGES_COMPTE.code_trop_simple);
+    return false;
+  }
+  if (r.statut === 401) await expirerLiaison(compte.id);
+  message("msg-code", messageCompte(r));
+  return false;
+}
+
+/* Changement de numéro d'un compte relié : confirmé en ligne d'abord (nouveau jeton d'abonnement lié au numéro). */
+async function changerTelephoneEnLigne(modifie) {
+  const liaison = await lireLiaison(modifie.id);
+  if (liaison.etat !== "liee" && liaison.etat !== "expiree") return { ok: true, abonnement: undefined };
+  const jeton = await jetonApiPour(modifie.id);
+  if (!jeton) return { ok: false, texte: MESSAGES_COMPTE.non_authentifie };
+  if (!apiJoignable()) return { ok: false, texte: MESSAGES_COMPTE.hors_ligne };
+  const r = await appelApi("PUT", "/api/profil", { ...profilAEnvoyer(modifie), telephone: modifie.telephone }, { jeton });
+  if (r.ok && r.donnees) return { ok: true, abonnement: Object.prototype.hasOwnProperty.call(r.donnees, "abonnement") ? r.donnees.abonnement : undefined, quota: r.donnees.quota };
+  if (r.statut === 401) await expirerLiaison(modifie.id);
+  return { ok: false, texte: messageCompte(r), champ: r.erreur === "telephone_indisponible" };
 }
 
 async function surChangerCode(evenement) {
@@ -3439,6 +3554,12 @@ async function surChangerCode(evenement) {
       return;
     }
     await reinitialiserVerrou();
+    /* Compte relié : le code change d'abord en ligne (sinon les deux codes divergeraient). */
+    if (!await changerCodeEnLigne(etat.compte, ancien, nouveau)) {
+      ["pro-ancien", "pro-nouveau", "pro-confirmation"].forEach(viderCode);
+      activerCode("pro-ancien");
+      return;
+    }
     const sel = crypto.getRandomValues(new Uint8Array(CODE.octetsSel));
     const empreinte = await deriverEmpreinte(nouveau, sel, CODE.iterations);
     const ok = await enregistrerCompte({ ...etat.compte, sel: versBase64(sel), empreinte: versBase64(empreinte), iterations: CODE.iterations });
@@ -3950,8 +4071,9 @@ async function surChoixCompte(evenement) {
   $("cnx-code").focus({ preventScroll: true });
 }
 
-function surDeconnexion() {
-  fermerSession();
+async function surDeconnexion() {
+  await quitterLiaison();
+  await fermerSession();
 }
 
 async function surChangerCompte() {
@@ -3960,9 +4082,998 @@ async function surChangerCompte() {
   if (premier) premier.focus({ preventScroll: true });
 }
 
+/* ==========================================================================
+   COMPTE EN LIGNE ET SYNCHRONISATION (étape 14)
+   - Tout reste utilisable hors ligne : chaque enregistrement est d'abord écrit sur le téléphone.
+   - Un compte « relié » met ses changements dans une file d'attente gardée sur le téléphone
+     (bp_v1_file_sync), envoyée par POST /api/sync ; la réponse apporte les changements de
+     l'autre appareil, la formule SIGNÉE et le compteur de devis du mois.
+   - Les données reçues repassent par les mêmes contrôles que les données locales
+     (devisValide, chantierValide, clientManuelValide, catalogueValide, compteValide).
+   - Le code secret n'est jamais stocké : il ne sert qu'au moment de la connexion.
+   ========================================================================== */
+
+const CHAMPS_PROFIL_SYNC = Object.freeze(["nom", "entreprise", "ville", "pays", "devise", "conditions", "photo", "logo"]);
+const TYPES_SYNC = Object.freeze(["devis", "chantier", "client", "catalogue", "profil"]);
+const ERREURS_FINALES_SYNC = Object.freeze(["donnees_invalides", "introuvable", "requete_invalide", "limite_atteinte", "limite_chantiers", "limite_clients", "limite_catalogue"]);
+const synchro = { compte: "", liaison: "", enCours: null, relancer: false, minuterie: 0, intervalle: 0, file: Promise.resolve(), limiteSignalee: false, appareil: "" };
+
+function aPropriete(objet, cle) {
+  return objetSimple(objet) && Object.prototype.hasOwnProperty.call(objet, cle);
+}
+
+/* ---------- Appels à l'API : délai borné, aucun cookie, seul le CODE d'erreur est lu ---------- */
+
+function apiJoignable() {
+  return typeof fetch === "function" && typeof AbortController === "function" && navigator.onLine !== false;
+}
+
+/* Identifiant aléatoire de CE téléphone (32 caractères hexadécimaux), créé une fois. */
+async function identifiantAppareil() {
+  if (synchro.appareil) return synchro.appareil;
+  const lu = await lireValeur(CLES_STOCKAGE.appareil);
+  if (typeof lu === "string" && SYNC.appareil.test(lu)) {
+    synchro.appareil = lu;
+    return lu;
+  }
+  const octets = crypto.getRandomValues(new Uint8Array(16));
+  synchro.appareil = [...octets].map((o) => o.toString(16).padStart(2, "0")).join("");
+  await ecrireBrut(CLES_STOCKAGE.appareil, synchro.appareil);
+  return synchro.appareil;
+}
+
+async function appelApi(methode, chemin, corps, options) {
+  const reglages = options || {};
+  const echec = { statut: 0, ok: false, donnees: null, erreur: "", attente: 0, texte: "" };
+  if (!apiJoignable()) return echec;
+  const arret = new AbortController();
+  const minuterie = setTimeout(() => arret.abort(), reglages.delai || SYNC.delaiMs);
+  try {
+    const entetes = { "X-Appareil": await identifiantAppareil() };
+    if (corps !== undefined) entetes["Content-Type"] = "application/json";
+    if (reglages.jeton) entetes.Authorization = "Bearer " + reglages.jeton;
+    const reponse = await fetch(API_URL + chemin, {
+      method: methode,
+      headers: entetes,
+      body: corps === undefined ? undefined : JSON.stringify(corps),
+      credentials: "omit",
+      cache: "no-store",
+      referrerPolicy: "no-referrer",
+      signal: arret.signal
+    });
+    let donnees = null;
+    let texte = "";
+    if (reglages.texte && reponse.ok) texte = await reponse.text();
+    else {
+      try {
+        donnees = await reponse.json();
+      } catch (erreur) {
+        donnees = null;
+      }
+    }
+    const propre = objetSimple(donnees) ? donnees : null;
+    const enTete = reponse.headers && typeof reponse.headers.get === "function" ? Number.parseInt(reponse.headers.get("Retry-After") || "", 10) : NaN;
+    const indique = propre && Number.isFinite(propre.reessayerDans) ? propre.reessayerDans : NaN;
+    const attente = Math.min(86400, Math.max(0, Number.isFinite(enTete) ? enTete : 0, Number.isFinite(indique) ? indique : 0));
+    return {
+      statut: Number.isInteger(reponse.status) ? reponse.status : 0,
+      ok: reponse.ok === true,
+      donnees: propre,
+      erreur: propre && typeof propre.erreur === "string" ? propre.erreur.slice(0, 60) : "",
+      attente,
+      texte
+    };
+  } catch (erreur) {
+    journal("appel impossible", chemin);
+    return echec;
+  } finally {
+    clearTimeout(minuterie);
+  }
+}
+
+/* Code d'erreur → message de l'application (jamais le texte reçu). */
+function messageCompte(resultat) {
+  const code = resultat && resultat.erreur;
+  if (code && code !== "defaut" && Object.prototype.hasOwnProperty.call(MESSAGES_COMPTE, code)) return MESSAGES_COMPTE[code];
+  if (resultat && resultat.statut === 429) return MESSAGES_COMPTE.trop_de_requetes;
+  return MESSAGES_COMPTE.defaut;
+}
+
+/* ---------- Jetons, liaison, file d'attente (rangés par compte) ---------- */
+
+async function jetonApiPour(compteId) {
+  const brut = await lireJson(CLES_STOCKAGE.jetonApi);
+  const jeton = aPropriete(brut, compteId) ? brut[compteId] : "";
+  return typeof jeton === "string" && PAIEMENTS.jetonApi.test(jeton) ? jeton : "";
+}
+
+async function ecrireJetonApi(compteId, jeton) {
+  const brut = await lireJson(CLES_STOCKAGE.jetonApi);
+  const tous = objetSimple(brut) ? brut : {};
+  if (typeof jeton === "string" && PAIEMENTS.jetonApi.test(jeton)) tous[compteId] = jeton;
+  else delete tous[compteId];
+  return ecrireBrut(CLES_STOCKAGE.jetonApi, JSON.stringify(tous));
+}
+
+async function lireLiaison(compteId) {
+  const brut = await lireJson(CLES_STOCKAGE.liaison);
+  const l = aPropriete(brut, compteId) && objetSimple(brut[compteId]) ? brut[compteId] : {};
+  return {
+    etat: SYNC.liaisons.includes(l.etat) ? l.etat : "a_creer",
+    curseur: Number.isSafeInteger(l.curseur) && l.curseur >= 0 ? l.curseur : 0,
+    essai: Number.isFinite(l.essai) ? l.essai : 0,
+    vu: Number.isFinite(l.vu) ? l.vu : 0,
+    raison: l.raison === "code" || l.raison === "numero" ? l.raison : ""
+  };
+}
+
+async function ecrireLiaison(compteId, modifications) {
+  const brut = await lireJson(CLES_STOCKAGE.liaison);
+  const tous = objetSimple(brut) ? brut : {};
+  const suivante = { ...(await lireLiaison(compteId)), ...modifications };
+  tous[compteId] = suivante;
+  await ecrireBrut(CLES_STOCKAGE.liaison, JSON.stringify(tous));
+  if (etat.compte && etat.compte.id === compteId) {
+    synchro.compte = compteId;
+    synchro.liaison = suivante.etat;
+  }
+  return suivante;
+}
+
+async function expirerLiaison(compteId) {
+  await ecrireJetonApi(compteId, null);
+  await ecrireLiaison(compteId, { etat: "expiree" });
+  afficherEtatLiaison();
+}
+
+function operationFileValide(o) {
+  return objetSimple(o) && TYPES_SYNC.includes(o.type) && typeof o.id === "string" && SYNC.operation.test(o.id)
+    && (o.action === "ecrire" || o.action === "supprimer") && Number.isSafeInteger(o.rev) && dateIsoValide(o.quand);
+}
+
+/* Toutes les modifications de la file passent l'une après l'autre (jamais deux lectures-écritures mêlées). */
+function modifierFileSync(compteId, modifier) {
+  const suite = synchro.file.then(async () => {
+    const brut = await lireJson(CLES_STOCKAGE.fileSync);
+    const tous = objetSimple(brut) ? brut : {};
+    const f = aPropriete(tous, compteId) && objetSimple(tous[compteId]) ? tous[compteId] : {};
+    const file = {
+      rev: Number.isSafeInteger(f.rev) && f.rev >= 0 ? f.rev : 0,
+      ops: Array.isArray(f.ops) ? f.ops.filter(operationFileValide) : []
+    };
+    if (modifier(file) !== false) {
+      tous[compteId] = file;
+      await ecrireBrut(CLES_STOCKAGE.fileSync, JSON.stringify(tous));
+    }
+    return file;
+  });
+  synchro.file = suite.catch(() => null);
+  return suite;
+}
+
+function lireFileSync(compteId) {
+  return modifierFileSync(compteId, () => false);
+}
+
+/* Une seule entrée par objet : la plus récente remplace l'ancienne (les données sont relues à l'envoi). */
+function ajouterAFileSync(compteId, operations) {
+  if (!operations.length) return Promise.resolve(null);
+  return modifierFileSync(compteId, (file) => {
+    const quand = new Date().toISOString();
+    const parCle = new Map(file.ops.map((o) => [o.type + ":" + o.id, o]));
+    for (const op of operations) {
+      if (!TYPES_SYNC.includes(op.type) || typeof op.id !== "string" || !SYNC.operation.test(op.id)) continue;
+      file.rev += 1;
+      const cle = op.type + ":" + op.id;
+      parCle.delete(cle);
+      parCle.set(cle, { type: op.type, id: op.id, action: op.action, rev: file.rev, quand });
+    }
+    file.ops = [...parCle.values()].slice(-SYNC.fileMax);
+  });
+}
+
+/* Retire seulement les entrées envoyées ET pas modifiées depuis (même révision). */
+function retirerDeFileSync(compteId, operations) {
+  if (!operations.length) return Promise.resolve(null);
+  const faites = new Set(operations.map((o) => o.type + ":" + o.id + ":" + o.rev));
+  return modifierFileSync(compteId, (file) => {
+    file.ops = file.ops.filter((o) => !faites.has(o.type + ":" + o.id + ":" + o.rev));
+  });
+}
+
+function lireJsonTexte(texte) {
+  if (typeof texte !== "string" || !texte) return null;
+  try {
+    return JSON.parse(texte);
+  } catch (erreur) {
+    return null;
+  }
+}
+
+/* Compare l'avant et l'après d'un enregistrement et met en file ce qui a changé pour CE compte. */
+async function noterChangementsLocaux(type, avantTexte, apresTexte, compteId) {
+  const avant = lireJsonTexte(avantTexte);
+  const apres = lireJsonTexte(apresTexte);
+  const operations = [];
+  if (type === "catalogue") {
+    const a = aPropriete(avant, compteId) ? JSON.stringify(avant[compteId]) : "";
+    const b = aPropriete(apres, compteId) ? JSON.stringify(apres[compteId]) : "";
+    if (a !== b) operations.push({ type, id: "catalogue", action: b ? "ecrire" : "supprimer" });
+  } else if (type === "profil") {
+    const trouver = (liste) => (Array.isArray(liste) ? liste.find((c) => objetSimple(c) && c.id === compteId) : null) || null;
+    const a = trouver(avant);
+    const b = trouver(apres);
+    if (b && CHAMPS_PROFIL_SYNC.some((champ) => JSON.stringify(a ? a[champ] : null) !== JSON.stringify(b[champ]))) operations.push({ type, id: "profil", action: "ecrire" });
+  } else {
+    const indexer = (liste) => {
+      const index = new Map();
+      if (Array.isArray(liste)) for (const x of liste) if (objetSimple(x) && x.compteId === compteId && typeof x.id === "string") index.set(x.id, JSON.stringify(x));
+      return index;
+    };
+    const a = indexer(avant);
+    const b = indexer(apres);
+    for (const [id, texte] of b) if (a.get(id) !== texte) operations.push({ type, id, action: "ecrire" });
+    for (const id of a.keys()) if (!b.has(id)) operations.push({ type, id, action: "supprimer" });
+  }
+  if (!operations.length) return;
+  await ajouterAFileSync(compteId, operations);
+  planifierSynchro(SYNC.apresEnregistrementMs);
+}
+
+function suiviActif() {
+  return Boolean(etat.compte) && synchro.compte === etat.compte.id && (synchro.liaison === "liee" || synchro.liaison === "expiree");
+}
+
+function typeSuivi(cle) {
+  if (cle === CLES_STOCKAGE.devis) return "devis";
+  if (cle === CLES_STOCKAGE.chantiers) return "chantier";
+  if (cle === CLES_STOCKAGE.clients) return "client";
+  if (cle === CLES_STOCKAGE.catalogue) return "catalogue";
+  if (cle === CLES_STOCKAGE.comptes) return "profil";
+  return "";
+}
+
+/* Tout le compte en file (première liaison). Le profil n'est envoyé que pour un compte
+   créé en ligne à l'instant : un compte qui existait déjà garde le profil qu'il a en ligne. */
+async function mettreToutEnFile(compte, avecProfil) {
+  const operations = avecProfil ? [{ type: "profil", id: "profil", action: "ecrire" }] : [];
+  const ajouter = (liste, type) => {
+    if (Array.isArray(liste)) for (const x of liste) if (objetSimple(x) && x.compteId === compte.id && typeof x.id === "string") operations.push({ type, id: x.id, action: "ecrire" });
+  };
+  ajouter(await lireClientsBruts(), "client");
+  ajouter(await lireChantiersBruts(), "chantier");
+  ajouter(await lireDevisBruts(), "devis");
+  const catalogue = await lireJson(CLES_STOCKAGE.catalogue);
+  if (aPropriete(catalogue, compte.id) && objetSimple(catalogue[compte.id])) operations.push({ type: "catalogue", id: "catalogue", action: "ecrire" });
+  await ajouterAFileSync(compte.id, operations);
+}
+
+/* ---------- Envoi : chaque entrée de la file est relue et validée au moment d'envoyer ---------- */
+
+function profilAEnvoyer(compte) {
+  return {
+    nom: compte.nom, entreprise: compte.entreprise || "", ville: compte.ville, pays: compte.pays, devise: compte.devise,
+    conditions: typeof compte.conditions === "string" ? compte.conditions : CONDITIONS_DEFAUT,
+    photo: compte.photo || "", logo: compte.logo || ""
+  };
+}
+
+async function sourcesSync() {
+  return {
+    devis: await lireDevisBruts(),
+    chantiers: await lireChantiersBruts(),
+    clients: await lireClientsBruts(),
+    catalogue: await lireJson(CLES_STOCKAGE.catalogue),
+    comptes: await lireComptes()
+  };
+}
+
+function preparerOperation(compte, o, s) {
+  const base = { type: o.type, id: o.id, quand: o.quand };
+  const trouver = (liste) => liste.find((x) => objetSimple(x) && x.id === o.id && x.compteId === compte.id);
+  if (o.type === "profil") {
+    const frais = s.comptes.find((c) => c.id === compte.id);
+    return frais ? { ...base, action: "ecrire", donnees: profilAEnvoyer(frais) } : null;
+  }
+  if (o.type === "catalogue") {
+    if (!aPropriete(s.catalogue, compte.id)) return { ...base, action: "supprimer" };
+    const propre = catalogueValide(s.catalogue[compte.id], compte.devise);
+    return propre ? { ...base, action: "ecrire", donnees: propre } : null;
+  }
+  const liste = o.type === "devis" ? s.devis : o.type === "chantier" ? s.chantiers : s.clients;
+  const brut = trouver(liste);
+  if (!brut) return { ...base, action: "supprimer" };
+  const propre = o.type === "devis" ? devisValide(brut, compte.devise) : o.type === "chantier" ? chantierValide(brut, compte.id) : clientManuelValide(brut, compte.id);
+  return propre ? { ...base, action: "ecrire", donnees: propre } : null;
+}
+
+async function jetonAbonnementLocal(compteId) {
+  const brut = await lireJson(CLES_STOCKAGE.abonnement);
+  const jeton = aPropriete(brut, compteId) ? brut[compteId] : "";
+  return typeof jeton === "string" && jeton.length <= 2000 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(jeton) ? jeton : "";
+}
+
+/* La formule vient TOUJOURS de la réponse en ligne : jeton signé vérifié, ou retour en Gratuit. */
+async function adopterAbonnement(compteId, jeton) {
+  if (!etat.compte || etat.compte.id !== compteId) return;
+  if (typeof jeton === "string" && jeton.length <= 2000 && await enregistrerJetonAbonnement(jeton)) return;
+  if (jeton !== null) return;
+  const brut = await lireJson(CLES_STOCKAGE.abonnement);
+  if (!aPropriete(brut, compteId)) return;
+  delete brut[compteId];
+  await ecrireBrut(CLES_STOCKAGE.abonnement, JSON.stringify(brut));
+  await actualiserAbonnement();
+}
+
+/* Compteur du mois reçu en ligne : le plus grand des deux compte (jamais de devis gratuit regagné). */
+async function noterQuotaDistant(compteId, quota) {
+  if (!objetSimple(quota) || !Number.isInteger(quota.utilises) || quota.utilises < 0 || quota.utilises > 100000) return;
+  const mois = cleMoisLocal(maintenantFiable());
+  if (quota.mois !== mois) return;
+  const compteurs = compteursPropres(await lireJson(CLES_STOCKAGE.devisMois));
+  const present = compteurs[compteId] && compteurs[compteId].mois === mois ? compteurs[compteId].nombre : 0;
+  if (quota.utilises <= present) return;
+  compteurs[compteId] = { mois, nombre: quota.utilises };
+  await ecrireBrut(CLES_STOCKAGE.devisMois, JSON.stringify(compteurs));
+}
+
+/* ---------- Réception : les données reçues repassent par les contrôles du téléphone ---------- */
+
+function profilDistantValide(p, base) {
+  if (!objetSimple(p)) return null;
+  const texte = (valeur, obligatoire) => {
+    const propre = nettoyerTexte(typeof valeur === "string" ? valeur : "");
+    return texteValide(propre, obligatoire) ? propre : null;
+  };
+  const image = (valeur, actuelle) => (valeur === "" || (typeof valeur === "string" && valeur.length <= IMAGES.donneesMax && DONNEES_IMAGE.test(valeur)) ? valeur : actuelle);
+  const nom = texte(p.nom, true);
+  const ville = texte(p.ville, true);
+  const entreprise = texte(p.entreprise, false);
+  if (nom === null || ville === null || entreprise === null || !PAYS_PAR_ISO.has(p.pays) || !Object.prototype.hasOwnProperty.call(DEVISES, p.devise)) return null;
+  const suivant = {
+    ...base, nom, ville, entreprise, pays: p.pays, devise: p.devise,
+    conditions: typeof p.conditions === "string" ? nettoyerParagraphes(p.conditions).slice(0, BORNES.conditionsMax) : base.conditions,
+    photo: image(p.photo, base.photo),
+    logo: image(p.logo, base.logo)
+  };
+  if (typeof p.telephone === "string" && /^\+\d{6,15}$/.test(p.telephone)) suivant.telephone = p.telephone;
+  return suivant;
+}
+
+async function appliquerProfilDistant(compteId, p) {
+  const comptes = await lireComptes();
+  const index = comptes.findIndex((c) => c.id === compteId);
+  if (index < 0) return false;
+  const actuel = comptes[index];
+  const suivant = profilDistantValide(p, actuel);
+  if (!suivant || !compteValide(suivant)) return false;
+  if (suivant.telephone !== actuel.telephone && comptes.some((c) => c.id !== compteId && c.telephone === suivant.telephone)) suivant.telephone = actuel.telephone;
+  const identique = suivant.telephone === actuel.telephone && CHAMPS_PROFIL_SYNC.every((champ) => JSON.stringify(actuel[champ]) === JSON.stringify(suivant[champ]));
+  if (identique) return false;
+  comptes[index] = suivant;
+  if (!await ecrireBrut(CLES_STOCKAGE.comptes, JSON.stringify(comptes))) return false;
+  if (etat.compte && etat.compte.id === compteId) {
+    etat.compte = suivant;
+    afficherCompte(suivant);
+  }
+  return true;
+}
+
+async function appliquerListeDistante(cle, type, liste, compteId, enAttente, valider) {
+  if (!Array.isArray(liste) || !liste.length) return false;
+  const brut = await lireJson(cle);
+  const actuelle = Array.isArray(brut) ? brut : [];
+  const supprimes = [];
+  let change = false;
+  for (const element of liste.slice(0, 500)) {
+    if (!objetSimple(element) || typeof element.id !== "string" || !SYNC.operation.test(element.id) || enAttente.has(type + ":" + element.id)) continue;
+    const index = actuelle.findIndex((x) => objetSimple(x) && x.id === element.id && x.compteId === compteId);
+    if (element.supprime === true) {
+      if (index >= 0) {
+        actuelle.splice(index, 1);
+        supprimes.push(element.id);
+        change = true;
+      }
+      continue;
+    }
+    const propre = objetSimple(element.donnees) ? valider({ ...element.donnees, compteId }) : null;
+    if (!propre || propre.id !== element.id) continue;
+    if (index >= 0) actuelle[index] = propre;
+    else actuelle.push(propre);
+    change = true;
+  }
+  if (change) await ecrireBrut(cle, JSON.stringify(actuelle));
+  if (type === "devis") for (const id of supprimes) await supprimerValeur(CLES_STOCKAGE.photoTableau + id);
+  return change;
+}
+
+async function appliquerCatalogueDistant(compteId, recu, devise) {
+  const brut = await lireJson(CLES_STOCKAGE.catalogue);
+  const tous = objetSimple(brut) ? brut : {};
+  if (recu.perso !== true) {
+    if (!aPropriete(tous, compteId)) return false;
+    delete tous[compteId];
+  } else {
+    const propre = catalogueValide(recu.catalogue, devise);
+    if (!propre || JSON.stringify(tous[compteId]) === JSON.stringify(propre)) return false;
+    tous[compteId] = propre;
+  }
+  return ecrireBrut(CLES_STOCKAGE.catalogue, JSON.stringify(tous));
+}
+
+/* Un objet modifié ici et pas encore envoyé n'est jamais écrasé par l'ancienne version reçue. */
+async function appliquerChangements(compte, changements) {
+  if (!objetSimple(changements)) return false;
+  const file = await lireFileSync(compte.id);
+  const enAttente = new Set(file.ops.map((o) => o.type + ":" + o.id));
+  let change = false;
+  if (objetSimple(changements.profil) && !enAttente.has("profil:profil")) change = (await appliquerProfilDistant(compte.id, changements.profil)) || change;
+  const devise = etat.compte && etat.compte.id === compte.id ? etat.compte.devise : compte.devise;
+  change = (await appliquerListeDistante(CLES_STOCKAGE.clients, "client", changements.clients, compte.id, enAttente, (c) => clientManuelValide(c, compte.id))) || change;
+  change = (await appliquerListeDistante(CLES_STOCKAGE.chantiers, "chantier", changements.chantiers, compte.id, enAttente, (c) => chantierValide(c, compte.id))) || change;
+  change = (await appliquerListeDistante(CLES_STOCKAGE.devis, "devis", changements.devis, compte.id, enAttente, (d) => devisValide(d, devise))) || change;
+  if (objetSimple(changements.catalogue) && !enAttente.has("catalogue:catalogue")) change = (await appliquerCatalogueDistant(compte.id, changements.catalogue, devise)) || change;
+  return change;
+}
+
+async function enregistrerEtatDistant(compte, reponse) {
+  if (!etat.compte || etat.compte.id !== compte.id || synchro.liaison !== "liee") return;
+  if (typeof reponse.jeton === "string" && PAIEMENTS.jetonApi.test(reponse.jeton)) await ecrireJetonApi(compte.id, reponse.jeton);
+  const modifications = { vu: Date.now() };
+  if (Number.isSafeInteger(reponse.curseur) && reponse.curseur >= 0) modifications.curseur = reponse.curseur;
+  await ecrireLiaison(compte.id, modifications);
+  if (Object.prototype.hasOwnProperty.call(reponse, "abonnement")) await adopterAbonnement(compte.id, reponse.abonnement);
+  await noterQuotaDistant(compte.id, reponse.quota);
+}
+
+/* ---------- Synchronisation : une seule à la fois, bornée en nombre de tours ---------- */
+
+function synchroniser() {
+  if (synchro.enCours) {
+    synchro.relancer = true;
+    return synchro.enCours;
+  }
+  synchro.enCours = (async () => {
+    try {
+      let tours = 0;
+      do {
+        synchro.relancer = false;
+        await cycleSynchro();
+        tours += 1;
+      } while (synchro.relancer && tours < 3);
+    } catch (erreur) {
+      journal("synchronisation interrompue", erreur && erreur.message);
+    } finally {
+      synchro.enCours = null;
+    }
+  })();
+  return synchro.enCours;
+}
+
+async function cycleSynchro() {
+  const compte = etat.compte;
+  if (!compte || !apiJoignable() || synchro.compte !== compte.id || synchro.liaison !== "liee") return;
+  let jeton = await jetonApiPour(compte.id);
+  if (!jeton) {
+    await expirerLiaison(compte.id);
+    return;
+  }
+  let abonnementRepris = false;
+  let rafraichir = false;
+  for (let tour = 0; tour < SYNC.toursMax; tour += 1) {
+    if (!etat.compte || etat.compte.id !== compte.id || synchro.liaison !== "liee") return;
+    const actuel = etat.compte;
+    const file = await lireFileSync(compte.id);
+    const lot = file.ops.slice(0, SYNC.lot);
+    const sources = await sourcesSync();
+    const envoyees = [];
+    const ecartees = [];
+    const operations = [];
+    for (const o of lot) {
+      const op = preparerOperation(actuel, o, sources);
+      if (op) {
+        operations.push(op);
+        envoyees.push(o);
+      } else ecartees.push(o);
+    }
+    const liaison = await lireLiaison(compte.id);
+    const r = await appelApi("POST", "/api/sync", { curseur: liaison.curseur, abonnement: await jetonAbonnementLocal(compte.id), operations }, { jeton });
+    if (r.statut === 0) return;
+    if (r.statut === 401) {
+      await expirerLiaison(compte.id);
+      return;
+    }
+    if (r.statut === 409 && r.erreur === "abonnement_invalide" && !abonnementRepris) {
+      abonnementRepris = true;
+      await adopterAbonnement(compte.id, r.donnees && Object.prototype.hasOwnProperty.call(r.donnees, "abonnement") ? r.donnees.abonnement : null);
+      continue;
+    }
+    if (r.statut === 403) {
+      if (r.erreur === "compte_suspendu") afficherToast(MESSAGES_COMPTE.compte_suspendu);
+      return;
+    }
+    if (r.statut === 400 || r.statut === 413) {
+      /* Lot refusé en bloc : écarté pour ne jamais bloquer la file (journalisé en mode débogage). */
+      journal("lot refusé", r.erreur);
+      await retirerDeFileSync(compte.id, lot);
+      continue;
+    }
+    if (!r.ok || !r.donnees) return;
+    const reponse = r.donnees;
+    const faites = [...ecartees];
+    const parCle = new Map(envoyees.map((o) => [o.type + ":" + o.id, o]));
+    let limite = false;
+    for (const resultatOp of Array.isArray(reponse.resultats) ? reponse.resultats : []) {
+      if (!objetSimple(resultatOp)) continue;
+      const o = parCle.get(resultatOp.type + ":" + resultatOp.id);
+      if (!o) continue;
+      if (resultatOp.ok === true || ERREURS_FINALES_SYNC.includes(resultatOp.erreur)) faites.push(o);
+      if (typeof resultatOp.erreur === "string" && resultatOp.erreur.startsWith("limite")) limite = true;
+      if (resultatOp.erreur === "donnees_invalides") journal("objet refusé", resultatOp.type, resultatOp.champ);
+    }
+    await retirerDeFileSync(compte.id, faites);
+    if (limite && !synchro.limiteSignalee) {
+      synchro.limiteSignalee = true;
+      afficherToast("Certains devis restent seulement sur ce téléphone : la limite de votre formule est atteinte.");
+    }
+    rafraichir = (await appliquerChangements(compte, reponse.changements)) || rafraichir;
+    await enregistrerEtatDistant(compte, reponse);
+    if (typeof reponse.jeton === "string" && PAIEMENTS.jetonApi.test(reponse.jeton)) jeton = reponse.jeton;
+    const reste = (await lireFileSync(compte.id)).ops.length;
+    if (reponse.encore !== true && (reste === 0 || faites.length === 0)) break;
+  }
+  if (rafraichir && etat.compte && etat.compte.id === compte.id) await rafraichirEcranListe();
+  afficherEtatLiaison();
+}
+
+function planifierSynchro(delai) {
+  if (!etat.compte || synchro.compte !== etat.compte.id || synchro.liaison !== "liee") return;
+  clearTimeout(synchro.minuterie);
+  synchro.minuterie = setTimeout(() => { synchroniser(); }, delai);
+}
+
+function surVisibiliteSynchro() {
+  if (document.visibilityState === "visible") planifierSynchro(800);
+}
+
+function demarrerSynchroPeriodique() {
+  if (synchro.intervalle) return;
+  synchro.intervalle = setInterval(() => {
+    if (etat.compte && document.visibilityState !== "hidden") synchroniser();
+  }, SYNC.intervalleMs);
+  document.addEventListener("visibilitychange", surVisibiliteSynchro);
+}
+
+async function chargerLiaison(compteId) {
+  const liaison = await lireLiaison(compteId);
+  synchro.compte = compteId;
+  synchro.liaison = liaison.etat;
+  synchro.limiteSignalee = false;
+  demarrerSynchroPeriodique();
+  if (liaison.etat === "liee") planifierSynchro(1200);
+}
+
+function oublierLiaisonMemoire() {
+  clearTimeout(synchro.minuterie);
+  synchro.compte = "";
+  synchro.liaison = "";
+}
+
+/* ---------- Liaison du compte local à son compte en ligne ---------- */
+
+function reponseCompteValide(d, telephone) {
+  return objetSimple(d) && typeof d.jeton === "string" && PAIEMENTS.jetonApi.test(d.jeton) && objetSimple(d.compte)
+    && typeof d.compte.compteId === "string" && SYNC.compteId.test(d.compte.compteId) && d.compte.telephone === telephone;
+}
+
+/* Change l'identifiant d'un compte local partout où il range des données (compte déjà créé
+   en ligne depuis un autre téléphone). Jamais de fusion avec un autre compte local. */
+async function changerIdentifiantCompte(ancien, nouveau) {
+  if (!SYNC.compteId.test(nouveau)) return null;
+  const comptes = await lireComptes();
+  const index = comptes.findIndex((c) => c.id === ancien);
+  if (index < 0 || comptes.some((c) => c.id === nouveau)) return null;
+  for (const cle of [CLES_STOCKAGE.devis, CLES_STOCKAGE.chantiers, CLES_STOCKAGE.clients]) {
+    const liste = await lireJson(cle);
+    if (!Array.isArray(liste) || !liste.some((x) => objetSimple(x) && x.compteId === ancien)) continue;
+    await ecrireBrut(cle, JSON.stringify(liste.map((x) => (objetSimple(x) && x.compteId === ancien ? { ...x, compteId: nouveau } : x))));
+  }
+  const parCompte = [CLES_STOCKAGE.catalogue, CLES_STOCKAGE.devisMois, CLES_STOCKAGE.relances, CLES_STOCKAGE.paiements, CLES_STOCKAGE.renouvellement,
+    CLES_STOCKAGE.numerosDevis, CLES_STOCKAGE.jetonApi, CLES_STOCKAGE.paiementEnCours, CLES_STOCKAGE.brouillonChantier, CLES_STOCKAGE.liaison, CLES_STOCKAGE.fileSync];
+  for (const cle of parCompte) {
+    const objet = await lireJson(cle);
+    if (!aPropriete(objet, ancien)) continue;
+    let valeur = objet[ancien];
+    if (cle === CLES_STOCKAGE.brouillonChantier && objetSimple(valeur)) valeur = { ...valeur, compteId: nouveau };
+    delete objet[ancien];
+    objet[nouveau] = valeur;
+    await ecrireBrut(cle, JSON.stringify(objet));
+  }
+  /* L'ancien jeton d'abonnement nomme l'ancien identifiant : il ne vaut plus rien. */
+  const abonnements = await lireJson(CLES_STOCKAGE.abonnement);
+  if (aPropriete(abonnements, ancien)) {
+    delete abonnements[ancien];
+    await ecrireBrut(CLES_STOCKAGE.abonnement, JSON.stringify(abonnements));
+  }
+  const suivant = { ...comptes[index], id: nouveau };
+  comptes[index] = suivant;
+  await ecrireBrut(CLES_STOCKAGE.comptes, JSON.stringify(comptes));
+  const session = await lireSession();
+  if (session && session.compteId === ancien) await ecrireBrut(CLES_STOCKAGE.session, JSON.stringify({ ...session, compteId: nouveau }));
+  if (etat.compte && etat.compte.id === ancien) {
+    etat.compte = suivant;
+    synchro.compte = nouveau;
+  }
+  return suivant;
+}
+
+/* mode : « nouveau » (compte créé en ligne à l'instant : tout part, profil compris),
+   « existant » (le compte existait déjà en ligne : on envoie les données locales, on reçoit le profil),
+   « reprise » (reconnexion : la file et le curseur sont gardés). */
+async function terminerLiaison(compte, reponse, mode) {
+  await ecrireJetonApi(compte.id, reponse.jeton);
+  const avant = await lireLiaison(compte.id);
+  await ecrireLiaison(compte.id, { etat: "liee", curseur: mode === "reprise" ? avant.curseur : 0, essai: 0, raison: "" });
+  if (mode !== "reprise") await mettreToutEnFile(compte, mode === "nouveau");
+  await adopterAbonnement(compte.id, Object.prototype.hasOwnProperty.call(reponse, "abonnement") ? reponse.abonnement : undefined);
+  await noterQuotaDistant(compte.id, reponse.quota);
+  afficherEtatLiaison();
+  demarrerSynchroPeriodique();
+  synchroniser();
+}
+
+/* En arrière-plan après une connexion, un déverrouillage ou une inscription réussis. */
+async function lierCompte(compte, code) {
+  try {
+    if (!compte || !/^\d{4,6}$/.test(code) || !apiJoignable()) return;
+    const liaison = await lireLiaison(compte.id);
+    const jeton = await jetonApiPour(compte.id);
+    if (liaison.etat === "liee" && jeton) {
+      synchroniser();
+      return;
+    }
+    if (liaison.etat === "refusee" && Date.now() - liaison.essai < SYNC.nouvelEssaiMs) return;
+    const appareil = await identifiantAppareil();
+    if (liaison.etat === "a_creer") {
+      const r = await appelApi("POST", "/api/compte/creer", {
+        compteId: compte.id, telephone: compte.telephone, code, nom: compte.nom, entreprise: compte.entreprise || "",
+        ville: compte.ville, pays: compte.pays, devise: compte.devise, appareil, nomAppareil: nomPlateforme()
+      });
+      if (r.statut === 201 && reponseCompteValide(r.donnees, compte.telephone)) {
+        await terminerLiaison(compte, r.donnees, "nouveau");
+        return;
+      }
+      if (r.statut === 400) {
+        await ecrireLiaison(compte.id, { etat: "refusee", essai: Date.now(), raison: "code" });
+        afficherEtatLiaison();
+        return;
+      }
+      if (r.statut !== 409) return;
+    }
+    const r = await appelApi("POST", "/api/compte/connexion", { telephone: compte.telephone, code, appareil, nomAppareil: nomPlateforme() });
+    if (r.statut === 200 && reponseCompteValide(r.donnees, compte.telephone)) {
+      const cible = r.donnees.compte.compteId === compte.id ? compte : await changerIdentifiantCompte(compte.id, r.donnees.compte.compteId);
+      if (cible) await terminerLiaison(cible, r.donnees, liaison.etat === "expiree" || liaison.etat === "liee" ? "reprise" : "existant");
+      return;
+    }
+    if (r.statut === 401 && r.erreur === "identifiants_incorrects") {
+      const garde = liaison.etat === "expiree" || liaison.etat === "liee";
+      await ecrireLiaison(compte.id, { etat: garde ? "expiree" : "refusee", essai: Date.now(), raison: "numero" });
+      if (!garde) afficherToast("Ce numéro a déjà un compte en ligne avec un autre code. Déconnectez-vous puis connectez-vous avec ce code pour retrouver vos données.");
+      afficherEtatLiaison();
+    } else if (r.statut === 403 && r.erreur === "compte_suspendu") afficherToast(MESSAGES_COMPTE.compte_suspendu);
+  } catch (erreur) {
+    journal("liaison impossible", erreur && erreur.message);
+  }
+}
+
+/* Connexion en ligne quand le téléphone ne connaît pas ce numéro ou ce code (nouveau téléphone,
+   code changé sur l'autre appareil). Le compte local est créé ou mis à jour, jamais fusionné. */
+async function connexionEnLigne(telephone, code) {
+  const r = await appelApi("POST", "/api/compte/connexion", { telephone, code, appareil: await identifiantAppareil(), nomAppareil: nomPlateforme() });
+  if (r.statut === 200 && reponseCompteValide(r.donnees, telephone)) {
+    const p = r.donnees.compte;
+    let local = (await lireComptes()).find((c) => c.telephone === telephone) || null;
+    let mode = "existant";
+    if (local) {
+      const liaison = await lireLiaison(local.id);
+      if (liaison.etat === "liee" || liaison.etat === "expiree") mode = "reprise";
+      if (local.id !== p.compteId) {
+        local = await changerIdentifiantCompte(local.id, p.compteId);
+        if (!local) return { erreur: "defaut" };
+        mode = "existant";
+      }
+    }
+    const sel = crypto.getRandomValues(new Uint8Array(CODE.octetsSel));
+    const empreinte = await deriverEmpreinte(code, sel, CODE.iterations);
+    const base = local || { id: p.compteId, telephone, nom: "", entreprise: "", ville: "", pays: PAYS_DEFAUT, devise: PAYS_PAR_ISO.get(PAYS_DEFAUT).devise, creeLe: new Date().toISOString() };
+    const profil = profilDistantValide(p, { ...base, photo: base.photo || "", logo: base.logo || "" });
+    const compte = profil ? { ...profil, telephone, sel: versBase64(sel), empreinte: versBase64(empreinte), iterations: CODE.iterations } : null;
+    if (!compte || !compteValide(compte)) return { erreur: "defaut" };
+    const comptes = (await lireComptes()).filter((c) => c.id !== compte.id && c.telephone !== telephone);
+    if (!await ecrireBrut(CLES_STOCKAGE.comptes, JSON.stringify([...comptes, compte]))) return { erreur: "defaut" };
+    return { compte, reponse: r.donnees, mode };
+  }
+  if (r.statut === 403) return { erreur: r.erreur === "compte_suspendu" ? "compte_suspendu" : "defaut" };
+  if (r.statut === 429) return { erreur: "trop_de_tentatives_connexion", attente: Math.max(60, r.attente) };
+  if (r.statut === 401) return { refus: true, attente: r.attente };
+  return { indisponible: true };
+}
+
+/* Blocage décidé en ligne : le téléphone retient la plus longue des deux attentes. */
+async function prolongerVerrou(secondes) {
+  if (!(secondes > 0)) return lireVerrou();
+  const verrou = await lireVerrou();
+  verrou.jusqua = Math.max(verrou.jusqua, Date.now() + secondes * 1000);
+  await ecrireBrut(CLES_STOCKAGE.verrou, JSON.stringify(verrou));
+  return verrou;
+}
+
+/* ---------- Écran Profil : carte « Compte en ligne » ---------- */
+
+async function afficherEtatLiaison() {
+  const carte = $("carte-en-ligne");
+  if (!carte || !etat.compte) return;
+  const compte = etat.compte;
+  const liaison = await lireLiaison(compte.id);
+  if (!etat.compte || etat.compte.id !== compte.id) return;
+  const textes = {
+    liee: "Compte relié : vos devis, chantiers, clients, prix et profil sont copiés en ligne et sur votre deuxième téléphone.",
+    expiree: "Copie en ligne en pause : déconnectez-vous puis reconnectez-vous avec internet pour la reprendre.",
+    refusee: liaison.raison === "code"
+      ? "Liaison en ligne impossible : votre code est trop simple. Changez-le ci-dessus, il sera utilisé à la prochaine connexion."
+      : "Ce numéro a déjà un compte en ligne avec un autre code : déconnectez-vous puis connectez-vous avec ce code.",
+    a_creer: "Pas encore relié : vos données restent sur ce téléphone. La liaison se fera à votre prochaine connexion avec internet."
+  };
+  carte.dataset.liaison = liaison.etat;
+  $("texte-liaison").textContent = textes[liaison.etat];
+  const file = await lireFileSync(compte.id);
+  const attente = file.ops.length;
+  const morceaux = [];
+  if (liaison.etat === "liee" || liaison.etat === "expiree") morceaux.push(attente ? attente + " changement" + (attente > 1 ? "s" : "") + " en attente d'envoi" : "Tout est envoyé");
+  if (liaison.vu) morceaux.push("dernière copie le " + dateFrancaise(liaison.vu, false) + " à " + new Date(liaison.vu).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
+  $("detail-liaison").textContent = morceaux.join(" · ");
+  $("bouton-synchroniser").hidden = liaison.etat !== "liee";
+  $("bouton-deconnecter-tout").hidden = liaison.etat !== "liee";
+}
+
+async function surSynchroniserMaintenant() {
+  if (!etat.compte) return;
+  message("msg-en-ligne", "");
+  if (!apiJoignable()) {
+    message("msg-en-ligne", "Pas de connexion internet : vos changements partiront dès le retour du réseau.");
+    return;
+  }
+  const bouton = $("bouton-synchroniser");
+  bouton.setAttribute("aria-busy", "true");
+  try {
+    await synchroniser();
+    const reste = (await lireFileSync(etat.compte.id)).ops.length;
+    if (synchro.liaison !== "liee") message("msg-en-ligne", MESSAGES_COMPTE.non_authentifie);
+    else message("msg-en-ligne", reste ? "Copie partielle : " + reste + " changement" + (reste > 1 ? "s" : "") + " partira" + (reste > 1 ? "ont" : "") + " plus tard." : "Copie en ligne à jour.", !reste);
+  } finally {
+    bouton.removeAttribute("aria-busy");
+    afficherEtatLiaison();
+  }
+}
+
+/* Déconnexion : dernière copie (4 s au plus), session de CE téléphone fermée en ligne, jeton oublié.
+   La file d'attente reste : elle partira à la prochaine connexion. */
+async function quitterLiaison() {
+  const compte = etat.compte;
+  if (!compte) return;
+  const jeton = await jetonApiPour(compte.id);
+  if (!jeton) return;
+  if (apiJoignable() && synchro.liaison === "liee") await Promise.race([synchroniser(), attendre(4000)]);
+  if (apiJoignable()) appelApi("POST", "/api/compte/deconnexion", undefined, { jeton, delai: 5000 });
+  await ecrireJetonApi(compte.id, null);
+  await ecrireLiaison(compte.id, { etat: "expiree" });
+}
+
+async function surDeconnecterTout() {
+  const compte = etat.compte;
+  if (!compte) return;
+  message("msg-en-ligne", "");
+  const jeton = await jetonApiPour(compte.id);
+  if (!jeton || synchro.liaison !== "liee") {
+    message("msg-en-ligne", MESSAGES_COMPTE.non_relie);
+    return;
+  }
+  if (!apiJoignable()) {
+    message("msg-en-ligne", MESSAGES_COMPTE.hors_ligne);
+    return;
+  }
+  const accord = await demanderConfirmation("Déconnecter tous vos appareils ?",
+    "Tous les téléphones reliés à votre compte, celui-ci compris, devront se reconnecter avec votre code. Vos données restent sur chaque téléphone et en ligne.",
+    "Tout déconnecter");
+  if (!accord) return;
+  await Promise.race([synchroniser(), attendre(4000)]);
+  const r = await appelApi("POST", "/api/compte/deconnecter-tout", undefined, { jeton });
+  if (!r.ok && r.statut !== 401) {
+    message("msg-en-ligne", messageCompte(r));
+    return;
+  }
+  await ecrireJetonApi(compte.id, null);
+  await ecrireLiaison(compte.id, { etat: "expiree" });
+  await fermerSession();
+  $("msg-connexion").textContent = "Tous vos appareils sont déconnectés. Reconnectez-vous avec votre code.";
+}
+
+/* Efface tout ce que ce téléphone garde pour un compte (après suppression du compte). */
+async function effacerDonneesCompte(compteId) {
+  for (const cle of [CLES_STOCKAGE.devis, CLES_STOCKAGE.chantiers, CLES_STOCKAGE.clients]) {
+    const liste = await lireJson(cle);
+    if (!Array.isArray(liste)) continue;
+    if (cle === CLES_STOCKAGE.devis) {
+      for (const d of liste) if (objetSimple(d) && d.compteId === compteId && typeof d.id === "string" && MOTIF_ID.test(d.id)) await supprimerValeur(CLES_STOCKAGE.photoTableau + d.id);
+    }
+    await ecrireBrut(cle, JSON.stringify(liste.filter((x) => !(objetSimple(x) && x.compteId === compteId))));
+  }
+  const parCompte = [CLES_STOCKAGE.catalogue, CLES_STOCKAGE.devisMois, CLES_STOCKAGE.relances, CLES_STOCKAGE.paiements, CLES_STOCKAGE.renouvellement,
+    CLES_STOCKAGE.numerosDevis, CLES_STOCKAGE.jetonApi, CLES_STOCKAGE.paiementEnCours, CLES_STOCKAGE.brouillonChantier, CLES_STOCKAGE.liaison,
+    CLES_STOCKAGE.fileSync, CLES_STOCKAGE.abonnement];
+  for (const cle of parCompte) {
+    const objet = await lireJson(cle);
+    if (!aPropriete(objet, compteId)) continue;
+    delete objet[compteId];
+    await ecrireBrut(cle, JSON.stringify(objet));
+  }
+  const comptes = await lireJson(CLES_STOCKAGE.comptes);
+  if (Array.isArray(comptes)) await ecrireBrut(CLES_STOCKAGE.comptes, JSON.stringify(comptes.filter((c) => !(objetSimple(c) && c.id === compteId))));
+}
+
+/* Suppression du compte : double confirmation + code. Compte relié : suppression en ligne
+   d'abord (internet obligatoire), sinon vérification du code sur ce téléphone. */
+function demanderCodeSuppression() {
+  return new Promise((resoudre) => {
+    const bloc = document.createElement("div");
+    const texte = document.createElement("p");
+    texte.textContent = "Dernière étape : saisissez votre code secret. Vos devis, chantiers, clients, prix, photos et reçus seront effacés de ce téléphone et en ligne. Cette action est définitive.";
+    const champ = document.createElement("div");
+    champ.className = "champ";
+    const libelle = document.createElement("label");
+    libelle.htmlFor = "sup-code";
+    libelle.textContent = "Code secret";
+    const entree = document.createElement("input");
+    entree.id = "sup-code";
+    entree.type = "password";
+    entree.inputMode = "numeric";
+    entree.autocomplete = "off";
+    entree.maxLength = 6;
+    entree.className = "champ-code-simple";
+    champ.append(libelle, entree);
+    bloc.append(texte, champ);
+    ouvrirModale("Supprimer définitivement ?", bloc, {
+      ok: "Supprimer définitivement",
+      annuler: "Annuler",
+      resoudre: (confirme) => resoudre(confirme ? entree.value : null)
+    });
+    entree.focus({ preventScroll: true });
+  });
+}
+
+async function surSupprimerCompte() {
+  const compte = etat.compte;
+  if (!compte) return;
+  message("msg-en-ligne", "");
+  const verrou = await lireVerrou();
+  if (verrou.jusqua > Date.now()) {
+    message("msg-en-ligne", "Trop d'essais. Réessayez dans " + formaterDuree(verrou.jusqua - Date.now()) + ".");
+    return;
+  }
+  const premier = await demanderConfirmation("Supprimer votre compte ?",
+    "Votre compte BâtiPlus et toutes ses données seront supprimés. Pensez à exporter une sauvegarde de votre profil avant. Votre abonnement en cours ne sera pas remboursé.",
+    "Continuer");
+  if (!premier) return;
+  const code = await demanderCodeSuppression();
+  if (code === null) return;
+  if (!/^\d{4,6}$/.test(code)) {
+    message("msg-en-ligne", "Code incorrect.");
+    return;
+  }
+  const liaison = await lireLiaison(compte.id);
+  const relie = liaison.etat === "liee" || liaison.etat === "expiree";
+  if (relie) {
+    const jeton = await jetonApiPour(compte.id);
+    if (!jeton) {
+      message("msg-en-ligne", MESSAGES_COMPTE.non_authentifie);
+      return;
+    }
+    if (!apiJoignable()) {
+      message("msg-en-ligne", MESSAGES_COMPTE.hors_ligne);
+      return;
+    }
+    const r = await appelApi("DELETE", "/api/compte", { code, confirmation: "SUPPRIMER" }, { jeton });
+    if (!r.ok) {
+      if (r.statut === 401 && r.erreur === "identifiants_incorrects") {
+        await enregistrerEchec();
+        await prolongerVerrou(r.attente);
+        message("msg-en-ligne", "Code incorrect.");
+      } else {
+        if (r.statut === 401) await expirerLiaison(compte.id);
+        message("msg-en-ligne", messageCompte(r));
+      }
+      return;
+    }
+  } else if (!await verifierIdentifiants(compte.telephone, code)) {
+    await enregistrerEchec();
+    message("msg-en-ligne", "Code incorrect.");
+    return;
+  }
+  await reinitialiserVerrou();
+  await fermerSession();
+  await effacerDonneesCompte(compte.id);
+  await afficherComptesAppareil();
+  choisirOnglet((await lireComptes()).length ? "connexion" : "inscription");
+  afficherToast("Compte supprimé. Toutes ses données ont été effacées.");
+}
+
+/* ---------- Abonnement : code d'activation offert par BRG Électro+ ---------- */
+
+function normaliserCodeActivation(valeur) {
+  const brut = String(valeur || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (brut.length !== 14 || !brut.startsWith("BP")) return "";
+  const code = "BP-" + brut.slice(2, 6) + "-" + brut.slice(6, 10) + "-" + brut.slice(10, 14);
+  return CODE_ACTIVATION.test(code) ? code : "";
+}
+
+function surSaisieCodeActivation(evenement) {
+  const champ = evenement.target;
+  const propre = champ.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 17);
+  if (propre !== champ.value) champ.value = propre;
+}
+
+async function surActiverCode(evenement) {
+  evenement.preventDefault();
+  const compte = etat.compte;
+  if (!compte) return;
+  const champ = $("abo-code");
+  effacerErreur(champ);
+  message("msg-activation", "");
+  const code = normaliserCodeActivation(champ.value);
+  if (!code) {
+    afficherErreur("abo-code", "Format attendu : BP- suivi de 3 groupes de 4 lettres ou chiffres, par exemple BP-A2B3-C4D5-E6F7.");
+    return;
+  }
+  const jeton = await jetonApiPour(compte.id);
+  if (!jeton || synchro.liaison !== "liee") {
+    message("msg-activation", MESSAGES_COMPTE.non_relie);
+    return;
+  }
+  if (!apiJoignable()) {
+    message("msg-activation", "Pas de connexion internet : le code se vérifie en ligne. Réessayez une fois connecté.");
+    return;
+  }
+  const bouton = $("bouton-activer-code");
+  bouton.setAttribute("aria-busy", "true");
+  try {
+    const r = await appelApi("POST", "/api/abonnement/activer-code", { code }, { jeton });
+    if (!r.ok || !r.donnees) {
+      if (r.statut === 401) await expirerLiaison(compte.id);
+      message("msg-activation", messageCompte(r));
+      return;
+    }
+    champ.value = "";
+    await adopterAbonnement(compte.id, Object.prototype.hasOwnProperty.call(r.donnees, "abonnement") ? r.donnees.abonnement : undefined);
+    await noterQuotaDistant(compte.id, r.donnees.quota);
+    const formule = FORMULES[r.donnees.formule] ? FORMULES[r.donnees.formule].nom : libelleFormule(etat.abonnement);
+    const fin = typeof r.donnees.fin === "string" && !Number.isNaN(Date.parse(r.donnees.fin)) && r.donnees.formule !== "vie" ? " jusqu'au " + dateLongue(Date.parse(r.donnees.fin), true) : "";
+    message("msg-activation", "Code accepté : formule " + formule + " activée" + fin + ".", true);
+    vibrer();
+    if (montrer.ecranCourant === "abonnement") ouvrirAbonnement();
+  } finally {
+    bouton.removeAttribute("aria-busy");
+  }
+}
+
 /* ---------- Administration (accès caché) ----------
-   Appui long de 3 s sur le logo de « À propos ». Le code est envoyé en HTTPS à
-   l'API qui seule le vérifie : rien n'est comparé ni stocké sur le téléphone. */
+   Appui long de 3 s sur le logo de « À propos ». Le code (8 à 64 chiffres) est envoyé en
+   HTTPS à POST /api/admin/connexion qui seul le vérifie : rien n'est comparé ni stocké sur le
+   téléphone. Le jeton d'administration (2 h, lié à l'identifiant de ce téléphone) reste en
+   mémoire et disparaît à la fermeture de l'application. Toute action sensible demande un motif
+   écrit et la confirmation retapée (numéro de l'électricien ou référence du paiement). */
+
+const admin = { jeton: "", expire: 0, page: 0, recherche: "", pageJournal: 0, electriciens: [], anomalies: [] };
 
 function surDebutAppuiAdmin(evenement) {
   if (evenement.pointerType === "mouse" && evenement.button !== 0) return;
@@ -3983,10 +5094,19 @@ function ouvrirAdmin() {
   montrer("admin");
 }
 
+function adminConnecte() {
+  return Boolean(admin.jeton) && admin.expire > Date.now();
+}
+
 function reinitialiserAdmin() {
   $("adm-code").value = "";
   effacerErreur($("adm-code"));
   message("msg-admin", "");
+  const connecte = adminConnecte();
+  if (!connecte) admin.jeton = "";
+  $("admin-entree").hidden = connecte;
+  $("admin-tableau").hidden = !connecte;
+  if (connecte) chargerTableauAdmin();
 }
 
 async function surAdmin(evenement) {
@@ -3996,51 +5116,440 @@ async function surAdmin(evenement) {
   champ.value = "";
   effacerErreur(champ);
   message("msg-admin", "");
-  if (code.length < ADMIN.codeMin || code.length > ADMIN.codeMax) {
-    afficherErreur("adm-code", "Code incomplet.");
-    return;
-  }
   if (etat.adminBloqueJusqua > Date.now()) {
     message("msg-admin", "Trop d'essais. Réessayez dans " + formaterDuree(etat.adminBloqueJusqua - Date.now()) + ".");
     return;
   }
-  if (!navigator.onLine) {
+  if (!/^\d+$/.test(code) || code.length < ADMIN.codeMin || code.length > ADMIN.codeMax) {
+    afficherErreur("adm-code", "Le code compte " + ADMIN.codeMin + " à " + ADMIN.codeMax + " chiffres.");
+    return;
+  }
+  if (!apiJoignable()) {
     message("msg-admin", "Connexion Internet nécessaire pour vérifier ce code.");
     return;
   }
-  if (typeof fetch !== "function" || typeof AbortController !== "function") {
-    message("msg-admin", "Vérification impossible sur cet appareil.");
-    return;
-  }
   const bouton = $("bouton-admin");
-  const arret = new AbortController();
-  const minuterie = setTimeout(() => arret.abort(), ADMIN.delaiMs);
   bouton.setAttribute("aria-busy", "true");
   try {
-    const reponse = await fetch(API_URL + ADMIN.chemin, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
-      credentials: "omit",
-      cache: "no-store",
-      referrerPolicy: "no-referrer",
-      signal: arret.signal
-    });
-    if (reponse.status === 401 || reponse.status === 403) {
-      etat.adminEchecs += 1;
-      if (etat.adminEchecs >= 3) etat.adminBloqueJusqua = Date.now() + 60000;
-      message("msg-admin", "Code incorrect.");
-    } else if (!reponse.ok) {
-      message("msg-admin", "Vérification impossible pour le moment. Réessayez plus tard.");
-    } else {
+    const r = await appelApi("POST", ADMIN.chemin, { code, appareil: await identifiantAppareil() }, { delai: ADMIN.delaiMs });
+    if (r.statut === 200 && r.donnees && typeof r.donnees.jeton === "string" && ADMIN.jeton.test(r.donnees.jeton)) {
       etat.adminEchecs = 0;
-      message("msg-admin", "Code accepté.", true);
+      admin.jeton = r.donnees.jeton;
+      const duree = Number.isFinite(r.donnees.expireDans) && r.donnees.expireDans > 0 ? r.donnees.expireDans * 1000 : ADMIN.dureeJetonMs;
+      admin.expire = Date.now() + Math.min(ADMIN.dureeJetonMs, duree);
+      admin.page = 0;
+      admin.pageJournal = 0;
+      admin.recherche = "";
+      vibrer();
+      reinitialiserAdmin();
+      return;
+    }
+    if (r.statut === 401) {
+      etat.adminEchecs += 1;
+      if (etat.adminEchecs >= ADMIN.echecsMax) {
+        etat.adminEchecs = 0;
+        etat.adminBloqueJusqua = Date.now() + ADMIN.blocageMs;
+      }
+      message("msg-admin", etat.adminBloqueJusqua > Date.now()
+        ? "Code incorrect. Trop d'essais : réessayez dans " + formaterDuree(etat.adminBloqueJusqua - Date.now()) + "."
+        : "Code incorrect.");
+    } else if (r.statut === 429) {
+      etat.adminBloqueJusqua = Math.max(etat.adminBloqueJusqua, Date.now() + Math.max(60, r.attente) * 1000);
+      message("msg-admin", "Trop d'essais. Réessayez dans " + formaterDuree(etat.adminBloqueJusqua - Date.now()) + ".");
+    } else if (r.statut === 403) {
+      message("msg-admin", "Accès refusé depuis ce réseau.");
+    } else {
+      message("msg-admin", r.statut === 0
+        ? "Vérification impossible pour le moment. Vérifiez votre connexion puis réessayez."
+        : "Vérification impossible pour le moment. Réessayez plus tard.");
+    }
+  } finally {
+    bouton.removeAttribute("aria-busy");
+  }
+}
+
+function quitterAdmin() {
+  admin.jeton = "";
+  admin.expire = 0;
+  admin.electriciens = [];
+  admin.anomalies = [];
+  ["admin-anomalies", "admin-chiffres", "admin-formules", "admin-pays", "admin-electriciens", "admin-journal", "admin-codes-generes"].forEach((id) => $(id).replaceChildren());
+  reinitialiserAdmin();
+}
+
+async function appelAdmin(methode, chemin, corps, options) {
+  if (!adminConnecte()) {
+    quitterAdmin();
+    message("msg-admin", "Session d'administration terminée : saisissez à nouveau le code.");
+    return null;
+  }
+  const r = await appelApi(methode, ADMIN.base + chemin, corps, { ...(options || {}), jeton: admin.jeton, delai: ADMIN.delaiMs });
+  if (r.statut === 401) {
+    quitterAdmin();
+    message("msg-admin", "Session d'administration terminée : saisissez à nouveau le code.");
+    return null;
+  }
+  return r;
+}
+
+function messageAdmin(texte, reussi) {
+  message("msg-tableau-admin", texte, reussi);
+  if (texte) afficherToast(texte);
+}
+
+function texteErreurAdmin(r) {
+  const textes = {
+    confirmation_requise: "La confirmation ne correspond pas : action annulée.",
+    requete_invalide: "Champs incomplets : vérifiez le motif (5 caractères au moins).",
+    introuvable: "Élément introuvable.",
+    trop_de_requetes: "Trop de demandes : patientez une minute.",
+    places_vie_epuisees: "Les 200 places Lifetime sont toutes prises."
+  };
+  return (r && textes[r.erreur]) || "Action impossible pour le moment. Réessayez.";
+}
+
+function elementTexte(balise, texte, classe) {
+  const element = document.createElement(balise);
+  element.textContent = texte;
+  if (classe) element.className = classe;
+  return element;
+}
+
+function boutonAdmin(libelle, action, valeur, classe) {
+  const bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.className = "bouton " + (classe || "bouton-secondaire") + " bouton-compact";
+  bouton.dataset.action = action;
+  bouton.dataset.valeur = valeur;
+  bouton.textContent = libelle;
+  return bouton;
+}
+
+function dateHeureCourte(iso) {
+  const instant = Date.parse(iso);
+  if (Number.isNaN(instant)) return "—";
+  return dateFrancaise(instant, true) + " " + new Date(instant).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+async function chargerTableauAdmin() {
+  messageAdmin("");
+  const restant = Math.max(0, admin.expire - Date.now());
+  $("admin-expire").textContent = "Session d'administration : encore " + Math.max(1, Math.round(restant / 60000)) + " min.";
+  await Promise.all([chargerStatsAdmin(), chargerElectriciensAdmin(), chargerJournalAdmin()]);
+}
+
+function tuileAdmin(libelle, valeur, alerte) {
+  const li = document.createElement("li");
+  li.className = "admin-tuile" + (alerte ? " alerte" : "");
+  li.append(elementTexte("strong", valeur, "insecable"), elementTexte("span", libelle));
+  return li;
+}
+
+async function chargerStatsAdmin() {
+  const r = await appelAdmin("GET", "stats");
+  if (!r) return;
+  if (!r.ok || !r.donnees) {
+    messageAdmin(texteErreurAdmin(r));
+    return;
+  }
+  const s = r.donnees;
+  const nombre = (v) => (Number.isFinite(v) ? formaterEntier(v) : "0");
+  /* Anomalies de paiement EN TÊTE (partie E, écran 18). */
+  admin.anomalies = Array.isArray(s.anomalies) ? s.anomalies.filter((a) => objetSimple(a) && typeof a.reference === "string" && PAIEMENTS.reference.test(a.reference)).slice(0, 50) : [];
+  $("admin-anomalies").replaceChildren(...admin.anomalies.map((a) => {
+    const li = document.createElement("li");
+    li.className = "admin-ligne alerte";
+    const infos = document.createElement("div");
+    infos.className = "admin-ligne-infos";
+    const formule = FORMULES[a.formule] ? FORMULES[a.formule].nom : "—";
+    const montant = Number.isFinite(a.montant) ? formaterMontant(a.montant, DEVISES[a.devise] ? a.devise : "XOF") : "—";
+    infos.append(elementTexte("strong", a.reference), elementTexte("span", formule + " · " + montant + " · " + String(a.fournisseur || "").slice(0, 30) + " · " + dateHeureCourte(a.maj_le)));
+    const actions = document.createElement("div");
+    actions.className = "actions-ligne";
+    actions.append(boutonAdmin("Revérifier", "reverifier", a.reference), boutonAdmin("Rembourser", "rembourser", a.reference, "bouton-danger"));
+    li.append(infos, actions);
+    return li;
+  }));
+  $("admin-anomalies-vide").hidden = admin.anomalies.length > 0;
+  const e = objetSimple(s.electriciens) ? s.electriciens : {};
+  const alertes = objetSimple(s.alertes) ? s.alertes : {};
+  const revenus = objetSimple(s.revenusMois) ? s.revenusMois : {};
+  const vie = objetSimple(s.placesVie) ? s.placesVie : {};
+  $("admin-chiffres").replaceChildren(
+    tuileAdmin("Électriciens", nombre(e.total)),
+    tuileAdmin("Actifs sur 7 jours", nombre(e.actifs7j)),
+    tuileAdmin("Nouveaux sur 30 jours", nombre(e.nouveaux30j)),
+    tuileAdmin("Comptes suspendus", nombre(e.suspendus), e.suspendus > 0),
+    tuileAdmin("Devis ce mois", nombre(s.devisMois)),
+    tuileAdmin("Encaissé ce mois", formaterMontant(Number.isFinite(revenus.total) ? revenus.total : 0, "XOF")),
+    tuileAdmin("Paiements en attente", nombre(alertes.paiementsEnAttente), alertes.paiementsEnAttente > 0),
+    tuileAdmin("Formules falsifiées (30 j)", nombre(alertes.falsifications30j), alertes.falsifications30j > 0),
+    tuileAdmin("Devis hors limite ce mois", nombre(alertes.devisHorsLimiteMois), alertes.devisHorsLimiteMois > 0),
+    tuileAdmin("Places Lifetime prises", nombre(vie.prises) + " / " + nombre(vie.total))
+  );
+  const formules = objetSimple(s.formules) ? s.formules : {};
+  $("admin-formules").replaceChildren(...Object.keys(FORMULES).map((id) => {
+    const li = document.createElement("li");
+    li.className = "etat-ligne";
+    li.append(elementTexte("span", FORMULES[id].nom), elementTexte("strong", nombre(formules[id])));
+    return li;
+  }));
+  const pays = Array.isArray(s.pays) ? s.pays.filter((p) => objetSimple(p) && typeof p.pays === "string").slice(0, 60) : [];
+  $("admin-pays").replaceChildren(...pays.map((p) => {
+    const li = document.createElement("li");
+    li.className = "etat-ligne";
+    const connu = PAYS_PAR_ISO.get(p.pays);
+    li.append(elementTexte("span", connu ? connu.nom : p.pays.slice(0, 3)), elementTexte("strong", nombre(p.n)));
+    return li;
+  }));
+}
+
+async function chargerElectriciensAdmin() {
+  const parametres = "?page=" + admin.page + (admin.recherche ? "&q=" + encodeURIComponent(admin.recherche) : "");
+  const r = await appelAdmin("GET", "electriciens" + parametres);
+  if (!r) return;
+  if (!r.ok || !r.donnees) {
+    messageAdmin(texteErreurAdmin(r));
+    return;
+  }
+  admin.electriciens = Array.isArray(r.donnees.electriciens) ? r.donnees.electriciens.filter((x) => objetSimple(x) && Number.isSafeInteger(x.id) && typeof x.telephone === "string").slice(0, 200) : [];
+  const parPage = Number.isInteger(r.donnees.parPage) ? r.donnees.parPage : ADMIN.parPage;
+  $("admin-electriciens").replaceChildren(...admin.electriciens.map((x) => {
+    const li = document.createElement("li");
+    li.className = "admin-ligne" + (x.suspendu ? " suspendu" : "");
+    const infos = document.createElement("div");
+    infos.className = "admin-ligne-infos";
+    const formule = FORMULES[x.formule] ? FORMULES[x.formule].nom : "Gratuit";
+    const fin = x.abonneJusqu && x.formule !== "gratuit" ? " jusqu'au " + dateHeureCourte(x.abonneJusqu) : "";
+    const pays = PAYS_PAR_ISO.get(x.pays);
+    infos.append(
+      elementTexte("strong", String(x.nom || "").slice(0, 120) + (x.suspendu ? " — suspendu" : "")),
+      elementTexte("span", formaterTelephone(x.telephone, x.pays) + " · " + String(x.ville || "").slice(0, 120) + (pays ? ", " + pays.nom : "")),
+      elementTexte("span", formule + fin + " · " + formaterEntier(Number(x.devisMois) || 0) + " devis ce mois · " + formaterEntier(Number(x.appareils) || 0) + " appareil(s)"),
+      elementTexte("span", "Inscrit le " + dateHeureCourte(x.creeLe) + " · vu le " + (x.derniereActivite ? dateHeureCourte(x.derniereActivite) : "—"))
+    );
+    const actions = document.createElement("div");
+    actions.className = "actions-ligne";
+    actions.append(boutonAdmin("Offrir des jours", "jours", String(x.id)), boutonAdmin(x.suspendu ? "Réactiver" : "Suspendre", "suspendre", String(x.id), x.suspendu ? "bouton-secondaire" : "bouton-danger"));
+    li.append(infos, actions);
+    return li;
+  }));
+  $("admin-electriciens-vide").hidden = admin.electriciens.length > 0;
+  $("bouton-adm-precedent").disabled = admin.page === 0;
+  $("bouton-adm-suivant").disabled = admin.electriciens.length < parPage;
+}
+
+async function chargerJournalAdmin() {
+  const r = await appelAdmin("GET", "journal?page=" + admin.pageJournal);
+  if (!r) return;
+  if (!r.ok || !r.donnees) {
+    messageAdmin(texteErreurAdmin(r));
+    return;
+  }
+  const activites = Array.isArray(r.donnees.activites) ? r.donnees.activites.filter(objetSimple).slice(0, 200) : [];
+  $("admin-journal").replaceChildren(...activites.map((a) => {
+    const li = document.createElement("li");
+    li.className = "admin-journal-ligne";
+    const qui = Number.isSafeInteger(a.electricienId) ? "compte n° " + a.electricienId : "—";
+    const details = objetSimple(a.details) ? JSON.stringify(a.details).slice(0, 160) : "";
+    li.append(elementTexte("strong", String(a.action || "").slice(0, 60)), elementTexte("span", dateHeureCourte(a.date) + " · " + qui + (a.ip ? " · " + String(a.ip).slice(0, 45) : "")));
+    if (details) li.append(elementTexte("span", details, "admin-details"));
+    return li;
+  }));
+  $("bouton-journal-recent").disabled = admin.pageJournal === 0;
+  $("bouton-journal-ancien").disabled = activites.length === 0;
+}
+
+function surRechercheAdmin(evenement) {
+  evenement.preventDefault();
+  admin.recherche = nettoyerTexte($("adm-recherche").value).slice(0, 60);
+  admin.page = 0;
+  chargerElectriciensAdmin();
+}
+
+function surPageAdmin(evenement) {
+  admin.page = Math.max(0, admin.page + (evenement.currentTarget.id === "bouton-adm-suivant" ? 1 : -1));
+  chargerElectriciensAdmin();
+}
+
+function surPageJournal(evenement) {
+  admin.pageJournal = Math.max(0, admin.pageJournal + (evenement.currentTarget.id === "bouton-journal-ancien" ? 1 : -1));
+  chargerJournalAdmin();
+}
+
+/* Fenêtre de confirmation écrite : motif obligatoire + valeur à retaper (+ choix facultatif). */
+function demanderConfirmationAdmin(titre, explication, libelleConfirmation, attendu, choix) {
+  return new Promise((resoudre) => {
+    const bloc = document.createElement("div");
+    bloc.className = "admin-confirmation";
+    bloc.append(elementTexte("p", explication));
+    let liste = null;
+    if (choix) {
+      const champChoix = document.createElement("div");
+      champChoix.className = "champ";
+      const libelleChoix = elementTexte("label", choix.libelle);
+      libelleChoix.htmlFor = "adm-choix";
+      liste = document.createElement("select");
+      liste.id = "adm-choix";
+      choix.options.forEach(([valeur, texte]) => {
+        const option = document.createElement("option");
+        option.value = valeur;
+        option.textContent = texte;
+        liste.append(option);
+      });
+      champChoix.append(libelleChoix, liste);
+      bloc.append(champChoix);
+    }
+    const champMotif = document.createElement("div");
+    champMotif.className = "champ";
+    const libelleMotif = elementTexte("label", "Motif (obligatoire, journalisé)");
+    libelleMotif.htmlFor = "adm-motif";
+    const motif = document.createElement("textarea");
+    motif.id = "adm-motif";
+    motif.maxLength = ADMIN.motifMax;
+    motif.rows = 3;
+    champMotif.append(libelleMotif, motif);
+    const champConfirmation = document.createElement("div");
+    champConfirmation.className = "champ";
+    const libelleConfirmationEl = elementTexte("label", libelleConfirmation);
+    libelleConfirmationEl.htmlFor = "adm-confirmation";
+    const confirmation = document.createElement("input");
+    confirmation.id = "adm-confirmation";
+    confirmation.type = "text";
+    confirmation.maxLength = 30;
+    confirmation.autocomplete = "off";
+    confirmation.spellcheck = false;
+    champConfirmation.append(libelleConfirmationEl, confirmation);
+    bloc.append(champMotif, champConfirmation);
+    ouvrirModale(titre, bloc, {
+      ok: "Confirmer",
+      annuler: "Annuler",
+      resoudre: (confirme) => {
+        if (!confirme) return resoudre(null);
+        const texteMotif = nettoyerTexte(motif.value).slice(0, ADMIN.motifMax);
+        const retape = confirmation.value.replace(/\s/g, "").toUpperCase();
+        if (texteMotif.length < ADMIN.motifMin) return resoudre({ refus: "Motif obligatoire (" + ADMIN.motifMin + " caractères au moins) : action annulée." });
+        if (retape !== attendu.toUpperCase()) return resoudre({ refus: "La confirmation ne correspond pas : action annulée." });
+        return resoudre({ motif: texteMotif, confirmation: attendu, choix: liste ? liste.value : "" });
+      }
+    });
+    motif.focus({ preventScroll: true });
+  });
+}
+
+async function surActionElectricien(evenement) {
+  const bouton = evenement.target.closest("button[data-action]");
+  if (!bouton) return;
+  const x = admin.electriciens.find((e) => String(e.id) === bouton.dataset.valeur);
+  if (!x) return;
+  const qui = String(x.nom || "").slice(0, 60) + " (" + formaterTelephone(x.telephone, x.pays) + ")";
+  if (bouton.dataset.action === "jours") {
+    const reponse = await demanderConfirmationAdmin("Offrir des jours d'abonnement", "Compte : " + qui + ". Les jours s'ajoutent à la formule en cours (un nombre négatif les retire).",
+      "Retapez le numéro de l'électricien (" + x.telephone + ")", x.telephone,
+      { libelle: "Nombre de jours", options: [["7", "+ 7 jours"], ["30", "+ 30 jours"], ["90", "+ 90 jours"], ["365", "+ 365 jours"], ["-7", "− 7 jours"], ["-30", "− 30 jours"]] });
+    if (!reponse) return;
+    if (reponse.refus) return messageAdmin(reponse.refus);
+    const r = await appelAdmin("POST", "offrir-jours", { electricienId: x.id, jours: Number.parseInt(reponse.choix, 10), motif: reponse.motif, confirmation: reponse.confirmation });
+    if (!r) return;
+    messageAdmin(r.ok ? "Jours enregistrés pour " + qui + "." : texteErreurAdmin(r), r.ok);
+  } else {
+    const suspendre = !x.suspendu;
+    const reponse = await demanderConfirmationAdmin(suspendre ? "Suspendre ce compte" : "Réactiver ce compte",
+      "Compte : " + qui + "." + (suspendre ? " Ses appareils sont déconnectés ; ses données sont gardées. L'action est réversible." : ""),
+      "Retapez le numéro de l'électricien (" + x.telephone + ")", x.telephone, null);
+    if (!reponse) return;
+    if (reponse.refus) return messageAdmin(reponse.refus);
+    const r = await appelAdmin("POST", "suspendre", { electricienId: x.id, suspendu: suspendre, motif: reponse.motif, confirmation: reponse.confirmation });
+    if (!r) return;
+    messageAdmin(r.ok ? (suspendre ? "Compte suspendu : " : "Compte réactivé : ") + qui + "." : texteErreurAdmin(r), r.ok);
+  }
+  chargerElectriciensAdmin();
+  chargerJournalAdmin();
+}
+
+async function surActionAnomalie(evenement) {
+  const bouton = evenement.target.closest("button[data-action]");
+  if (!bouton) return;
+  const reference = bouton.dataset.valeur;
+  if (!PAIEMENTS.reference.test(reference) || !admin.anomalies.some((a) => a.reference === reference)) return;
+  if (bouton.dataset.action === "reverifier") {
+    bouton.setAttribute("aria-busy", "true");
+    const r = await appelAdmin("POST", "paiements/" + encodeURIComponent(reference) + "/reverifier", {});
+    bouton.removeAttribute("aria-busy");
+    if (!r) return;
+    const statut = r.ok && r.donnees && typeof r.donnees.statut === "string" ? r.donnees.statut.slice(0, 20) : "";
+    messageAdmin(r.ok ? "Paiement " + reference + " revérifié : " + (statut || "inchangé") + "." : texteErreurAdmin(r), r.ok);
+  } else {
+    const reponse = await demanderConfirmationAdmin("Rembourser ce paiement",
+      "Paiement " + reference + ". Le remboursement est demandé au moyen de paiement quand c'est possible ; la formule correspondante est retirée dans la même opération.",
+      "Retapez la référence (" + reference + ")", reference, null);
+    if (!reponse) return;
+    if (reponse.refus) return messageAdmin(reponse.refus);
+    const r = await appelAdmin("POST", "paiements/" + encodeURIComponent(reference) + "/rembourser", { motif: reponse.motif, confirmation: reponse.confirmation });
+    if (!r) return;
+    messageAdmin(r.ok ? "Remboursement enregistré pour " + reference + "." : texteErreurAdmin(r), r.ok);
+  }
+  chargerStatsAdmin();
+  chargerJournalAdmin();
+}
+
+async function surGenererCodes(evenement) {
+  evenement.preventDefault();
+  const motif = nettoyerTexte($("adm-codes-motif").value);
+  effacerErreur($("adm-codes-motif"));
+  if (motif.length < ADMIN.motifMin) {
+    afficherErreur("adm-codes-motif", "Motif obligatoire (" + ADMIN.motifMin + " caractères au moins).");
+    return;
+  }
+  const formule = $("adm-codes-formule").value;
+  const nombre = Number.parseInt($("adm-codes-nombre").value, 10);
+  const validiteJours = Number.parseInt($("adm-codes-validite").value, 10);
+  if (!["semaine", "mensuel", "annuel", "vie"].includes(formule) || !(nombre >= 1 && nombre <= 50) || !(validiteJours >= 1 && validiteJours <= 365)) return;
+  const bouton = $("bouton-adm-codes");
+  bouton.setAttribute("aria-busy", "true");
+  try {
+    const r = await appelAdmin("POST", "codes", { formule, nombre, validiteJours, motif });
+    if (!r) return;
+    if (!r.ok || !r.donnees || !Array.isArray(r.donnees.codes)) {
+      messageAdmin(texteErreurAdmin(r));
+      return;
+    }
+    const codesRecus = r.donnees.codes.filter((c) => typeof c === "string" && CODE_ACTIVATION.test(c)).slice(0, 50);
+    $("admin-codes-generes").replaceChildren(...codesRecus.map((c) => elementTexte("li", c, "admin-code")));
+    $("adm-codes-motif").value = "";
+    messageAdmin(codesRecus.length + " code" + (codesRecus.length > 1 ? "s" : "") + " " + FORMULES[formule].nom + " créé" + (codesRecus.length > 1 ? "s" : "") + ". Notez-les maintenant : ils ne seront plus jamais affichés.", true);
+    chargerJournalAdmin();
+  } finally {
+    bouton.removeAttribute("aria-busy");
+  }
+}
+
+async function surExportCsvAdmin() {
+  const r = await appelAdmin("GET", "electriciens?format=csv", undefined, { texte: true });
+  if (!r) return;
+  if (!r.ok || !r.texte) {
+    messageAdmin(texteErreurAdmin(r));
+    return;
+  }
+  const nom = "batiplus-electriciens-" + new Date().toISOString().slice(0, 10) + ".csv";
+  const fichiers = plugin("Filesystem");
+  try {
+    if (fichiers) {
+      await fichiers.writeFile({ path: "BatiPlus/" + nom, data: r.texte, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
+      messageAdmin("Export enregistré dans Documents/BatiPlus.", true);
+    } else {
+      const adresse = URL.createObjectURL(new Blob([r.texte], { type: "text/csv;charset=utf-8" }));
+      const lien = document.createElement("a");
+      lien.href = adresse;
+      lien.download = nom;
+      document.body.appendChild(lien);
+      lien.click();
+      lien.remove();
+      setTimeout(() => URL.revokeObjectURL(adresse), 1000);
+      messageAdmin("Export téléchargé : " + nom, true);
     }
   } catch (erreur) {
-    message("msg-admin", "Vérification impossible pour le moment. Vérifiez votre connexion puis réessayez.");
-  } finally {
-    clearTimeout(minuterie);
-    bouton.removeAttribute("aria-busy");
+    messageAdmin("Impossible d'enregistrer l'export sur cet appareil.");
   }
 }
 
@@ -9649,6 +11158,23 @@ function brancherEvenements() {
   logo.addEventListener("pointercancel", surFinAppuiAdmin);
   logo.addEventListener("contextmenu", surMenuContextuelLogo);
   $("form-admin").addEventListener("submit", surAdmin);
+  $("bouton-adm-actualiser").addEventListener("click", chargerTableauAdmin);
+  $("bouton-adm-quitter").addEventListener("click", quitterAdmin);
+  $("admin-anomalies").addEventListener("click", surActionAnomalie);
+  $("admin-electriciens").addEventListener("click", surActionElectricien);
+  $("form-adm-recherche").addEventListener("submit", surRechercheAdmin);
+  $("bouton-adm-precedent").addEventListener("click", surPageAdmin);
+  $("bouton-adm-suivant").addEventListener("click", surPageAdmin);
+  $("bouton-adm-csv").addEventListener("click", surExportCsvAdmin);
+  $("form-adm-codes").addEventListener("submit", surGenererCodes);
+  $("bouton-journal-recent").addEventListener("click", surPageJournal);
+  $("bouton-journal-ancien").addEventListener("click", surPageJournal);
+  /* Étape 14 : compte en ligne et code d'activation. */
+  $("bouton-synchroniser").addEventListener("click", surSynchroniserMaintenant);
+  $("bouton-deconnecter-tout").addEventListener("click", surDeconnecterTout);
+  $("bouton-supprimer-compte").addEventListener("click", surSupprimerCompte);
+  $("form-code-activation").addEventListener("submit", surActiverCode);
+  $("abo-code").addEventListener("input", surSaisieCodeActivation);
 
   const ecranChantier = $("ecran-nouveau-chantier");
   ecranChantier.addEventListener("input", surSaisieAssistant);
@@ -9794,6 +11320,7 @@ async function choisirPremierEcran() {
     afficherCompte(compte);
     planifierRappels();
     reprendreActivite(session);
+    await chargerLiaison(compte.id);
   }
   if (!presentationVue) return "presentation";
   return compte ? ECRAN_DEPART : "connexion";

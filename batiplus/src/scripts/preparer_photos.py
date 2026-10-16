@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw, ImageFilter
 RACINE = Path(__file__).resolve().parents[2]
 SOURCES = RACINE / "sources-photos"
 SORTIE = RACINE / "www" / "images" / "equipe"
-POIDS_MAX = 150_000        # « moins de 150 Ko » : on retient la lecture la plus stricte
+POIDS_MAX = 100_000        # « moins de 150 Ko » exigé ; 100 Ko retenus pour garder www/ sous 2 Mo (étape 14)
 COTE_MAX = 1200            # aucune photo ne dépasse 1 200 px de côté
 
 # nom : (ratio largeur/hauteur, largeur maximale, position verticale du recadrage 0=haut 0.5=centre)
@@ -102,7 +102,7 @@ def main() -> None:
         fondateur = fondateur.crop(boite)
     enregistrer_leger(reduire(fondateur, 900), SORTIE / "fondateur.webp")
 
-    for f in sorted(SORTIE.iterdir()):
+    for f in sorted(SORTIE.glob("*.webp")):
         with Image.open(f) as im:
             print(f"{f.name:24s} {im.width}x{im.height:<6d} {f.stat().st_size / 1024:6.1f} Ko")
 

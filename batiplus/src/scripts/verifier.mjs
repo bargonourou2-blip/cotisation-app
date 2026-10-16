@@ -280,7 +280,7 @@ async function controlesExecution() {
     }
     for (const champ of d.querySelectorAll("input")) {
       const mode = champ.getAttribute("inputmode");
-      if (mode === "decimal" || mode === "numeric") {
+      if ((mode === "decimal" || mode === "numeric") && champ.type !== "password") {
         etape10.champsVus += 1;
         if (!champ.dataset.regle || !Object.prototype.hasOwnProperty.call(REGLES.nombres, champ.dataset.regle)) etape10.saisie.push(ou + " : " + champ.id + " sans règle de saisie");
       } else if (["text", "tel", "search", "password"].includes(champ.type) && !(champ.maxLength > 0 && champ.maxLength <= REGLES.textes.court.max)) {
@@ -652,13 +652,34 @@ async function controlesExecution() {
     logoApropos.dispatchEvent(new a.w.MouseEvent("pointerdown", { bubbles: true, button: 0 }));
     await pause(3150);
     if (a.actif() !== "ecran-admin") admin.push("appui long de 3 s sans effet (" + a.actif() + ")");
-    a.$("adm-code").value = "123456";
-    await a.soumettre("form-admin", 200);
-    if (appels.length !== 1 || appels[0].url !== "https://api.batiplus.bf/api/admin/session" || appels[0].options.credentials !== "omit") admin.push("appel API inattendu : " + JSON.stringify(appels.map((x) => x.url)));
+    const champAdm = a.$("adm-code");
+    if (champAdm.type !== "password" || champAdm.getAttribute("inputmode") !== "numeric" || champAdm.autocomplete !== "off") admin.push("saisie du code non masquée ou sans clavier numérique");
+    if (!/\.champ-code-admin[^{]*\{[^}]*font-size:\s*16px/.test(css)) admin.push("code admin pas en 16 px");
+    for (const court of ["123456", "abcdefgh12"]) {
+      a.$("adm-code").value = court;
+      await a.soumettre("form-admin", 150);
+      if (!a.texte("err-adm-code")) admin.push("« " + court + " » accepté sans appel");
+    }
+    if (appels.length !== 0) admin.push("code trop court ou non numérique envoyé");
+    a.$("adm-code").value = "2026101688";
+    await a.soumettre("form-admin", 250);
+    const corpsAdm = appels[0] && appels[0].options && typeof appels[0].options.body === "string" ? JSON.parse(appels[0].options.body) : {};
+    const entetesAdm = (appels[0] && appels[0].options && appels[0].options.headers) || {};
+    if (appels.length !== 1 || appels[0].url !== "https://api.batiplus.bf/api/admin/connexion" || appels[0].options.credentials !== "omit" || appels[0].options.method !== "POST"
+      || corpsAdm.code !== "2026101688" || !/^[a-f0-9]{32}$/.test(corpsAdm.appareil || "") || entetesAdm["X-Appareil"] !== corpsAdm.appareil || entetesAdm.Authorization) admin.push("appel API inattendu : " + JSON.stringify(appels.map((x) => x.url)));
     if (a.texte("msg-admin") !== "Code incorrect." || a.$("adm-code").value !== "") admin.push("réponse 401 : " + a.texte("msg-admin"));
+    for (const essai of ["2026101689", "2026101690"]) {
+      a.$("adm-code").value = essai;
+      await a.soumettre("form-admin", 250);
+    }
+    if (!/Trop d'essais : réessayez dans 60:00/.test(a.texte("msg-admin"))) admin.push("3e échec sans blocage d'une heure : " + a.texte("msg-admin"));
+    a.$("adm-code").value = "2026101691";
+    await a.soumettre("form-admin", 250);
+    if (appels.length !== 3 || !/Trop d'essais/.test(a.texte("msg-admin"))) admin.push("essai envoyé pendant le blocage (" + appels.length + " appels)");
+    if (!a.$("admin-tableau").hidden) admin.push("tableau de bord visible sans jeton");
     if (/admin.{0,20}[:=]\s*["']\d{4,}/i.test(js)) admin.push("code admin dans le script");
     controle("S⑦", "accès admin caché, code vérifié par l'API seulement", admin.length === 0,
-      admin.join(" ; ") || "appui de 1 s ignoré, appui de 3 s → écran de code ; code envoyé en POST à l'API (credentials omit), 401 → « Code incorrect. », champ vidé ; aucun code dans l'application");
+      admin.join(" ; ") || "appui de 1 s ignoré, appui de 3 s → écran de code (masqué, clavier numérique, 16 px) ; 6 chiffres et lettres refusés sans appel ; code de 10 chiffres envoyé en POST à /api/admin/connexion avec l'identifiant de l'appareil (credentials omit), 401 → « Code incorrect. », champ vidé ; 3 échecs → blocage 60:00, aucun 4e appel ; tableau de bord caché sans jeton ; aucun code dans l'application");
 
     /* ---------- Étape 5 : assistant Nouveau chantier (㉖ ㉗ ㉘ ㉙, partie interface) ---------- */
     {
@@ -2812,6 +2833,423 @@ async function controlesExecution() {
     controle("㉑", "le bouton retour Android ferme dans le bon ordre", retour.length === 0,
       retour.join(" ; ") || "modale → recherche → tiroir → À propos → Profil → Accueil → quitter (Capacitor simulé : App + Preferences)");
 
+    /* ---------- Étape 14 : compte en ligne et synchronisation, contre le VRAI back-end ----------
+       Un serveur backend/serveur.js tourne sur une base temporaire ; l'application (jsdom) l'appelle
+       à l'adresse https://api.batiplus.bf, réécrite vers 127.0.0.1. Deux « téléphones » partagent le
+       même compte : tout passe par l'interface et le stockage, comme sur un vrai appareil. */
+    {
+      const { demarrer: demarrerApi } = await import("../../backend/serveur.js");
+      const { chargerConfig: chargerConfigApi } = await import("../../backend/config.js");
+      const { hacherCode: hacherCodeApi, formaterHachageAdmin: formaterAdminApi } = await import("../../backend/codes.js");
+      const { generateKeyPairSync: paireEc } = await import("node:crypto");
+      const { mkdtempSync: dossierTemp, writeFileSync: ecrireTemp, rmSync: effacerTemp } = await import("node:fs");
+      const { tmpdir: dossierSysteme } = await import("node:os");
+      const { createServer: serveurLibre } = await import("node:http");
+      const dossier14 = dossierTemp(join(dossierSysteme(), "batiplus-sync-"));
+      const paire14 = paireEc("ec", { namedCurve: "prime256v1" });
+      ecrireTemp(join(dossier14, "cle.pem"), paire14.privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600 });
+      const spki14 = paire14.publicKey.export({ type: "spki", format: "der" }).toString("base64");
+      const html14 = html.replace(metaVide, '<meta name="batiplus-cle-abonnement" content="' + spki14 + '">');
+      const port14 = await new Promise((r) => { const s = serveurLibre(); s.listen(0, "127.0.0.1", () => { const { port } = s.address(); s.close(() => r(port)); }); });
+      const CODE_ADM14 = "73914682055";
+      const env14 = {
+        NODE_ENV: "developpement", URL_PUBLIQUE: "http://127.0.0.1:" + port14, ORIGINES_AUTORISEES: "https://localhost,capacitor://localhost",
+        ABONNEMENT_CLE_PRIVEE_CHEMIN: join(dossier14, "cle.pem"), PAIEMENT_FOURNISSEUR: "simulation", PAIEMENT_MODE: "test",
+        BASE_DONNEES: join(dossier14, "sync.sqlite"), SAUVEGARDE_DOSSIER: join(dossier14, "sauvegardes"), ADMIN_CODE_HASH: formaterAdminApi(await hacherCodeApi(CODE_ADM14)),
+        JETON_SECRET: "9c4e2a7b1d8f3e6a".repeat(4), WEBHOOK_SECRET: "w3bh00k-" + "b7d1e9c3a5f20468".repeat(2),
+        SIMULATION_SECRET: "simulation-" + "e4c8a2f6".repeat(3), SAUVEGARDE_CLE: "2b7e9d4c1a6f3e8d".repeat(4)
+      };
+      const large = [100000, 60000];
+      const api14 = demarrerApi({ ...chargerConfigApi(env14, join(RACINE, "backend")), sauvegardeAuto: false,
+        limites: { general: large, connexion: large, creation: large, activation: large, initier: large, admin: large } }, { journalConsole: { error() {}, warn() {}, log() {} } });
+      await api14.ecouter(port14, "127.0.0.1");
+      const base14 = api14.base;
+      const sy = { liaison: [], envoi: [], second: [], suppression: [], horsLigne: [], quota: [], code: [], sortie: [], activation: [], admin: [], effacement: [] };
+      const pages14 = [];
+      const reseau = { p1: true, p2: true };
+      const appels14 = [];
+      const preparer14 = (nom) => (w) => {
+        Object.defineProperty(w.navigator, "onLine", { configurable: true, get: () => reseau[nom] });
+        w.URL.createObjectURL = () => "blob:https://batiplus.local/export";
+        w.URL.revokeObjectURL = () => {};
+        w.fetch = async (url, init) => {
+          const o = init || {};
+          const appel = { page: nom, url: String(url), methode: o.method || "GET", entetes: { ...(o.headers || {}) }, corps: o.body, credentials: o.credentials, statut: 0 };
+          appels14.push(appel);
+          if (!reseau[nom]) throw new Error("Failed to fetch");
+          if (!appel.url.startsWith("https://api.batiplus.bf/")) throw new Error("adresse inattendue " + appel.url);
+          const r = await fetch(appel.url.replace("https://api.batiplus.bf", "http://127.0.0.1:" + port14),
+            { method: appel.methode, headers: { ...appel.entetes, Origin: "https://localhost" }, body: o.body });
+          const texte = await r.text();
+          appel.statut = r.status;
+          appel.reponse = texte.slice(0, 4000);
+          return { status: r.status, ok: r.ok, headers: { get: (n) => r.headers.get(n) }, json: async () => w.JSON.parse(texte), text: async () => texte };
+        };
+      };
+      const ouvrir14 = (nom, stockage) => { const pg = ouvrirPage(stockage, null, { html: html14, preparer: preparer14(nom) }); pages14.push(pg); return pg; };
+      const lu = (pg, cle) => { try { return JSON.parse(pg.stockage()[cle] || "null"); } catch { return null; } };
+      const deCompte = (pg, cle, id) => { const v = lu(pg, cle); return v && typeof v === "object" && !Array.isArray(v) ? v[id] : undefined; };
+      const listeDe = (pg, cle, id) => (lu(pg, cle) || []).filter((x) => x && x.compteId === id);
+      const electricien = (tel) => base14.prepare("SELECT * FROM electriciens WHERE telephone = ?").get(tel);
+      const lignes = (table, eid) => base14.prepare("SELECT * FROM " + table + " WHERE electricien_id = ? ORDER BY uid").all(eid);
+      const actions14 = (action) => base14.prepare("SELECT * FROM activites WHERE action = ?").all(action);
+      const clic = async (pg, selecteur, ms) => { const el = pg.doc.querySelector(selecteur); if (el) el.click(); await pause(ms || 400); return Boolean(el); };
+      const versProfil = (pg) => clic(pg, "#tiroir-menu [data-ecran='profil']", 900);
+      const synchroniserUi = async (pg, ms) => { await versProfil(pg); pg.$("bouton-synchroniser").click(); await pause(ms || 1800); };
+      const appelDirect = async (methode, chemin, { jeton, appareil, corps } = {}) => {
+        const entetes = { Origin: "https://localhost" };
+        if (corps !== undefined) entetes["Content-Type"] = "application/json";
+        if (jeton) entetes.Authorization = "Bearer " + jeton;
+        if (appareil) entetes["X-Appareil"] = appareil;
+        const r = await fetch("http://127.0.0.1:" + port14 + chemin, { method: methode, headers: entetes, body: corps === undefined ? undefined : JSON.stringify(corps) });
+        let donnees = null;
+        try { donnees = await r.json(); } catch { donnees = null; }
+        return { statut: r.status, donnees };
+      };
+      const TEL = "+22676001122";
+      const CODE1 = ["4", "8", "2", "9", "1", "5"];
+      const CODE2 = ["7", "3", "0", "2", "6", "4"];
+      try {
+        /* SY1 — inscription HORS LIGNE : tout reste sur le téléphone, aucune requête. */
+        reseau.p1 = false;
+        const p1 = ouvrir14("p1", { [K.pres]: "1" });
+        await pause(2000);
+        p1.remplir("ins-nom", "Awa Kaboré");
+        p1.remplir("ins-ville", "Bobo-Dioulasso");
+        p1.remplir("ins-telephone", "+226 76 00 11 22");
+        p1.taper("ins-code", CODE1);
+        p1.taper("ins-confirmation", CODE1);
+        p1.$("ins-conditions").checked = true;
+        await p1.soumettre("panneau-inscription", 1500);
+        const compte14 = (lu(p1, K.comptes) || [])[0] || {};
+        const id14 = compte14.id || "";
+        if (!id14 || p1.actif() !== "ecran-accueil") sy.liaison.push("inscription hors ligne impossible (" + p1.actif() + ")");
+        if (appels14.some((a) => a.statut !== 0)) sy.liaison.push("requête partie sans réseau");
+        if (electricien(TEL)) sy.liaison.push("compte créé en ligne sans réseau");
+        await versProfil(p1);
+        if (p1.$("carte-en-ligne").dataset.liaison !== "a_creer" || !p1.texte("texte-liaison").startsWith("Pas encore relié") || !p1.$("bouton-synchroniser").hidden)
+          sy.liaison.push("carte Compte en ligne hors ligne : " + p1.$("carte-en-ligne").dataset.liaison + " « " + p1.texte("texte-liaison") + " »");
+
+        /* Données créées avant la liaison (comme un électricien des étapes 1 à 13). */
+        const moteur14 = chargerMoteur();
+        const typeVilla = CHANTIERS_TYPES.find((t) => t.cle === "villa");
+        const cat14 = Object.fromEntries(Object.entries(moteur14.CATALOGUE_DEFAUT).map(([r, art]) => [r, { ...art }]));
+        const maintenant14 = new Date().toISOString();
+        const an14 = new Date().getFullYear();
+        const devisComplet = { ...moteur14.devisDepuisChiffrage(moteur14.chiffrerChantier(typeVilla.chantier, cat14, "XOF", null)), id: "sy-d1", compteId: id14,
+          numero: "BP-" + an14 + "-0001", statut: "envoye", creeLe: maintenant14, modifieLe: maintenant14, titre: "Villa R+1 Sync", client: "M. Ouattara Issa",
+          clientTelephone: "+22670554433", lieu: "Bobo-Dioulasso", chantierId: "sy-chantier-01", conditions: "", note: "" };
+        const ancienDevis = { id: "sy-l1", compteId: id14, titre: "Ancien chantier", client: "Mme Traoré", total: 185000, statut: "paye", creeLe: new Date(Date.now() - 400 * 864e5).toISOString() };
+        const chantier14 = { ...JSON.parse(JSON.stringify(typeVilla.chantier)), id: "sy-chantier-01", compteId: id14, statut: "etudie", etape: 5, etapeMax: 5,
+          nom: "Villa Sync", lieu: "Bobo-Dioulasso", type: "villa", client: { nom: "M. Ouattara Issa", telephone: "+22670554433" }, creeLe: maintenant14, modifieLe: maintenant14 };
+        const client14 = { id: "sy-k1", compteId: id14, nom: "Mme Traoré", telephone: "+22678001122", creeLe: maintenant14, modifieLe: maintenant14 };
+        const catalogue14 = { articles: [{ ref: "prise", designation: "Prise 2P+T 16 A", fournisseurs: [{ nom: "Quincaillerie du Faso", prix: 1750 }, { nom: "Électro Bobo", prix: 1600 }], choisi: null }], mainOeuvre: { points: {}, journee: 15000 } };
+        const stockageAvant = { ...p1.stockage(), [K.devis]: JSON.stringify([devisComplet, ancienDevis]), bp_v1_chantiers: JSON.stringify([chantier14]),
+          bp_v1_clients: JSON.stringify([client14]), bp_v1_catalogue: JSON.stringify({ [id14]: catalogue14 }) };
+        delete stockageAvant[K.session];
+        p1.w.close();
+
+        /* Connexion AVEC internet : le compte est créé en ligne et tout part. */
+        reseau.p1b = true;
+        const p1b = ouvrir14("p1b", stockageAvant);
+        await pause(2000);
+        p1b.remplir("cnx-telephone", "+226 76 00 11 22");
+        p1b.taper("cnx-code", CODE1);
+        await p1b.soumettre("panneau-connexion", 4500);
+        const ligne14 = electricien(TEL);
+        const creation = appels14.find((a) => a.page === "p1b" && a.url.endsWith("/api/compte/creer"));
+        const corpsCreation = creation && typeof creation.corps === "string" ? JSON.parse(creation.corps) : {};
+        const jeton14 = deCompte(p1b, "bp_v1_jeton_api", id14);
+        const liaison14 = deCompte(p1b, "bp_v1_sync", id14) || {};
+        const appareil1 = p1b.stockage().bp_v1_appareil;
+        if (!creation || creation.statut !== 201 || corpsCreation.compteId !== id14 || corpsCreation.code !== CODE1.join("") || !/^[a-f0-9]{32}$/.test(corpsCreation.appareil || "")
+          || creation.entetes["X-Appareil"] !== corpsCreation.appareil || creation.credentials !== "omit") sy.liaison.push("création en ligne : " + (creation ? creation.statut + " " + creation.reponse.slice(0, 120) : "aucun appel"));
+        if (!ligne14 || ligne14.compte_id !== id14 || ligne14.nom !== "Awa Kaboré" || ligne14.ville !== "Bobo-Dioulasso") sy.liaison.push("ligne en base : " + JSON.stringify(ligne14 && { compte: ligne14.compte_id, nom: ligne14.nom }));
+        if (liaison14.etat !== "liee" || typeof jeton14 !== "string" || !/^v1\./.test(jeton14) || appareil1 !== corpsCreation.appareil) sy.liaison.push("liaison locale : " + JSON.stringify(liaison14));
+        if (JSON.stringify(p1b.stockage()).includes(CODE1.join(""))) sy.liaison.push("code secret stocké en clair");
+        await versProfil(p1b);
+        if (p1b.$("carte-en-ligne").dataset.liaison !== "liee" || p1b.$("bouton-synchroniser").hidden || !/Tout est envoyé/.test(p1b.texte("detail-liaison")))
+          sy.liaison.push("carte Compte en ligne : « " + p1b.texte("texte-liaison") + " » « " + p1b.texte("detail-liaison") + " »");
+
+        /* SY2 — tout est arrivé en ligne, validé champ par champ. */
+        const eid = ligne14 ? ligne14.id : -1;
+        const enLigne = (table) => lignes(table, eid).filter((l) => !l.supprime).map((l) => l.uid).join(",");
+        if (enLigne("devis") !== "sy-d1,sy-l1") sy.envoi.push("devis en ligne : " + enLigne("devis"));
+        if (enLigne("chantiers") !== "sy-chantier-01") sy.envoi.push("chantiers en ligne : " + enLigne("chantiers"));
+        if (enLigne("clients") !== "sy-k1") sy.envoi.push("clients en ligne : " + enLigne("clients"));
+        const prixEnLigne = base14.prepare("SELECT f.nom, f.prix FROM catalogue c JOIN fournisseurs f ON f.article_id = c.id WHERE c.electricien_id = ? AND c.ref = 'prise' ORDER BY f.rang").all(eid);
+        if (prixEnLigne.map((f) => f.nom + "=" + f.prix).join(",") !== "Quincaillerie du Faso=1750,Électro Bobo=1600") sy.envoi.push("Mes prix en ligne : " + JSON.stringify(prixEnLigne));
+        const devisEnLigne = lignes("devis", eid).find((l) => l.uid === "sy-d1");
+        if (!devisEnLigne || devisEnLigne.client !== "M. Ouattara Issa" || !(devisEnLigne.total > 0) || devisEnLigne.mois !== maintenant14.slice(0, 7)) sy.envoi.push("devis complet : " + JSON.stringify(devisEnLigne && { client: devisEnLigne.client, total: devisEnLigne.total, mois: devisEnLigne.mois }));
+        const fileVide = (pg, id) => { const f = deCompte(pg, "bp_v1_file_sync", id); return !f || !Array.isArray(f.ops) || f.ops.length === 0; };
+        if (!fileVide(p1b, id14)) sy.envoi.push("file d'attente non vidée : " + JSON.stringify(deCompte(p1b, "bp_v1_file_sync", id14)).slice(0, 160));
+        const syncs = appels14.filter((a) => a.page === "p1b" && a.url.endsWith("/api/sync"));
+        if (!syncs.length || !syncs.every((a) => /^Bearer v1\./.test(a.entetes.Authorization || "") && a.entetes["X-Appareil"] === appareil1)) sy.envoi.push("synchronisation sans jeton ou sans identifiant d'appareil");
+        /* Client ajouté dans l'écran Mes clients : parti tout seul 2 s après l'enregistrement. */
+        await clic(p1b, ".raccourci[data-ecran='clients']", 700);
+        p1b.remplir("client-nom", "Entreprise Sanou BTP");
+        p1b.remplir("client-telephone", "70 66 55 44");
+        await p1b.soumettre("form-client", 3800);
+        const sanou = listeDe(p1b, "bp_v1_clients", id14).find((c) => c.nom === "Entreprise Sanou BTP");
+        const sanouEnLigne = sanou && lignes("clients", eid).find((l) => l.uid === sanou.id);
+        if (!sanouEnLigne || sanouEnLigne.telephone !== "+22670665544") sy.envoi.push("client ajouté non envoyé automatiquement");
+
+        /* SY3 — second téléphone vierge : connexion en ligne, compte recréé, données reçues. */
+        const p2 = ouvrir14("p2", { [K.pres]: "1" });
+        await pause(2000);
+        await clic(p2, "#onglet-connexion", 200);
+        p2.remplir("cnx-telephone", "+226 76 00 11 22");
+        p2.taper("cnx-code", CODE1);
+        await p2.soumettre("panneau-connexion", 4500);
+        const compte2 = (lu(p2, K.comptes) || [])[0] || {};
+        if (p2.actif() !== "ecran-accueil" || compte2.id !== id14 || compte2.nom !== "Awa Kaboré" || compte2.ville !== "Bobo-Dioulasso" || !compte2.empreinte)
+          sy.second.push("connexion sur un téléphone vierge : " + p2.actif() + " " + JSON.stringify({ id: compte2.id === id14, nom: compte2.nom }));
+        const ids2 = (cle) => listeDe(p2, cle, id14).map((x) => x.id).sort().join(",");
+        if (ids2(K.devis) !== "sy-d1,sy-l1" || ids2("bp_v1_chantiers") !== "sy-chantier-01" || ids2("bp_v1_clients") !== [sanou && sanou.id, "sy-k1"].sort().join(","))
+          sy.second.push("données reçues : devis " + ids2(K.devis) + " · chantiers " + ids2("bp_v1_chantiers") + " · clients " + ids2("bp_v1_clients"));
+        const recu = listeDe(p2, K.devis, id14).find((d) => d.id === "sy-d1");
+        if (!recu || !Array.isArray(recu.lignes) || recu.lignes.length !== devisComplet.lignes.length || recu.client !== "M. Ouattara Issa") sy.second.push("devis reçu incomplet");
+        const cat2 = deCompte(p2, "bp_v1_catalogue", id14);
+        if (!cat2 || !Array.isArray(cat2.articles) || !cat2.articles.some((a) => a.ref === "prise" && a.fournisseurs.length === 2)) sy.second.push("Mes prix non reçus");
+        const appareil2 = p2.stockage().bp_v1_appareil;
+        if (!appareil2 || appareil2 === appareil1) sy.second.push("même identifiant d'appareil sur deux téléphones");
+        await clic(p2, ".raccourci[data-ecran='devis'], [data-ecran='devis']", 900);
+        if (!p2.doc.querySelector("#liste-devis [data-element='sy-d1']")) sy.second.push("devis reçu absent de Mes devis");
+
+        /* SY4 — suppression sur un téléphone → disparaît sur l'autre ; file hors ligne envoyée au retour du réseau. */
+        await clic(p2, "#tiroir-menu [data-ecran='accueil'], [data-ecran='accueil']", 300);
+        await clic(p2, ".raccourci[data-ecran='clients']", 700);
+        await clic(p2, "#liste-clients [data-supprimer-client='" + (sanou ? sanou.id : "x") + "']", 100);
+        await pause(60);
+        p2.$("bouton-modale-ok").click();
+        await pause(3800);
+        const sanouApres = sanou && lignes("clients", eid).find((l) => l.uid === sanou.id);
+        if (!sanouApres || sanouApres.supprime !== 1) sy.suppression.push("suppression non envoyée");
+        await synchroniserUi(p1b);
+        if (listeDe(p1b, "bp_v1_clients", id14).some((c) => sanou && c.id === sanou.id)) sy.suppression.push("client supprimé encore présent sur l'autre téléphone");
+        if (p1b.texte("msg-en-ligne") !== "Copie en ligne à jour.") sy.suppression.push("« Synchroniser maintenant » : « " + p1b.texte("msg-en-ligne") + " »");
+        reseau.p1b = false;
+        await clic(p1b, "#tiroir-menu [data-ecran='accueil'], [data-ecran='accueil']", 300);
+        await clic(p1b, ".raccourci[data-ecran='clients']", 700);
+        p1b.remplir("client-nom", "M. Zerbo Ousmane");
+        p1b.remplir("client-telephone", "76 12 34 56");
+        await p1b.soumettre("form-client", 3000);
+        const zerbo = listeDe(p1b, "bp_v1_clients", id14).find((c) => c.nom === "M. Zerbo Ousmane");
+        const fileHors = deCompte(p1b, "bp_v1_file_sync", id14);
+        if (!zerbo || !fileHors || !fileHors.ops.some((o) => o.type === "client" && o.id === zerbo.id)) sy.horsLigne.push("client ajouté hors ligne absent de la file d'attente");
+        await versProfil(p1b);
+        p1b.$("bouton-synchroniser").click();
+        await pause(300);
+        if (!/Pas de connexion internet/.test(p1b.texte("msg-en-ligne")) || !/1 changement en attente d'envoi/.test(p1b.texte("detail-liaison")))
+          sy.horsLigne.push("hors ligne : « " + p1b.texte("msg-en-ligne") + " » « " + p1b.texte("detail-liaison") + " »");
+        reseau.p1b = true;
+        p1b.$("bouton-synchroniser").click();
+        await pause(1800);
+        if (!zerbo || !lignes("clients", eid).some((l) => l.uid === zerbo.id && !l.supprime) || !fileVide(p1b, id14)) sy.horsLigne.push("file non envoyée au retour du réseau");
+
+        /* SY5 — le compteur du mois est commun ; une formule falsifiée est remplacée par celle du compte en ligne. */
+        /* Mêmes données qu'un ancien devis envoyé par l'application, datées d'aujourd'hui. */
+        const envoiAncien = appels14.map((a) => { try { return JSON.parse(a.corps).operations.find((o) => o.id === "sy-l1"); } catch { return null; } }).find(Boolean);
+        const legacy = (n) => ({ type: "devis", id: "sy-q" + n, action: "ecrire", quand: new Date().toISOString(),
+          donnees: { ...(envoiAncien ? envoiAncien.donnees : {}), id: "sy-q" + n, client: "Client " + n, creeLe: new Date().toISOString() } });
+        const lot = await appelDirect("POST", "/api/sync", { jeton: deCompte(p1b, "bp_v1_jeton_api", id14), appareil: appareil1, corps: { curseur: 0, abonnement: "", operations: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(legacy) } });
+        const refuses = lot.donnees && Array.isArray(lot.donnees.resultats) ? lot.donnees.resultats.filter((x) => !x.ok).map((x) => x.id + ":" + x.erreur) : ["réponse " + lot.statut];
+        /* 1 devis du mois + 4 = limite Gratuit ; 5 créés hors ligne tolérés (marqués hors limite) ; le suivant est refusé. */
+        if (refuses.join(",") !== "sy-q10:limite_atteinte") sy.quota.push("limite Gratuit en ligne : " + refuses.join(","));
+        const utilises = lot.donnees && lot.donnees.quota ? lot.donnees.quota.utilises : -1;
+        if (utilises !== 10) sy.quota.push("compteur en ligne : " + utilises);
+        await synchroniserUi(p2);
+        const mois2 = deCompte(p2, "bp_v1_devis_mois", id14);
+        if (!mois2 || mois2.nombre !== 10) sy.quota.push("compteur reçu sur l'autre téléphone : " + JSON.stringify(mois2));
+        const faux = await jetonAbo({ v: 1, compteId: id14, telephone: TEL, formule: "vie", debut: maintenant14, fin: null, emisLe: maintenant14 });
+        const abo1 = { ...(lu(p1b, "bp_v1_abonnement") || {}), [id14]: faux };
+        p1b.w.localStorage.setItem("bp_v1_abonnement", JSON.stringify(abo1));
+        await synchroniserUi(p1b);
+        if (deCompte(p1b, "bp_v1_abonnement", id14) === faux) sy.quota.push("formule falsifiée gardée");
+        if (!actions14("abonnement_falsifie").some((a) => a.electricien_id === eid)) sy.quota.push("falsification non journalisée en ligne");
+        if (electricien(TEL).formule !== "gratuit") sy.quota.push("formule en ligne modifiée par le téléphone");
+
+        /* SY6 — changement de code : confirmé en ligne ; hors ligne refusé ; l'autre téléphone se reconnecte avec le nouveau code. */
+        reseau.p2 = false;
+        await versProfil(p2);
+        const empreinteAvant = ((lu(p2, K.comptes) || [])[0] || {}).empreinte;
+        p2.taper("pro-ancien", CODE1);
+        p2.taper("pro-nouveau", CODE2);
+        p2.taper("pro-confirmation", CODE2);
+        await p2.soumettre("carte-code", 1200);
+        if (p2.texte("msg-code") !== "Connexion internet nécessaire : votre compte est relié, ce changement doit être confirmé en ligne." || ((lu(p2, K.comptes) || [])[0] || {}).empreinte !== empreinteAvant)
+          sy.code.push("changement hors ligne : « " + p2.texte("msg-code") + " »");
+        reseau.p2 = true;
+        for (const id of ["pro-ancien", "pro-nouveau", "pro-confirmation"]) p2.taper(id, Array(6).fill("Backspace"));
+        p2.taper("pro-ancien", CODE1);
+        p2.taper("pro-nouveau", CODE2);
+        p2.taper("pro-confirmation", CODE2);
+        await p2.soumettre("carte-code", 2500);
+        const ancienRefuse = await appelDirect("POST", "/api/compte/connexion", { appareil: "0123456789abcdef0123456789abcdef", corps: { telephone: TEL, code: CODE1.join(""), appareil: "0123456789abcdef0123456789abcdef" } });
+        if (((lu(p2, K.comptes) || [])[0] || {}).empreinte === empreinteAvant || ancienRefuse.statut !== 401) sy.code.push("nouveau code non confirmé en ligne (" + ancienRefuse.statut + ") « " + p2.texte("msg-code") + " »");
+        await synchroniserUi(p1b, 1500);
+        if ((deCompte(p1b, "bp_v1_sync", id14) || {}).etat !== "expiree" || deCompte(p1b, "bp_v1_jeton_api", id14)) sy.code.push("ancien jeton encore accepté après le changement de code");
+        p1b.$("bouton-deconnexion-profil").click();
+        await pause(1500);
+        p1b.remplir("cnx-telephone", "+226 76 00 11 22");
+        p1b.taper("cnx-code", CODE2);
+        await p1b.soumettre("panneau-connexion", 4000);
+        const compte1b = (lu(p1b, K.comptes) || []).find((c) => c.id === id14) || {};
+        if (p1b.actif() !== "ecran-accueil" || (deCompte(p1b, "bp_v1_sync", id14) || {}).etat !== "liee" || compte1b.empreinte === compte14.empreinte || !deCompte(p1b, "bp_v1_jeton_api", id14))
+          sy.code.push("reconnexion avec le nouveau code : " + p1b.actif() + " " + JSON.stringify(deCompte(p1b, "bp_v1_sync", id14)));
+        if (listeDe(p1b, K.devis, id14).length < 2) sy.code.push("données perdues à la reconnexion");
+
+        /* SY7 — déconnexion : la session de CE téléphone est fermée en ligne. */
+        const jetonAvantSortie = deCompte(p1b, "bp_v1_jeton_api", id14);
+        p1b.$("bouton-deconnexion").click();
+        await pause(2500);
+        const apres = await appelDirect("POST", "/api/sync", { jeton: jetonAvantSortie, appareil: appareil1, corps: { curseur: 0, abonnement: "", operations: [] } });
+        if (p1b.actif() !== "ecran-connexion" || deCompte(p1b, "bp_v1_jeton_api", id14) || apres.statut !== 401) sy.sortie.push("déconnexion : " + p1b.actif() + ", ancien jeton → " + apres.statut);
+        const reste2 = await appelDirect("GET", "/api/profil", { jeton: deCompte(p2, "bp_v1_jeton_api", id14), appareil: appareil2 });
+        if (reste2.statut !== 200) sy.sortie.push("l'autre téléphone a été déconnecté aussi (" + reste2.statut + ")");
+
+        /* SY8 + SY9 — tableau d'administration (appui long sur le logo), codes d'activation, journal, suspension. */
+        await clic(p2, "#tiroir-menu [data-ecran='a-propos']", 200);
+        const logo14 = p2.$("logo-apropos");
+        logo14.dispatchEvent(new p2.w.MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+        await pause(3150);
+        p2.$("adm-code").value = CODE_ADM14;
+        await p2.soumettre("form-admin", 2500);
+        const tuiles = [...p2.doc.querySelectorAll("#admin-chiffres .admin-tuile")].map((li) => li.querySelector("span").textContent + "=" + li.querySelector("strong").textContent);
+        if (p2.$("admin-tableau").hidden || !tuiles.includes("Électriciens=1") || !tuiles.includes("Devis ce mois=10") || !tuiles.includes("Devis hors limite ce mois=5") || !tuiles.includes("Formules falsifiées (30 j)=1"))
+          sy.admin.push("tableau de bord : " + tuiles.join(" · "));
+        const ligneAdm = p2.doc.querySelector("#admin-electriciens .admin-ligne");
+        if (!ligneAdm || !ligneAdm.textContent.includes("Awa Kaboré") || !ligneAdm.textContent.includes("Bobo-Dioulasso")) sy.admin.push("liste des électriciens");
+        if (![...p2.doc.querySelectorAll("#admin-journal strong")].some((s) => s.textContent === "abonnement_falsifie")) sy.admin.push("journal sans la falsification");
+        p2.remplir("adm-recherche", "Ouédraogo");
+        await p2.soumettre("form-adm-recherche", 800);
+        if (p2.doc.querySelectorAll("#admin-electriciens .admin-ligne").length !== 0 || p2.$("admin-electriciens-vide").hidden) sy.admin.push("recherche sans résultat mal affichée");
+        p2.remplir("adm-recherche", "76001122");
+        await p2.soumettre("form-adm-recherche", 800);
+        if (p2.doc.querySelectorAll("#admin-electriciens .admin-ligne").length !== 1) sy.admin.push("recherche par numéro");
+        p2.$("bouton-adm-csv").click();
+        await pause(800);
+        if (!/^Export téléchargé : batiplus-electriciens-\d{4}-\d{2}-\d{2}\.csv$/.test(p2.texte("msg-tableau-admin"))) sy.admin.push("export CSV : « " + p2.texte("msg-tableau-admin") + " »");
+        p2.choisir("adm-codes-formule", "mensuel");
+        p2.choisir("adm-codes-nombre", "1");
+        p2.remplir("adm-codes-motif", "abc");
+        await p2.soumettre("form-adm-codes", 400);
+        const codesAvant = base14.prepare("SELECT COUNT(*) AS n FROM codes_activation").get().n;
+        if (!p2.texte("err-adm-codes-motif") || codesAvant !== 0) sy.admin.push("code créé sans motif");
+        p2.remplir("adm-codes-motif", "Formation électriciens Bobo");
+        await p2.soumettre("form-adm-codes", 1200);
+        const codesUi = [...p2.doc.querySelectorAll("#admin-codes-generes li")].map((li) => li.textContent);
+        if (codesUi.length !== 1 || !/^BP-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(codesUi[0] || "")) sy.admin.push("codes générés : " + codesUi.join(","));
+        const enClair = base14.prepare("SELECT * FROM codes_activation").all().some((c) => JSON.stringify(c).includes(codesUi[0]));
+        if (enClair) sy.admin.push("code d'activation stocké en clair en base");
+        /* Suspension : confirmation fausse refusée sans appel, puis suspension et réactivation. */
+        const nbAppels = () => appels14.filter((a) => a.url.endsWith("/api/admin/suspendre")).length;
+        await clic(p2, "#admin-electriciens button[data-action='suspendre']", 200);
+        p2.$("adm-motif").value = "Contrôle de la procédure";
+        p2.$("adm-confirmation").value = "+22670000000";
+        p2.$("bouton-modale-ok").click();
+        await pause(400);
+        if (nbAppels() !== 0 || p2.texte("msg-tableau-admin") !== "La confirmation ne correspond pas : action annulée.") sy.admin.push("confirmation fausse : « " + p2.texte("msg-tableau-admin") + " »");
+        await clic(p2, "#admin-electriciens button[data-action='suspendre']", 200);
+        p2.$("adm-motif").value = "Contrôle de la procédure";
+        p2.$("adm-confirmation").value = "+226 76 00 11 22";
+        p2.$("bouton-modale-ok").click();
+        await pause(1200);
+        if (electricien(TEL).suspendu !== 1 || !p2.texte("msg-tableau-admin").startsWith("Compte suspendu")) sy.admin.push("suspension : « " + p2.texte("msg-tableau-admin") + " »");
+        const suspendu = await appelDirect("GET", "/api/profil", { jeton: deCompte(p2, "bp_v1_jeton_api", id14), appareil: appareil2 });
+        if (suspendu.statut !== 401 && suspendu.statut !== 403) sy.admin.push("compte suspendu encore servi (" + suspendu.statut + ")");
+        const reactiver = p2.doc.querySelector("#admin-electriciens button[data-action='suspendre']");
+        if (!reactiver || reactiver.textContent !== "Réactiver") sy.admin.push("bouton Réactiver absent");
+        else {
+          reactiver.click();
+          await pause(200);
+          p2.$("adm-motif").value = "Fin du contrôle";
+          p2.$("adm-confirmation").value = TEL;
+          p2.$("bouton-modale-ok").click();
+          await pause(1200);
+        }
+        if (electricien(TEL).suspendu !== 0) sy.admin.push("réactivation non enregistrée");
+        if (actions14("suspension").length !== 1 || actions14("reactivation").length !== 1 || actions14("admin_codes").length !== 1 || !actions14("admin_connexion").length)
+          sy.admin.push("actions d'administration mal journalisées");
+        p2.$("bouton-adm-quitter").click();
+        await pause(300);
+        if (!p2.$("admin-tableau").hidden || p2.doc.querySelectorAll("#admin-codes-generes li").length) sy.admin.push("Quitter laisse le tableau ou les codes affichés");
+
+        /* SY8 — code d'activation saisi par l'électricien (la suspension a fermé sa session : reconnexion). */
+        p2.$("bouton-deconnexion").click();
+        await pause(2000);
+        p2.remplir("cnx-telephone", "+226 76 00 11 22");
+        p2.taper("cnx-code", CODE2);
+        await p2.soumettre("panneau-connexion", 4000);
+        await clic(p2, "#tiroir-menu [data-ecran='abonnement']", 900);
+        p2.remplir("abo-code", "BP-2345");
+        await p2.soumettre("form-code-activation", 300);
+        if (!p2.texte("err-abo-code").startsWith("Format attendu")) sy.activation.push("code mal formé accepté");
+        p2.remplir("abo-code", (codesUi[0] || "").toLowerCase().replace(/-/g, " "));
+        await p2.soumettre("form-code-activation", 2000);
+        const aboRecu = deCompte(p2, "bp_v1_abonnement", id14);
+        let charge14 = null;
+        try { charge14 = JSON.parse(Buffer.from(String(aboRecu).split(".")[0], "base64url").toString("utf8")); } catch { charge14 = null; }
+        if (!/^Code accepté : formule Pro mensuel activée jusqu'au /.test(p2.texte("msg-activation")) || !charge14 || charge14.formule !== "mensuel" || charge14.compteId !== id14 || electricien(TEL).formule !== "mensuel")
+          sy.activation.push("activation : « " + p2.texte("msg-activation") + " » " + JSON.stringify(charge14));
+        p2.remplir("abo-code", codesUi[0] || "");
+        await p2.soumettre("form-code-activation", 1500);
+        if (p2.texte("msg-activation") !== "Code d'activation invalide, expiré ou déjà utilisé.") sy.activation.push("code réutilisé : « " + p2.texte("msg-activation") + " »");
+
+        /* SY10 — suppression du compte : code demandé, ligne anonymisée en ligne, téléphone vidé. */
+        await versProfil(p2);
+        p2.$("bouton-supprimer-compte").click();
+        await pause(200);
+        p2.$("bouton-modale-ok").click();
+        await pause(300);
+        p2.$("sup-code").value = "111111";
+        p2.$("bouton-modale-ok").click();
+        await pause(1500);
+        if (p2.texte("msg-en-ligne") !== "Code incorrect." || !electricien(TEL)) sy.effacement.push("mauvais code : « " + p2.texte("msg-en-ligne") + " »");
+        p2.$("bouton-supprimer-compte").click();
+        await pause(200);
+        p2.$("bouton-modale-ok").click();
+        await pause(300);
+        p2.$("sup-code").value = CODE2.join("");
+        p2.$("bouton-modale-ok").click();
+        await pause(2000);
+        const anonyme = base14.prepare("SELECT * FROM electriciens WHERE id = ?").get(eid);
+        if (electricien(TEL) || !anonyme || anonyme.nom !== "Compte supprimé" || lignes("devis", eid).length || lignes("clients", eid).length || lignes("chantiers", eid).length)
+          sy.effacement.push("en ligne : " + JSON.stringify(anonyme && { nom: anonyme.nom, devis: lignes("devis", eid).length }));
+        const reste = p2.stockage();
+        if ((lu(p2, K.comptes) || []).length || listeDe(p2, K.devis, id14).length || JSON.stringify(reste).includes(id14) || p2.actif() !== "ecran-connexion")
+          sy.effacement.push("téléphone : " + p2.actif() + " " + Object.keys(reste).filter((c) => reste[c].includes(id14)).join(","));
+      } catch (erreur) {
+        sy.liaison.push("exception : " + erreur.message);
+      } finally {
+        for (const pg of pages14) pg.w.close();
+        await pause(300);
+        await api14.arreter();
+        effacerTemp(dossier14, { recursive: true, force: true });
+      }
+      const ligneSy = (id, libelle, liste, ok) => controle(id, libelle, liste.length === 0, liste.join(" ; ") || ok);
+      ligneSy("SY1", "compte relié en ligne à la première connexion avec internet", sy.liaison,
+        "inscription hors ligne : aucune requête, « Pas encore relié » ; connexion avec internet → POST /api/compte/creer (même identifiant de compte, identifiant d'appareil 32 hex, credentials omit), jeton gardé par compte, code jamais stocké en clair, carte « Compte relié · Tout est envoyé »");
+      ligneSy("SY2", "toutes les données locales partent en ligne", sy.envoi,
+        "devis complet + ancien devis, chantier, client, Mes prix (2 fournisseurs) envoyés et validés en ligne ; file d'attente vidée ; client ajouté dans Mes clients envoyé seul 2 s après");
+      ligneSy("SY3", "second téléphone : connexion en ligne et données reçues", sy.second,
+        "téléphone vierge → compte recréé (profil en ligne, empreinte locale du code), devis/chantiers/clients/Mes prix reçus et revalidés, devis visible dans Mes devis, identifiant d'appareil distinct");
+      ligneSy("SY4", "suppressions propagées, file hors ligne envoyée au retour du réseau", [...sy.suppression, ...sy.horsLigne],
+        "client supprimé sur un téléphone → marqué supprimé en ligne → retiré de l'autre ; « Copie en ligne à jour. » ; hors ligne : ajout gardé en file (« 1 changement en attente d'envoi »), envoyé dès le retour du réseau");
+      ligneSy("SY5", "compteur du mois commun, formule falsifiée remplacée", sy.quota,
+        "limite Gratuit appliquée en ligne (5 devis du mois, 5 de plus tolérés hors ligne et signalés, le suivant refusé) ; compteur 10 reçu sur l'autre téléphone ; jeton Lifetime signé par une autre clé → refusé, journalisé, effacé du téléphone ; formule en ligne inchangée");
+      ligneSy("SY6", "changement de code confirmé en ligne", sy.code,
+        "hors ligne : refusé avec message clair ; en ligne : nouveau code actif, ancien refusé, nouvelle empreinte locale ; anciennes sessions invalidées → l'autre téléphone passe en pause puis se reconnecte avec le nouveau code sans perdre ses données");
+      ligneSy("SY7", "déconnexion : session de ce téléphone fermée en ligne", sy.sortie,
+        "Se déconnecter → jeton oublié, retour à l'écran de connexion, l'ancien jeton reçoit 401 ; l'autre téléphone reste connecté");
+      ligneSy("SY8", "code d'activation offert : formule Pro vérifiée sur l'appareil", sy.activation,
+        "format contrôlé sur place ; code saisi en minuscules avec espaces normalisé → POST /api/abonnement/activer-code → jeton signé vérifié avec la clé publique, Pro mensuel actif ; code réutilisé refusé");
+      ligneSy("SY9", "tableau d'administration branché sur l'API", sy.admin,
+        "appui long 3 s + code → chiffres clés (1 électricien, 10 devis dont 5 hors limite, 1 falsification), liste, recherche, export CSV, journal ; codes : motif obligatoire, code jamais stocké en clair ; suspension : confirmation retapée (fausse → aucun appel), suspension effective, Réactiver ; Quitter efface tout");
+      ligneSy("SY10", "suppression du compte en ligne et sur le téléphone", sy.effacement,
+        "deux confirmations + code secret ; mauvais code refusé ; bon code → DELETE /api/compte : ligne anonymisée, devis/chantiers/clients effacés en ligne ; téléphone : compte et données effacés, retour à l'écran de connexion");
+    }
+
     controle("⑩", "aucune erreur dans la console au chargement", erreurs.length === 0 && fonctionne,
       erreurs.length ? erreurs.join(" | ")
         : (fonctionne ? "0 erreur sur " + fenetres.length + " ouvertures ; thème, 4 diapositives, Commencer → inscription" : "script exécuté mais état incomplet")
@@ -2977,7 +3415,7 @@ function controlesEtape10() {
   const inconnues = [...new Set(utilisees.filter((nom) => !Object.prototype.hasOwnProperty.call(REGLES.nombres, nom)))];
   if (inconnues.length) regles.push("règles inconnues : " + inconnues.join(", "));
   const champsStatiques = [...corpsSansScript.matchAll(/<input\b[^>]*>/g)].map((m) => m[0]);
-  const sansRegle = champsStatiques.filter((c) => /inputmode="(decimal|numeric)"/.test(c) && !/data-regle="/.test(c)).map((c) => (c.match(/id="([^"]+)"/) || [])[1]);
+  const sansRegle = champsStatiques.filter((c) => /inputmode="(decimal|numeric)"/.test(c) && !/type="password"/.test(c) && !/data-regle="/.test(c)).map((c) => (c.match(/id="([^"]+)"/) || [])[1]);
   if (sansRegle.length) regles.push("champs numériques sans règle : " + sansRegle.join(", "));
   const sansMax = champsStatiques.filter((c) => /type="(text|tel|search|password)"/.test(c) && !/inputmode="(decimal|numeric)"/.test(c)
     && !(Number((c.match(/maxlength="(\d+)"/) || [])[1]) <= REGLES.textes.court.max)).map((c) => (c.match(/id="([^"]+)"/) || [])[1]);
@@ -3531,7 +3969,7 @@ controlesIdentite();
 controlesEtape13();
 for (const r of verifierAndroid()) controle(r.numero, r.libelle, r.ok, r.detail);
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+", "㊸", "㊹", "㊺", "㊻", "VR", "CO", "SW", "AN", "CS", "㊼", "㊽", "㊾", "㊿", "AB", "RL", "PV", "RC", "PI", "SP", "SE", "RT", "RN", "PX", "PT", "PM", "MF", "GS", "PC", "FS", "DC"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+", "㊸", "㊹", "㊺", "㊻", "VR", "CO", "SW", "AN", "CS", "㊼", "㊽", "㊾", "㊿", "AB", "RL", "PV", "RC", "PI", "SP", "SE", "RT", "RN", "PX", "PT", "PM", "MF", "GS", "PC", "FS", "DC", "SY1", "SY2", "SY3", "SY4", "SY5", "SY6", "SY7", "SY8", "SY9", "SY10"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
