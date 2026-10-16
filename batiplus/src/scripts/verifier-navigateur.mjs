@@ -28,7 +28,7 @@
    CAPTURES (dossier des captures d'écran, hors dépôt), PORT (défaut 8091).
    ========================================================================== */
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -793,6 +793,98 @@ async function main() {
     controle("A4", "feuille A4 imprimée : studio sur 1 page, seule la feuille sort", fautesA4.length === 0,
       fautesA4.length ? fautesA4.slice(0, 3).join(" | ")
         : "impression Chromium (@page A4, marges 12 mm) : studio " + pagesA4.studio + " page, villa aux montants géants " + pagesA4.villa + " pages ; en-tête, menu, boutons et alerte masqués, zoom 1 ; aperçu 360 et 1440 px sans mot ni montant coupé");
+
+    /* PH photo du tableau (étape 13) dans un vrai navigateur : grande photo JPEG (3000 × 4000)
+       redessinée par le vrai canvas (≤ 1280 px, ≤ 300 Ko) ; feuille A4 : l'annexe imprime une page
+       de plus ; PDF de l'application téléchargé : 2 pages, photo /Im2 en DCTDecode. */
+    {
+      const fautesPH = [];
+      const infoPH = {};
+      const { page, contexte, nom } = await nouvellePage(390, 844, false, true, etatA4);
+      const dossierPH = mkdtempSync(join(tmpdir(), "batiplus-pdf-"));
+      const cdp = await page.createCDPSession();
+      await cdp.send("Page.setDownloadBehavior", { behavior: "allow", downloadPath: dossierPH });
+      await pause(1800);
+      await page.evaluate(() => document.querySelector("#accueil-etudes [data-chantier='studio-etude-0003']").click());
+      await pause(500);
+      await page.evaluate(() => (document.getElementById("bouton-ouvrir-devis").hidden ? document.getElementById("bouton-creer-devis") : document.getElementById("bouton-ouvrir-devis")).click());
+      await pause(900);
+      await page.evaluate(() => { const m = document.getElementById("modale"); if (m && !m.hidden) document.getElementById("bouton-fermer-modale").click(); });
+      await pause(400);
+      infoPH.source = await page.evaluate(async () => {
+        const img = new Image();
+        img.src = "images/equipe/elec-tableau.webp";
+        await img.decode();
+        const toile = document.createElement("canvas");
+        toile.width = 3000;
+        toile.height = 4000;
+        const ctx = toile.getContext("2d");
+        ctx.drawImage(img, 0, 0, 3000, 4000);
+        for (let i = 0; i < 20000; i++) {
+          ctx.fillStyle = "hsl(" + ((i * 37) % 360) + ", 70%, " + (25 + (i % 50)) + "%)";
+          ctx.fillRect((i * 7919) % 3000, (i * 104729) % 4000, 5, 5);
+        }
+        const blob = await new Promise((ok) => toile.toBlob(ok, "image/jpeg", 0.9));
+        const transfert = new DataTransfer();
+        transfert.items.add(new File([blob], "tableau.jpg", { type: "image/jpeg" }));
+        const entree = document.getElementById("fichier-photo-tableau");
+        entree.files = transfert.files;
+        entree.dispatchEvent(new Event("change", { bubbles: true }));
+        return { octets: blob.size };
+      });
+      if (infoPH.source.octets > 5 * 1024 * 1024 || infoPH.source.octets < 1024 * 1024) fautesPH.push("photo d'essai : " + infoPH.source.octets + " octets (1 à 5 Mo attendus)");
+      await pause(3000);
+      infoPH.stockee = await page.evaluate(async () => {
+        const cle = Object.keys(window.localStorage).find((c) => c.startsWith("bp_v1_photo_tableau_"));
+        if (!cle) return { msg: document.getElementById("msg-photo-tableau").textContent };
+        const { donnees } = JSON.parse(window.localStorage.getItem(cle));
+        const img = new Image();
+        img.src = donnees;
+        await img.decode();
+        const apercu = document.getElementById("apercu-photo-tableau");
+        return { longueur: donnees.length, jpeg: donnees.startsWith("data:image/jpeg;base64,"), l: img.naturalWidth, h: img.naturalHeight, apercu: !apercu.hidden && apercu.complete && apercu.naturalWidth > 0, libelle: document.getElementById("libelle-photo-tableau").textContent };
+      });
+      const s = infoPH.stockee;
+      if (!s.jpeg || s.longueur > 300 * 1024 || Math.max(s.l, s.h) !== 1280 || Math.abs(s.l / s.h - 0.75) > 0.01 || !s.apercu || s.libelle !== "Changer la photo") fautesPH.push("photo enregistrée : " + JSON.stringify(s));
+      await capturer(page, nom + "-photo-tableau", true);
+      await page.evaluate(() => document.getElementById("devis-bouton-imprimer").click());
+      await pause(900);
+      infoPH.annexe = await page.evaluate(() => {
+        const annexe = document.querySelector("#feuille-a4 .f-annexe");
+        const img = annexe && annexe.querySelector("img");
+        return annexe ? { image: Boolean(img && img.complete && img.naturalWidth > 0), largeurImage: img ? Math.round(img.getBoundingClientRect().width) : 0, largeurAnnexe: Math.round(annexe.getBoundingClientRect().width) } : null;
+      });
+      if (!infoPH.annexe || !infoPH.annexe.image || infoPH.annexe.largeurImage > infoPH.annexe.largeurAnnexe + 1) fautesPH.push("annexe A4 : " + JSON.stringify(infoPH.annexe));
+      await capturer(page, nom + "-feuille-photo", true);
+      await page.emulateMediaType("print");
+      infoPH.pagesImprimees = compter(await page.pdf({ preferCSSPageSize: true, printBackground: true }));
+      await page.emulateMediaType(null);
+      if (infoPH.pagesImprimees !== 2) fautesPH.push("impression : " + infoPH.pagesImprimees + " page(s), 2 attendues (studio + annexe)");
+      await page.evaluate(() => {
+        const origine = URL.createObjectURL.bind(URL);
+        URL.createObjectURL = (b) => { window.__dernierBlob = b; return origine(b); };
+      });
+      await page.evaluate(() => document.getElementById("feuille-bouton-pdf").click());
+      await pause(3000);
+      infoPH.pdf = await page.evaluate(async () => {
+        const b = window.__dernierBlob;
+        if (!b) return null;
+        const o = new Uint8Array(await b.arrayBuffer());
+        let texte = "";
+        for (let i = 0; i < o.length; i += 8192) texte += String.fromCharCode.apply(null, o.subarray(i, i + 8192));
+        return { type: b.type, taille: o.length, debut: texte.slice(0, 8), pages: (texte.match(/\/Type\s*\/Page\b(?!s)/g) || []).length, im2: texte.includes("/Im2 Do"), dct: (texte.match(/\/DCTDecode/g) || []).length };
+      });
+      const p = infoPH.pdf;
+      if (!p || p.type !== "application/pdf" || !p.debut.startsWith("%PDF-") || p.pages !== 2 || !p.im2 || p.dct < 1) fautesPH.push("PDF de l'application : " + JSON.stringify(p));
+      const telecharges = readdirSync(dossierPH).filter((f) => f.endsWith(".pdf"));
+      if (telecharges.length !== 1) fautesPH.push("PDF téléchargé : " + JSON.stringify(readdirSync(dossierPH)));
+      infoPH.fichier = telecharges[0] || "";
+      rmSync(dossierPH, { recursive: true, force: true });
+      await contexte.close();
+      controle("PH", "photo du tableau (Chromium) : vraie photo redessinée, annexe A4 et PDF", fautesPH.length === 0,
+        fautesPH.length ? fautesPH.join(" | ")
+          : "JPEG 3000 × 4000 (" + Math.round(infoPH.source.octets / 1024) + " Ko) → JPEG " + s.l + " × " + s.h + " (" + Math.round(s.longueur / 1024) + " Ko en base64) affiché dans le devis ; feuille A4 : annexe à part (impression " + infoPH.pagesImprimees + " pages) ; PDF de l'application « " + infoPH.fichier + " » téléchargé : " + p.pages + " pages, photo /Im2 DCTDecode, " + Math.round(p.taille / 1024) + " Ko");
+    }
   }
 
 
@@ -1126,6 +1218,65 @@ async function main() {
     controle("PS", "écran de suivi du paiement : lisible, animé, mouvements réduits respectés", fautesSV.length === 0,
       fautesSV.length ? fautesSV.slice(0, 3).join(" | ")
         : vuesSV + " vues (360, 390 sombre, 1440 clair et sombre), " + motsSV.toLocaleString("fr-FR") + " mots mesurés ; attente : anneau qui tourne (immobile si mouvements réduits) ; échec : pastille d'alerte + 2 boutons ≥ 44 px ; payé : coche géante + 18 particules (aucune si mouvements réduits) ; rien de coupé, rien sous le menu fixe");
+  }
+
+  /* HL hors connexion (étape 13, ⑨) : navigator.onLine faux, toute requête hors de l'application
+     bloquée et comptée ; l'application démarre, polices et logos locaux, écrans principaux. */
+  {
+    const fautesHL = [];
+    const externes = [];
+    let locales = 0;
+    const page = await navigateur.newPage();
+    page.on("pageerror", (e) => fautesHL.push("exception : " + e.message));
+    page.on("console", (m) => { if (m.type() === "error") fautesHL.push("console : " + m.text()); });
+    await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+    await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+    await page.evaluateOnNewDocument(() => { Object.defineProperty(Navigator.prototype, "onLine", { configurable: true, get: () => false }); });
+    await page.setRequestInterception(true);
+    page.on("request", (r) => {
+      if (r.url().startsWith(ADRESSE)) { locales++; r.continue(); } else { externes.push(r.url()); r.abort(); }
+    });
+    await page.goto(ADRESSE + "manifest.webmanifest", { waitUntil: "load" });
+    await page.evaluate((valeurs) => {
+      window.localStorage.clear();
+      for (const [cle, valeur] of Object.entries(valeurs)) {
+        let ecrite = valeur;
+        if (cle === "bp_v1_session") { const s = JSON.parse(valeur); s.derniereActivite = Date.now(); ecrite = JSON.stringify(s); }
+        window.localStorage.setItem(cle, ecrite);
+      }
+    }, base);
+    await page.goto(ADRESSE, { waitUntil: "load" });
+    await pause(2000);
+    const lireEtat = () => page.evaluate(async () => {
+      await document.fonts.ready;
+      const images = [...document.querySelectorAll("img")].filter((i) => i.getAttribute("src") && i.getClientRects().length > 0);
+      return {
+        ecran: document.querySelector(".ecran.actif").id,
+        reseau: document.getElementById("etat-reseau").textContent,
+        polices: [...new Set([...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family.replace(/"/g, "")))],
+        images: images.length,
+        cassees: images.filter((i) => !i.complete || i.naturalWidth === 0).map((i) => i.getAttribute("src").slice(0, 60))
+      };
+    });
+    const accueilHL = await lireEtat();
+    if (accueilHL.ecran !== "ecran-accueil") fautesHL.push("écran au démarrage : " + accueilHL.ecran);
+    if (accueilHL.reseau !== "Hors ligne") fautesHL.push("indicateur réseau : « " + accueilHL.reseau + " »");
+    if (!accueilHL.polices.includes("Inter") || !accueilHL.polices.includes("Montserrat")) fautesHL.push("polices chargées : " + accueilHL.polices.join(", "));
+    if (!accueilHL.images || accueilHL.cassees.length) fautesHL.push("images cassées : " + accueilHL.cassees.join(", "));
+    const vuesHL = ["accueil"];
+    for (const ecran of ["chantier", "devis", "prix", "abonnement", "a-propos"]) {
+      if (ecran === "chantier") await page.evaluate(() => document.getElementById("bouton-nouveau-chantier").click());
+      else await ouvrirEcran(page, ecran);
+      await pause(700);
+      const e = await lireEtat();
+      vuesHL.push(e.ecran.replace("ecran-", ""));
+      if (e.cassees.length) fautesHL.push(ecran + " : images cassées " + e.cassees.join(", "));
+    }
+    if (externes.length) fautesHL.push(externes.length + " requête(s) vers l'extérieur : " + externes.slice(0, 3).join(", "));
+    if (CAPTURES) await page.screenshot({ path: join(CAPTURES, "hors-ligne.png") });
+    await page.close();
+    controle("HL", "hors connexion : l'application s'ouvre et fonctionne sans réseau", fautesHL.length === 0,
+      fautesHL.join(" | ") || "navigator.onLine = false, " + locales + " requêtes locales, 0 vers l'extérieur ; démarrage sur l'accueil, indicateur « Hors ligne », polices locales " + accueilHL.polices.join(" + ") + ", " + accueilHL.images + " images chargées ; écrans " + vuesHL.join(", ") + " sans erreur");
   }
 
   /* CA garde anti-encadrement (étape 10) : chargée dans le cadre d'une page tierce, l'application

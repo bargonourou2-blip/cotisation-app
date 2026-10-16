@@ -29,7 +29,7 @@ BâtiPlus est une application conçue et développée par **BRG Électro+**
 | 10 | Sécurité du front (XSS, CSP, chiffrement, verrouillage) | ✔ livrée |
 | 11 | Abonnement : 5 formules, limite de 5 devis, relances | ✔ livrée |
 | 12 | Paiement automatique : adaptateurs d'agrégateur, webhook, idempotence | ✔ livrée |
-| 13 | Build Android, signature, Play Store, IOS.md | à venir |
+| 13 | Build Android, signature, Play Store, IOS.md | ✔ |
 | 14 | Back-end Node.js complet, synchronisation, déploiement | à venir |
 
 ---
@@ -261,9 +261,9 @@ Les photos de la présentation sont produites depuis `sources-photos/` par
   bibliothèque externe). Mise en page en deux passes : si le devis dépasse une page, une version plus
   serrée est essayée et la plus courte est gardée. Nom : `Devis_BP-AAAA-NNNN_Client.pdf` (accents et
   signes retirés).
-  - Android : `Filesystem` écrit dans `Documents/BatiPlus/` (repli sur le cache si refusé), puis
-    « Partager » ouvre le partage natif (`Share`). Permission de stockage limitée à Android ≤ 10
-    (`maxSdkVersion="29"`).
+  - Android : `Filesystem` écrit dans `Documents/BatiPlus/` (repli sur le cache si refusé, ce qui
+    arrive sur Android ≤ 10 puisque aucune permission de stockage n'est demandée), puis « Partager »
+    ouvre le partage natif (`Share`).
   - Navigateur : téléchargement ; partage de fichier si le navigateur le permet.
   - Échec : message clair, puis l'impression s'ouvre (« Enregistrer au format PDF »).
 - **WhatsApp** : `https://wa.me/<chiffres>?text=<encodeURIComponent(message)>`, lien avec
@@ -405,6 +405,35 @@ Détail complet : [`PAIEMENTS.md`](PAIEMENTS.md) ; installation : [`backend/INST
   et sombre, animations et mouvements réduits) dans `npm run verifier:navigateur` ; S1–S5, P1–P13,
   AD dans `npm run tester:backend` (base temporaire, vrai serveur, faux agrégateurs HTTP).
 
+## Étape 13 — Android et Play Store
+
+Guide complet, pas à pas : **[ANDROID.md](ANDROID.md)** (12 étapes, de Node 22 à la mise à jour).
+iPhone : **[IOS.md](IOS.md)** (pourquoi la PWA d'abord).
+
+- **Permissions** : `INTERNET`, `POST_NOTIFICATIONS`, `ACCESS_NETWORK_STATE`, rien d'autre. Celles que
+  les plugins ajoutent (démarrage, réveil, vibration, stockage, alarmes exactes) sont retirées à la
+  fusion (`tools:node="remove"`). `CAMERA` n'est **pas** déclarée : la photo du tableau passe par
+  l'application Appareil photo du téléphone (intent `IMAGE_CAPTURE`), qui ne demande aucune
+  autorisation. Le retour tactile passe par un petit plugin local (`RetourTactile`) sans `VIBRATE`.
+- **Manifeste** : seule l'activité principale est exportée, HTTPS obligatoire
+  (`securite_reseau.xml`), aucune sauvegarde (`allowBackup="false"` + règles d'extraction).
+- **Gradle** : `com.brgelectro.batiplus`, versionCode 1, versionName 1.0.0, minSdk 23, target 35 ;
+  version publiée réduite (R8 + ressources) et signée par `android/keystore.properties` (ignoré par
+  Git) ou les variables `BATIPLUS_*` ; sans clé, `bundleRelease` s'arrête. Version de test :
+  `com.brgelectro.batiplus.test`.
+- **Photo du tableau électrique** (facultative, toutes formules) : dans la fiche devis, redessinée
+  en JPEG ≤ 1280 px et ≤ 300 Ko, annexée sur une page à part de la feuille A4 et du PDF.
+- **Fiche Play Store** (`store/`) : `fiche-play-store.md` (titre, descriptions, sécurité des
+  données, déclarations), `icone-512.png`, `banniere-1024x500.png`, `captures/` (6 × 1080 × 1920,
+  refaites par `npm run play-store`), `confidentialite.html` (générée depuis
+  [CONFIDENTIALITE.md](CONFIDENTIALITE.md) par `npm run confidentialite`, à publier à une adresse
+  publique).
+- ⚠️ **Paiement et règles Google Play** : voir l'avertissement de ANDROID.md, étape 7, avant la
+  mise en production.
+- **Contrôles** : PT PC FS DC dans `npm run verifier`, PM MF GS dans `npm run verifier:android`
+  (aussi lancés par `npm run verifier`), HL (hors connexion) et PH (photo, annexe, PDF) dans
+  `npm run verifier:navigateur`.
+
 ## Structure
 
 ```
@@ -428,6 +457,10 @@ batiplus/
 │   ├── tests/               contrôles du backend
 │   ├── .env.exemple         variables du serveur (aucune vraie clé)
 │   └── INSTALLATION.md
+├── store/                   fiche Play Store : textes, icône, bannière, captures, confidentialité
+├── ANDROID.md               du code au Play Store, en 12 étapes
+├── IOS.md                   iPhone : contraintes et recommandation
+├── CONFIDENTIALITE.md       politique de confidentialité (source de store/confidentialite.html)
 ├── PAIEMENTS.md             fonctionnement du paiement automatique
 ├── docs/                    validation du moteur NF C 15-100 (générée)
 ├── sources-logos/           fichiers originaux fournis par le client

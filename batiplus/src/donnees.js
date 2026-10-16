@@ -42,7 +42,10 @@ const CLES_STOCKAGE = Object.freeze({
      jeton de session de l'API (émis à la connexion en ligne, étape 14), accord de renouvellement par carte. */
   paiementEnCours: "bp_v1_paiement_en_cours",
   jetonApi: "bp_v1_jeton_api",
-  renouvellement: "bp_v1_renouvellement"
+  renouvellement: "bp_v1_renouvellement",
+  /* Étape 13 : photo du tableau électrique jointe à un devis — une clé par devis
+     (préfixe + identifiant du devis), pour ne jamais réécrire toutes les photos à chaque ajout. */
+  photoTableau: "bp_v1_photo_tableau_"
 });
 /* Anciennes clés (avant le schéma v1) reprises une seule fois au démarrage. */
 const CLES_ANCIENNES = Object.freeze({
@@ -618,6 +621,19 @@ const IMAGES = Object.freeze({
   photo: Object.freeze({ cote: 320 }),
   logo: Object.freeze({ largeur: 600, hauteur: 300 }),
   qualite: 0.82,
+  donneesMax: 300 * 1024
+});
+
+/* Photo du tableau électrique (étape 13) : appareil photo du téléphone (sans permission
+   pour BâtiPlus) ou image choisie ; toujours redessinée en JPEG, côté le plus long 1 280 px,
+   compressée sous 300 Ko ; jointe en annexe de la feuille A4 et du PDF du devis.
+   Jamais dans la sauvegarde exportée (fichier léger), jamais copiée par « Dupliquer ». */
+const PHOTO_TABLEAU = Object.freeze({
+  cote: 1280,
+  largeurCapture: 1600,
+  qualiteCapture: 80,
+  qualite: 0.8,
+  qualiteMin: 0.4,
   donneesMax: 300 * 1024
 });
 

@@ -861,6 +861,21 @@
           </fieldset>
         </section>
 
+        <section class="carte panneau" id="carte-photo-tableau" aria-labelledby="titre-photo-tableau">
+          <h2 class="bloc-titre" id="titre-photo-tableau">Photo du tableau électrique <span class="facultatif">(facultatif)</span></h2>
+          <p class="aide">Photographiez le tableau existant : la photo est jointe en annexe de la feuille A4 et du PDF envoyé au client.</p>
+          <div class="photo-tableau">
+            <img id="apercu-photo-tableau" class="apercu-photo-tableau" alt="Photo du tableau électrique jointe au devis" hidden>
+            <p class="photo-tableau-vide" id="photo-tableau-vide"><svg class="icone" aria-hidden="true"><use href="#i-photo"/></svg><span>Aucune photo jointe</span></p>
+          </div>
+          <input type="file" id="fichier-photo-tableau" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
+          <div class="actions-ligne">
+            <button type="button" class="bouton bouton-secondaire" id="bouton-photo-tableau"><svg class="icone" aria-hidden="true"><use href="#i-photo"/></svg><span class="bouton-libelle" id="libelle-photo-tableau">Prendre la photo</span></button>
+            <button type="button" class="bouton bouton-discret" id="bouton-retirer-photo-tableau" hidden><svg class="icone" aria-hidden="true"><use href="#i-poubelle"/></svg><span class="bouton-libelle">Retirer la photo</span></button>
+          </div>
+          <p class="message-formulaire" id="msg-photo-tableau" role="status" aria-live="polite"></p>
+        </section>
+
         <section class="carte panneau" aria-labelledby="titre-devis-textes">
           <h2 class="bloc-titre" id="titre-devis-textes">Conditions et note</h2>
           <div class="champ">
@@ -1535,11 +1550,14 @@
 
 <template id="modele-conditions">
   <p><strong>Éditeur.</strong> BâtiPlus est éditée par BRG Électro+, Burkina Faso — +226 05 60 86 08 · +226 68 52 42 90.</p>
-  <p><strong>Données collectées.</strong> Votre nom, le nom de votre entreprise, votre téléphone, votre ville, votre pays, votre devise, ainsi que les chantiers, clients et devis que vous créez.</p>
-  <p><strong>Pourquoi.</strong> Uniquement pour faire fonctionner votre compte, vos études, vos devis et votre abonnement. Vos données ne sont jamais vendues et ne servent à aucune publicité.</p>
-  <p><strong>Où.</strong> Sur votre téléphone. Vous pouvez en garder une copie dans un fichier depuis « Mon profil », rubrique « Sauvegarde ».</p>
+  <p><strong>Données collectées.</strong> Votre nom, le nom de votre entreprise, votre téléphone, votre ville, votre pays, votre devise, votre photo et votre logo si vous les ajoutez, ainsi que les chantiers, clients, devis et photos de tableau électrique que vous créez.</p>
+  <p><strong>Pourquoi.</strong> Uniquement pour faire fonctionner votre compte, vos études, vos devis et votre abonnement. Vos données ne sont jamais vendues, jamais partagées à des fins publicitaires, et l'application ne contient aucune publicité ni aucun outil de suivi.</p>
+  <p><strong>Où.</strong> Sur votre téléphone. Vous pouvez en garder une copie dans un fichier depuis « Mon profil », rubrique « Sauvegarde ». Un devis ne quitte le téléphone que lorsque vous l'envoyez vous-même (WhatsApp, partage du PDF).</p>
+  <p><strong>Paiement.</strong> Il est réalisé sur la page sécurisée de l'agrégateur de paiement. BâtiPlus ne voit jamais votre code Mobile Money ni votre numéro de carte : il reçoit seulement la référence, la formule et le résultat du paiement.</p>
+  <p><strong>Appareil photo et notifications.</strong> L'appareil photo ne s'ouvre que lorsque vous touchez « Prendre la photo ». Les notifications servent seulement aux rappels de fin d'abonnement ; vous pouvez les refuser.</p>
   <p><strong>Votre code secret.</strong> Il n'est jamais conservé en clair : seule une empreinte chiffrée (PBKDF2, 150 000 itérations) est enregistrée.</p>
-  <p><strong>Suppression.</strong> Vous pouvez demander à tout moment la suppression de votre compte et de vos données par WhatsApp au +226 05 60 86 08.</p>
+  <p><strong>Suppression.</strong> Supprimer l'application efface les données de ce téléphone. Vous pouvez aussi demander à tout moment la suppression de votre compte et de vos données par WhatsApp au +226 05 60 86 08 : réponse sous 30 jours.</p>
   <p><strong>Responsabilité.</strong> Les études et devis de BâtiPlus sont une aide au calcul. La conformité de l'installation à la norme <span class="insecable">NF C 15-100</span> reste sous la responsabilité de l'électricien qui la réalise.</p>
+  <p><strong>Politique complète.</strong> Le texte intégral de la politique de confidentialité est publié avec la fiche Google Play de BâtiPlus.</p>
 </template>
 <div id="feuille-devis" aria-hidden="true"></div>

@@ -1287,6 +1287,16 @@ a.bouton { text-decoration: none; }
 .f-pied { margin-top: auto; padding-top: 3mm; text-align: center; font-size: 6.8pt; color: #17131F; }
 /* Formule gratuite : pied en filigrane discret. Abonné : le pied n'est pas créé du tout. */
 .f-filigrane { opacity: 0.22; }
+/* Annexe (étape 13) : photo du tableau électrique, sur sa propre page à l'impression. */
+.f-annexe { display: grid; gap: 1.5mm; align-content: start; margin-top: 4mm; padding-top: 4mm; border-top: 0.8pt dashed #DCD3EA; break-before: page; page-break-before: always; }
+.f-annexe-titre { font-size: 12pt; font-weight: 800; color: #6A0DAD; }
+.f-photo-tableau { display: block; max-width: 100%; max-height: 225mm; margin: 2mm auto 0; object-fit: contain; border: 0.8pt solid #DCD3EA; }
+
+/* Photo du tableau dans la fiche devis */
+.photo-tableau { min-height: 132px; margin: 4px 0 12px; display: grid; place-items: center; padding: 8px; border: 1.5px dashed var(--ligne); border-radius: var(--rayon-petit); background: var(--carte-2); }
+.apercu-photo-tableau { display: block; max-width: 100%; max-height: 260px; border-radius: 8px; object-fit: contain; }
+.apercu-photo-tableau[hidden], .photo-tableau-vide[hidden] { display: none; }
+.photo-tableau-vide { margin: 0; display: inline-flex; align-items: center; gap: 8px; color: var(--texte-3); font-size: 14px; font-weight: 600; }
 
 /* ---------- 7h. Mes devis, Mes chantiers, Mes clients, Statistiques (étape 9) ---------- */
 .bloc-tete { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 12px; }
@@ -1670,6 +1680,8 @@ input[aria-invalid="true"] { border-color: var(--erreur); }
   .feuille-a4, .feuille-a4 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .f-table tr, .f-parties, .f-bas, .f-fin, .f-tete { break-inside: avoid; }
   .f-titre { break-after: avoid; }
+  .f-annexe { margin-top: 0; padding-top: 0; border-top: 0; }
+  .f-photo-tableau { break-inside: avoid; }
   /* Reçu de paiement : seule la feuille du reçu est imprimée. */
   body[data-impression="recu"] { background: #FFFFFF !important; }
   body[data-impression="recu"] .page { margin: 0 !important; display: block; min-height: 0; }

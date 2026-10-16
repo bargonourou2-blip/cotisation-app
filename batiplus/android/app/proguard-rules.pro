@@ -1,21 +1,15 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# BâtiPlus — règles de réduction du code (minifyEnabled true en version publiée).
+# Les règles de Capacitor (plugins, annotations) sont fournies par la bibliothèque
+# capacitor-android (consumerProguardFiles). On garde en plus :
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Le pont JavaScript ↔ Android (méthodes appelées depuis la page).
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Le plugin local de retour tactile (appelé par son nom depuis la page).
+-keep class com.brgelectro.batiplus.RetourTactilePlugin { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Numéros de ligne dans les rapports de plantage de la Play Console (fichier mapping.txt).
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

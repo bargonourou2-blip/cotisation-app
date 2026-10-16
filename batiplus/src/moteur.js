@@ -141,6 +141,22 @@ async function supprimerValeur(cle) {
   }
 }
 
+/* Toutes les clés enregistrées (Preferences en natif, localStorage sinon). */
+async function listerCles() {
+  const preferences = plugin("Preferences");
+  try {
+    if (preferences) {
+      if (typeof preferences.keys !== "function") return [];
+      const resultat = await preferences.keys();
+      return Array.isArray(resultat && resultat.keys) ? resultat.keys : [];
+    }
+    return Object.keys(window.localStorage);
+  } catch (erreur) {
+    journal("liste des clés impossible");
+    return [];
+  }
+}
+
 async function lireJson(cle) {
   const brut = await lireValeur(cle);
   if (!brut) return null;
@@ -164,9 +180,10 @@ async function migrerStockage() {
 
 /* ---------- Retour haptique ---------- */
 
+/* Retour tactile léger (plugin local RetourTactile : retour haptique du système, sans permission VIBRATE). */
 function vibrer() {
-  const haptics = plugin("Haptics");
-  if (haptics) haptics.impact({ style: "LIGHT" }).catch(() => {});
+  const tactile = plugin("RetourTactile");
+  if (tactile && typeof tactile.toucher === "function") Promise.resolve(tactile.toucher()).catch(() => {});
 }
 
 /* ---------- Thème ---------- */
@@ -3490,7 +3507,15 @@ async function preparerImage(blob, mode) {
   if (!largeur || !hauteur || largeur * hauteur > IMAGES.pixelsMax) throw new Error("illisible");
   const toile = document.createElement("canvas");
   const ctx = toile.getContext("2d");
-  if (mode === "photo") {
+  if (mode === "tableau") {
+    /* Photo du tableau électrique : proportions gardées, fond blanc, JPEG. */
+    const echelle = Math.min(1, PHOTO_TABLEAU.cote / Math.max(largeur, hauteur));
+    toile.width = Math.max(1, Math.round(largeur * echelle));
+    toile.height = Math.max(1, Math.round(hauteur * echelle));
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, toile.width, toile.height);
+    ctx.drawImage(source, 0, 0, toile.width, toile.height);
+  } else if (mode === "photo") {
     const cote = IMAGES.photo.cote;
     const coupe = Math.min(largeur, hauteur);
     toile.width = cote;
@@ -3503,6 +3528,7 @@ async function preparerImage(blob, mode) {
     ctx.drawImage(source, 0, 0, toile.width, toile.height);
   }
   if (typeof source.close === "function") source.close();
+  if (mode === "tableau") return exporterPhotoTableau(toile);
   let qualite = IMAGES.qualite;
   let donnees = exporterImage(toile, mode, qualite);
   while (donnees.length > IMAGES.donneesMax && qualite > 0.4) {
@@ -3510,6 +3536,18 @@ async function preparerImage(blob, mode) {
     donnees = toile.toDataURL(mode === "logo" ? "image/webp" : "image/jpeg", qualite);
   }
   if (donnees.length > IMAGES.donneesMax || !DONNEES_IMAGE.test(donnees)) throw new Error("taille");
+  return donnees;
+}
+
+/* JPEG seulement (le PDF l'intègre tel quel), qualité baissée jusqu'à passer sous 300 Ko. */
+function exporterPhotoTableau(toile) {
+  let qualite = PHOTO_TABLEAU.qualite;
+  let donnees = toile.toDataURL("image/jpeg", qualite);
+  while (donnees.length > PHOTO_TABLEAU.donneesMax && qualite > PHOTO_TABLEAU.qualiteMin) {
+    qualite -= 0.1;
+    donnees = toile.toDataURL("image/jpeg", qualite);
+  }
+  if (!photoTableauValide(donnees)) throw new Error("taille");
   return donnees;
 }
 
@@ -3534,6 +3572,142 @@ async function importerImage(evenement, champ, idMessage) {
   } catch (erreur) {
     message(idMessage, messageImage(erreur));
   }
+}
+
+/* ---------- Photo du tableau électrique (étape 13) ----------
+   Une clé par devis : { compteId, donnees (JPEG data:), ajouteLe }. Relue et vérifiée à
+   chaque ouverture : une photo d'un autre compte ou mal formée n'est jamais affichée. */
+
+const DONNEES_PHOTO_TABLEAU = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
+
+function photoTableauValide(donnees) {
+  return typeof donnees === "string" && donnees.length <= PHOTO_TABLEAU.donneesMax && DONNEES_PHOTO_TABLEAU.test(donnees);
+}
+
+function clePhotoTableau(devisId) {
+  return MOTIF_ID.test(String(devisId)) ? CLES_STOCKAGE.photoTableau + devisId : "";
+}
+
+async function lirePhotoTableau(devisId) {
+  const cle = clePhotoTableau(devisId);
+  if (!cle || !etat.compte) return "";
+  const brut = await lireJson(cle);
+  if (!brut || typeof brut !== "object" || brut.compteId !== etat.compte.id || !photoTableauValide(brut.donnees)) return "";
+  return brut.donnees;
+}
+
+async function ecrirePhotoTableau(devisId, donnees) {
+  const cle = clePhotoTableau(devisId);
+  if (!cle || !etat.compte || !photoTableauValide(donnees)) return false;
+  return ecrireValeur(cle, JSON.stringify({ compteId: etat.compte.id, donnees, ajouteLe: new Date().toISOString() }));
+}
+
+/* Au démarrage : les photos dont le devis n'existe plus (supprimé, annulation passée) sont effacées. */
+async function purgerPhotosOrphelines() {
+  const cles = (await listerCles()).filter((cle) => typeof cle === "string" && cle.startsWith(CLES_STOCKAGE.photoTableau));
+  if (!cles.length) return;
+  /* Liste des devis illisible : on ne touche à rien (jamais d'effacement par erreur de lecture). */
+  const devis = await lireJson(CLES_STOCKAGE.devis);
+  if (!Array.isArray(devis)) return;
+  const existants = new Set(devis.filter((d) => d && typeof d === "object").map((d) => CLES_STOCKAGE.photoTableau + d.id));
+  for (const cle of cles) {
+    if (!existants.has(cle)) await supprimerValeur(cle);
+  }
+}
+
+/* data:image/…;base64 (appareil photo natif) → Blob, sans fetch (la CSP n'autorise pas data: en connexion). */
+function blobDepuisDataUrl(donnees) {
+  const morceaux = typeof donnees === "string" ? donnees.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+=*)$/) : null;
+  if (!morceaux || morceaux[2].length > Math.ceil(IMAGES.octetsMax / 3) * 4) return null;
+  try {
+    return new Blob([depuisBase64(morceaux[2])], { type: morceaux[1] });
+  } catch (erreur) {
+    return null;
+  }
+}
+
+function afficherPhotoTableau(donnees) {
+  const avecPhoto = photoTableauValide(donnees);
+  const apercu = $("apercu-photo-tableau");
+  if (avecPhoto) apercu.src = donnees;
+  else apercu.removeAttribute("src");
+  apercu.hidden = !avecPhoto;
+  $("photo-tableau-vide").hidden = avecPhoto;
+  $("bouton-retirer-photo-tableau").hidden = !avecPhoto;
+  $("libelle-photo-tableau").textContent = avecPhoto ? "Changer la photo" : "Prendre la photo";
+}
+
+async function chargerPhotoTableau(devis) {
+  afficherPhotoTableau("");
+  message("msg-photo-tableau", "");
+  const donnees = await lirePhotoTableau(devis.id);
+  if (fiche.devis === devis) afficherPhotoTableau(donnees);
+}
+
+async function enregistrerPhotoTableau(blob) {
+  const devis = fiche.devis;
+  if (!devis) return;
+  try {
+    const donnees = await preparerImage(blob, "tableau");
+    if (fiche.devis !== devis) return;
+    const ok = await ecrirePhotoTableau(devis.id, donnees);
+    message("msg-photo-tableau", ok ? "Photo du tableau jointe au devis " + devis.numero + "."
+      : "Photo non enregistrée : la mémoire de l'appareil est pleine. Retirez d'anciennes photos ou supprimez des devis.", ok);
+    if (ok) {
+      vibrer();
+      afficherPhotoTableau(donnees);
+    }
+  } catch (erreur) {
+    message("msg-photo-tableau", messageImage(erreur));
+  }
+}
+
+/* Téléphone : l'application Appareil photo s'ouvre (aucune permission demandée par BâtiPlus).
+   Navigateur : sélecteur de fichier, appareil photo arrière proposé sur mobile. */
+async function surPrendrePhotoTableau() {
+  if (!fiche.devis) return;
+  const camera = plugin("Camera");
+  if (!camera || typeof camera.getPhoto !== "function") {
+    $("fichier-photo-tableau").click();
+    return;
+  }
+  message("msg-photo-tableau", "");
+  let resultat;
+  try {
+    resultat = await camera.getPhoto({
+      source: "CAMERA", resultType: "dataUrl", quality: PHOTO_TABLEAU.qualiteCapture, width: PHOTO_TABLEAU.largeurCapture,
+      correctOrientation: true, saveToGallery: false, allowEditing: false
+    });
+  } catch (erreur) {
+    /* Annulé par l'électricien : rien à dire. */
+    if (!/cancel|annul/i.test(String(erreur && erreur.message))) message("msg-photo-tableau", "L'appareil photo n'a pas pu s'ouvrir. Réessayez.");
+    return;
+  }
+  const blob = blobDepuisDataUrl(resultat && resultat.dataUrl);
+  if (!blob) {
+    message("msg-photo-tableau", "Photo illisible. Réessayez.");
+    return;
+  }
+  await enregistrerPhotoTableau(blob);
+}
+
+function surFichierPhotoTableau(evenement) {
+  const entree = evenement.currentTarget;
+  const fichier = entree.files && entree.files[0];
+  entree.value = "";
+  if (!fichier || !fiche.devis) return;
+  message("msg-photo-tableau", "");
+  enregistrerPhotoTableau(fichier);
+}
+
+async function surRetirerPhotoTableau() {
+  const devis = fiche.devis;
+  if (!devis) return;
+  const ok = await demanderConfirmation("Retirer la photo ?", "La photo du tableau électrique ne sera plus jointe au devis " + devis.numero + ".", "Retirer", "Garder la photo");
+  if (!ok || fiche.devis !== devis) return;
+  await supprimerValeur(clePhotoTableau(devis.id));
+  afficherPhotoTableau("");
+  message("msg-photo-tableau", "Photo retirée du devis.", true);
 }
 
 function remplirImagesProfil() {
@@ -4780,17 +4954,65 @@ function logoJpegValide(logo) {
 
 /* PDF A4 du devis (octets). logo : { octets JPEG, largeur, hauteur } ou null.
    Même contenu que la feuille imprimée ; en-tête de tableau répété à chaque page. */
-function creerPdfDevis(modele, logo) {
+function creerPdfDevis(modele, logo, photo) {
   /* Deux passes : si le devis dépasse une page, une mise en page plus serrée (lignes et
      espacements réduits, mêmes tailles de texte) est essayée ; la plus courte est gardée.
-     Ainsi un devis ne déborde jamais sur une page de plus pour quelques points. */
-  const normale = mettreEnPagePdf(modele, logo, false);
-  if (normale.pages.length === 1) return assemblerPdf(modele, logo, normale);
-  const serree = mettreEnPagePdf(modele, logo, true);
-  return assemblerPdf(modele, logo, serree.pages.length < normale.pages.length ? serree : normale);
+     Ainsi un devis ne déborde jamais sur une page de plus pour quelques points.
+     photo : { octets JPEG, largeur, hauteur, composantes } ou null — page d'annexe en plus. */
+  const normale = mettreEnPagePdf(modele, logo, false, photo);
+  if (normale.pages.length === (normale.avecPhoto ? 2 : 1)) return assemblerPdf(modele, logo, normale, photo);
+  const serree = mettreEnPagePdf(modele, logo, true, photo);
+  return assemblerPdf(modele, logo, serree.pages.length < normale.pages.length ? serree : normale, photo);
 }
 
-function mettreEnPagePdf(modele, logo, serre) {
+/* Dimensions et nombre de composantes d'un JPEG, lus dans son marqueur SOF (sans le décoder). */
+function dimensionsJpeg(octets) {
+  if (!octets || octets.length < 4 || octets[0] !== 0xFF || octets[1] !== 0xD8) return null;
+  let i = 2;
+  while (i + 9 < octets.length) {
+    if (octets[i] !== 0xFF) return null;
+    const marqueur = octets[i + 1];
+    if (marqueur === 0xFF) {
+      i += 1;
+      continue;
+    }
+    if (marqueur === 0x01 || (marqueur >= 0xD0 && marqueur <= 0xD8)) {
+      i += 2;
+      continue;
+    }
+    if (marqueur === 0xD9 || marqueur === 0xDA) return null;
+    const longueur = (octets[i + 2] << 8) | octets[i + 3];
+    if (longueur < 2) return null;
+    if (marqueur >= 0xC0 && marqueur <= 0xCF && marqueur !== 0xC4 && marqueur !== 0xC8 && marqueur !== 0xCC) {
+      const hauteur = (octets[i + 5] << 8) | octets[i + 6];
+      const largeur = (octets[i + 7] << 8) | octets[i + 8];
+      return largeur > 0 && hauteur > 0 ? { largeur, hauteur, composantes: octets[i + 9] } : null;
+    }
+    i += 2 + longueur;
+  }
+  return null;
+}
+
+function photoJpegValide(photo) {
+  return logoJpegValide(photo) && (photo.composantes === 1 || photo.composantes === 3);
+}
+
+/* Photo du tableau enregistrée (data:image/jpeg) → objet prêt pour le PDF, ou null. */
+function photoTableauPdf(donnees) {
+  if (typeof donnees !== "string" || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(donnees)) return null;
+  let octets;
+  try {
+    octets = depuisBase64(donnees.slice(23));
+  } catch (erreur) {
+    return null;
+  }
+  const dimensions = dimensionsJpeg(octets);
+  if (!dimensions) return null;
+  const photo = { octets, largeur: dimensions.largeur, hauteur: dimensions.hauteur, composantes: dimensions.composantes };
+  return photoJpegValide(photo) ? photo : null;
+}
+
+function mettreEnPagePdf(modele, logo, serre, photo) {
   const W = PDF_A4.largeur;
   const H = PDF_A4.hauteur;
   const M = PDF_A4.marge;
@@ -4974,6 +5196,21 @@ function mettreEnPagePdf(modele, logo, serre) {
   y += hauteurSignature + 6;
   mention.forEach((ligne) => { ecrire(ligne, M, y + 7, 7.5, false, C.texte2); y += 9.5; });
 
+  /* Annexe : photo du tableau électrique, seule sur sa page, proportions gardées. */
+  const avecPhoto = photoJpegValide(photo);
+  if (avecPhoto) {
+    nouvellePage();
+    ecrire("Annexe — Photo du tableau électrique", M, y + 14, 13, true, C.violet);
+    ecrire("Devis " + modele.numero, M, y + 30, 8.5, false, C.texte2);
+    y += 44;
+    const echelle = Math.min(CW / photo.largeur, (BAS - y - 8) / photo.hauteur);
+    const pw = photo.largeur * echelle;
+    const ph = photo.hauteur * echelle;
+    const px = M + (CW - pw) / 2;
+    ops.push("q " + n(pw) + " 0 0 " + n(ph) + " " + n(px) + " " + n(H - y - ph) + " cm /Im2 Do Q");
+    cadre(px, y, pw, ph, C.ligne);
+  }
+
   /* Pied : filigrane discret (formule gratuite) et numéro de page si plusieurs pages. */
   pages.forEach((page, index) => {
     ops = page;
@@ -4984,14 +5221,15 @@ function mettreEnPagePdf(modele, logo, serre) {
     }
     if (pages.length > 1) ecrire("Page " + (index + 1) + " / " + pages.length, M, H - M + 2, 7, false, C.texte2, "droite", CW);
   });
-  return { pages, avecLogo };
+  return { pages, avecLogo, avecPhoto };
 }
 
 /* Assemblage : objets, table des positions (xref), trailer. */
-function assemblerPdf(modele, logo, mise) {
+function assemblerPdf(modele, logo, mise, photo) {
   const W = PDF_A4.largeur;
   const H = PDF_A4.hauteur;
   const { pages, avecLogo } = mise;
+  const avecPhoto = Boolean(mise.avecPhoto) && photoJpegValide(photo);
   const morceaux = [];
   let taille = 0;
   const positions = [];
@@ -5011,7 +5249,10 @@ function assemblerPdf(modele, logo, mise) {
     ajouter(flux);
     ajouter("\nendstream\nendobj\n");
   };
-  const premierePage = avecLogo ? 7 : 6;
+  let suivant = 6;
+  const idLogo = avecLogo ? suivant++ : 0;
+  const idPhoto = avecPhoto ? suivant++ : 0;
+  const premierePage = suivant;
   const idsPages = pages.map((_, i) => premierePage + i * 2);
   ajouter("%PDF-1.4\n");
   ajouter(Uint8Array.from([37, 226, 227, 207, 211, 10]));
@@ -5021,10 +5262,15 @@ function assemblerPdf(modele, logo, mise) {
   objet(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
   objet(5, "<< /Type /ExtGState /ca " + OPACITE_FILIGRANE + " /CA " + OPACITE_FILIGRANE + " >>");
   if (avecLogo) {
-    objet(6, "<< /Type /XObject /Subtype /Image /Width " + logo.largeur + " /Height " + logo.hauteur
+    objet(idLogo, "<< /Type /XObject /Subtype /Image /Width " + logo.largeur + " /Height " + logo.hauteur
       + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length «LONGUEUR» >>", Uint8Array.from(logo.octets));
   }
-  const ressources = "<< /Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GS1 5 0 R >>" + (avecLogo ? " /XObject << /Im1 6 0 R >>" : "") + " >>";
+  if (avecPhoto) {
+    objet(idPhoto, "<< /Type /XObject /Subtype /Image /Width " + photo.largeur + " /Height " + photo.hauteur
+      + " /ColorSpace " + (photo.composantes === 1 ? "/DeviceGray" : "/DeviceRGB") + " /BitsPerComponent 8 /Filter /DCTDecode /Length «LONGUEUR» >>", Uint8Array.from(photo.octets));
+  }
+  const images = (avecLogo ? " /Im1 " + idLogo + " 0 R" : "") + (avecPhoto ? " /Im2 " + idPhoto + " 0 R" : "");
+  const ressources = "<< /Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GS1 5 0 R >>" + (images ? " /XObject <<" + images + " >>" : "") + " >>";
   pages.forEach((page, i) => {
     const id = idsPages[i];
     objet(id, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + H + "] /Resources " + ressources + " /Contents " + (id + 1) + " 0 R >>");
@@ -7603,6 +7849,7 @@ function remplirFicheDevis() {
   afficherMainOeuvreDevis();
   remplirTotauxDevis();
   actualiserDevis();
+  chargerPhotoTableau(d);
 }
 
 function majEnteteDevis() {
@@ -8152,7 +8399,7 @@ function surOuvrirDevisResultat() {
    (Android) ou téléchargé (navigateur) ; repli sur l'impression en cas d'échec.
    ========================================================================== */
 
-const feuille = { id: null, devis: null, modele: null, pdf: null, uri: "" };
+const feuille = { id: null, devis: null, modele: null, pdf: null, uri: "", photo: "" };
 
 function telephoneAffiche(e164) {
   if (!e164) return "";
@@ -8194,6 +8441,7 @@ async function ouvrirFeuille() {
   feuille.devis = devis;
   feuille.pdf = null;
   feuille.uri = "";
+  feuille.photo = await lirePhotoTableau(devis.id);
   feuille.modele = modeleDuDevis(devis);
   ecrireInsecable($("titre-feuille"), "Devis " + devis.numero);
   $("etat-feuille").textContent = "";
@@ -8205,7 +8453,7 @@ async function ouvrirFeuille() {
   $("feuille-bouton-imprimer").hidden = estNatif();
   $("libelle-feuille-pdf").textContent = estNatif() ? "Enregistrer le PDF" : "Télécharger le PDF";
   const logo = feuille.modele.emetteur.logo && etat.compte.logo ? etat.compte.logo : "";
-  construireFeuille(feuille.modele, logo);
+  construireFeuille(feuille.modele, logo, feuille.photo);
   majLienWhatsApp($("feuille-lien-whatsapp"), $("feuille-aide-whatsapp"), devis, feuille.modele);
   ajusterApercuFeuille();
 }
@@ -8271,7 +8519,7 @@ function ligneTotalFeuille(libelle, valeur, classe) {
   return tr;
 }
 
-function construireFeuille(m, logo) {
+function construireFeuille(m, logo, photo) {
   const insecable = (texte) => String(texte).replace(/ /g, "\u00A0");
   const tete = elementFeuille("header", "f-tete");
   const emetteur = elementFeuille("div", "f-emetteur");
@@ -8329,6 +8577,15 @@ function construireFeuille(m, logo) {
     tableauFeuille("Main-d'œuvre", m.mainOeuvre, "Sous-total main-d'œuvre", m.sousTotalMainOeuvre),
     bas, fin];
   if (m.pied) morceaux.push(elementFeuille("footer", "f-pied f-filigrane", m.pied));
+  /* Annexe : photo du tableau électrique, sur une page à part à l'impression. */
+  if (photoTableauValide(photo)) {
+    const annexe = elementFeuille("section", "f-annexe");
+    const image = elementFeuille("img", "f-photo-tableau");
+    image.alt = "Photo du tableau électrique du chantier";
+    image.src = photo;
+    annexe.append(elementFeuille("h2", "f-annexe-titre", "Annexe — Photo du tableau électrique"), elementFeuille("p", "f-ligne", "Devis " + m.numero), image);
+    morceaux.push(annexe);
+  }
   $("feuille-a4").replaceChildren(...morceaux);
 }
 
@@ -8381,7 +8638,7 @@ function logoEnJpeg(source) {
 async function pdfDuDevis() {
   if (feuille.pdf) return feuille.pdf;
   const logo = feuille.modele.emetteur.logo && etat.compte.logo ? await logoEnJpeg(etat.compte.logo) : null;
-  feuille.pdf = creerPdfDevis(feuille.modele, logo);
+  feuille.pdf = creerPdfDevis(feuille.modele, logo, feuille.photo ? photoTableauPdf(feuille.photo) : null);
   return feuille.pdf;
 }
 
@@ -9373,6 +9630,9 @@ function brancherEvenements() {
   $("bouton-photo").addEventListener("click", surChoisirPhoto);
   $("bouton-retirer-photo").addEventListener("click", surRetirerPhoto);
   $("fichier-photo").addEventListener("change", surFichierPhoto);
+  $("bouton-photo-tableau").addEventListener("click", surPrendrePhotoTableau);
+  $("bouton-retirer-photo-tableau").addEventListener("click", surRetirerPhotoTableau);
+  $("fichier-photo-tableau").addEventListener("change", surFichierPhotoTableau);
   $("bouton-logo").addEventListener("click", surChoisirLogo);
   $("bouton-retirer-logo").addEventListener("click", surRetirerLogo);
   $("fichier-logo").addEventListener("change", surFichierLogo);
@@ -9518,6 +9778,7 @@ function preparerInterface() {
 /* Pendant l'écran de démarrage : thème, compte et choix du premier écran. */
 async function choisirPremierEcran() {
   await migrerStockage();
+  await purgerPhotosOrphelines();
   await initialiserTheme();
   const presentationVue = await lireValeur(CLES_STOCKAGE.presentationVue) === "1";
   const comptes = await lireComptes();

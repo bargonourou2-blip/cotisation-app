@@ -18,6 +18,7 @@ import {
   ATTENDUS, CHANTIERS_TYPES, aleatoire, chantierAleatoire, chargerMoteur, egalAuCentime, invariants, moteurLivre, nombresInvalides, resumer, sectionMoteur
 } from "./chantiers-types.mjs";
 import { codeGele, lireRegles } from "./regles.mjs";
+import { permissionsFusionnees, verifierAndroid } from "./verifier-android.mjs";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const WWW = join(RACINE, "www");
@@ -34,6 +35,10 @@ const etape8 = { fait: false, a4: [], filigrane: [], whatsapp: [], octetsPdf: 0 
 const etape10 = { fait: false, verrou: [], saisie: [], dom: [], codes: [], champsVus: 0, pagesVues: 0, cas: [] };
 /* Constats de l'étape 11 (abonnement) relevés dans jsdom. */
 const etape12 = { fait: false, suivi: [], echecs: [], retour: [], renouvellement: [], cas: [] };
+/* Constats de l'étape 13 (photo du tableau électrique) relevés dans jsdom. */
+const etape13 = { fait: false, photo: [], natif: [] };
+/* JPEG d'essai 40 × 30 (3 composantes), produit une fois avec Pillow. */
+const JPEG_ESSAI = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAeACgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD0/Xtet/D9rDcXFvc3HnzrBHHbIGdnIJAwSPSsv/hNv+pX8R/+AH/2VHjb/mX/APsN23/s1bc+r6ZazNDcajawyr95JJlVh35BNb/u4QTkr38zaMLpWjdmJ/wm3/Ur+I//AAA/+yo/4Tb/AKlfxH/4Af8A2Va/9vaN/wBBax/8CU/xp0et6TLIsceqWbu5Cqq3CEsT0AGan2tH+X8S/ZTX2H+JFoOvW/iC1muLe3ubfyJ2gkjuUCurgAkYBPrRWX4J/wCZg/7Ddz/7LRRWiozaRhNJSshvjqWOCLQpZZFjjj1q3Z3c4CgbsknsKtT3/g26maa4u9Dmlb7zySQsx7ck1r3djZ6hEIr20guYw24JNGHAPrg9+T+dVP8AhGdA/wCgHp3/AICR/wCFPmpygozT0NIVOVaNp+Rn/aPA/wDz20D/AL6hp0d34KikWSO40FHQhlZXhBUjoQavf8IzoH/QD07/AMBI/wDCj/hGdA/6Aenf+Akf+FLlw/Z/gX7eT+0/vMnwLLHPFrssUiyRya1cMjochgduCD3FFdDaWNnp8RisrSC2jLbikMYQE+uB34H5UUqs1ObkjCTu7n//2Q==";
 const etape11 = { fait: false, formules: [], logos: [], jeton: [], quota: [], relances: [], cadenas: [], recu: [], paiement: [], cas: [] };
 const REGLES = lireRegles();
 
@@ -1549,8 +1554,131 @@ async function controlesExecution() {
             etape8.octetsPdf = octets.length;
           }
           inspecterPage(g, "feuille A4");
+          const stockage8 = g.stockage();
           g.w.close();
           etape8.fait = true;
+
+          /* ---------- Étape 13 : photo du tableau électrique jointe au devis ---------- */
+          const clePhoto = "bp_v1_photo_tableau_" + d1s.id;
+          const photoEssai = "data:image/jpeg;base64," + JPEG_ESSAI;
+          const compteId8 = (JSON.parse(stockage8.bp_v1_session || "{}") || {}).compteId;
+          const fichePhoto = (o) => JSON.stringify({ compteId: compteId8, donnees: photoEssai, ajouteLe: "2026-10-16T09:00:00Z", ...o });
+          const ouvrirDevis1 = async (page) => {
+            const lien = page.doc.querySelector("#accueil-devis [data-devis='" + d1s.id + "']");
+            if (lien) lien.click();
+            await pause(500);
+            return page.actif() === "ecran-fiche-devis";
+          };
+          const ph = ouvrirPage({ ...stockage8, [clePhoto]: fichePhoto(), bp_v1_photo_tableau_dOrphelin: fichePhoto() });
+          await pause(1800);
+          let blobPhoto = null;
+          ph.w.URL.createObjectURL = (blob) => { blobPhoto = blob; return "blob:https://batiplus.local/essai"; };
+          ph.w.URL.revokeObjectURL = () => {};
+          if (ph.stockage().bp_v1_photo_tableau_dOrphelin) etape13.photo.push("photo d'un devis qui n'existe plus non effacée au démarrage");
+          if (!ph.stockage()[clePhoto]) etape13.photo.push("photo d'un devis existant effacée au démarrage");
+          if (!await ouvrirDevis1(ph)) etape13.photo.push("devis 0001 non ouvert (" + ph.actif() + ")");
+          const apercuPh = ph.$("apercu-photo-tableau");
+          if (apercuPh.hidden || apercuPh.getAttribute("src") !== photoEssai || ph.$("bouton-retirer-photo-tableau").hidden || ph.texte("libelle-photo-tableau") !== "Changer la photo" || !ph.$("photo-tableau-vide").hidden) etape13.photo.push("photo enregistrée non affichée dans la fiche devis");
+          /* Navigateur : sélecteur de fichier. Un SVG déguisé en PNG est refusé, la photo reste. */
+          let clicsFichier = 0;
+          ph.$("fichier-photo-tableau").addEventListener("click", (e) => { clicsFichier += 1; e.preventDefault(); });
+          ph.$("bouton-photo-tableau").click();
+          await pause(50);
+          if (clicsFichier !== 1) etape13.photo.push("navigateur : « Changer la photo » n'ouvre pas le sélecteur de fichier");
+          const entreeTableau = ph.$("fichier-photo-tableau");
+          if (entreeTableau.getAttribute("capture") !== "environment" || entreeTableau.getAttribute("accept") !== "image/jpeg,image/png,image/webp") etape13.photo.push("sélecteur : accept/capture incorrects");
+          const svgDeguise = new ph.w.File(['<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'], "tableau.png", { type: "image/png" });
+          Object.defineProperty(entreeTableau, "files", { value: [svgDeguise], configurable: true });
+          entreeTableau.dispatchEvent(new ph.w.Event("change", { bubbles: true }));
+          await pause(300);
+          if (!ph.texte("msg-photo-tableau").startsWith("Format refusé") || (JSON.parse(ph.stockage()[clePhoto] || "{}").donnees !== photoEssai)) etape13.photo.push("SVG déguisé en PNG accepté ou photo remplacée (« " + ph.texte("msg-photo-tableau") + " »)");
+          const lourd = new ph.w.File([new Uint8Array(5 * 1024 * 1024 + 1)], "tableau.jpg", { type: "image/jpeg" });
+          Object.defineProperty(entreeTableau, "files", { value: [lourd], configurable: true });
+          entreeTableau.dispatchEvent(new ph.w.Event("change", { bubbles: true }));
+          await pause(300);
+          if (!ph.texte("msg-photo-tableau").startsWith("Image trop lourde")) etape13.photo.push("image de plus de 5 Mo acceptée");
+          /* Feuille A4 et PDF : annexe sur une page à part. */
+          ph.$("devis-bouton-imprimer").click();
+          await pause(600);
+          const annexe = ph.$("feuille-a4").querySelector(".f-annexe img.f-photo-tableau");
+          if (!annexe || annexe.getAttribute("src") !== photoEssai || !nb(ph.$("feuille-a4").textContent).includes("Annexe — Photo du tableau électrique")) etape13.photo.push("annexe photo absente de la feuille A4");
+          const styleAnnexe = [...ph.doc.styleSheets].flatMap((f) => [...f.cssRules]).find((r) => r.selectorText === ".f-annexe");
+          if (!styleAnnexe || styleAnnexe.style.breakBefore !== "page") etape13.photo.push("annexe : saut de page avant absent");
+          ph.$("feuille-bouton-pdf").click();
+          await pause(500);
+          if (!blobPhoto) etape13.photo.push("PDF avec photo non produit");
+          else {
+            const octets = await new Promise((resoudre) => {
+              const lecteur = new ph.w.FileReader();
+              lecteur.onload = () => resoudre(new Uint8Array(lecteur.result));
+              lecteur.readAsArrayBuffer(blobPhoto);
+            });
+            const bilan = analyserPdf(octets);
+            if (bilan.erreurs.length || bilan.pages !== 2) etape13.photo.push("PDF avec photo : " + bilan.pages + " page(s) " + bilan.erreurs.join(", "));
+            if (!bilan.texte.includes("/Im2 Do") || !/\/Width 40 \/Height 30 \/ColorSpace \/DeviceRGB/.test(bilan.texte) || !bilan.texte.includes("(Annexe")) etape13.photo.push("PDF : photo (40 × 30, DCTDecode) ou titre de l'annexe absents");
+            etape13.octetsPdf = octets.length;
+          }
+          inspecterPage(ph, "feuille A4 avec photo");
+          const stockage13 = ph.stockage();
+          ph.w.close();
+          /* Retirer la photo (confirmation), puis photo d'un autre compte jamais affichée. */
+          const pr = ouvrirPage(stockage13);
+          await pause(1800);
+          await ouvrirDevis1(pr);
+          pr.$("bouton-retirer-photo-tableau").click();
+          await pause(150);
+          if (pr.$("modale").hidden || pr.texte("modale-titre") !== "Retirer la photo ?") etape13.photo.push("retrait sans confirmation");
+          pr.$("bouton-modale-ok").click();
+          await pause(400);
+          if (pr.stockage()[clePhoto] || !pr.$("apercu-photo-tableau").hidden || pr.texte("libelle-photo-tableau") !== "Prendre la photo" || pr.texte("msg-photo-tableau") !== "Photo retirée du devis.") etape13.photo.push("photo non retirée après confirmation");
+          pr.w.close();
+          const pa = ouvrirPage({ ...stockage13, [clePhoto]: fichePhoto({ compteId: "autre-compte" }) });
+          await pause(1800);
+          await ouvrirDevis1(pa);
+          if (!pa.$("apercu-photo-tableau").hidden) etape13.photo.push("photo d'un autre compte affichée");
+          pa.$("devis-bouton-imprimer").click();
+          await pause(600);
+          if (pa.$("feuille-a4").querySelector(".f-annexe")) etape13.photo.push("photo d'un autre compte jointe à la feuille");
+          pa.w.close();
+
+          /* Téléphone : appareil photo du système (Camera simulé), jamais de galerie, jamais de sélecteur. */
+          const optionsCamera = [];
+          let reponseCamera = () => ({ dataUrl: "data:image/svg+xml;base64,PHN2Zy8+" });
+          const capCamera = {
+            isNativePlatform: () => true,
+            getPlatform: () => "android",
+            Plugins: {
+              App: { addListener: () => Promise.resolve({ remove() {} }), exitApp() {} },
+              Camera: { getPhoto: async (o) => { optionsCamera.push(o); return reponseCamera(); } }
+            }
+          };
+          const sansPhoto = Object.fromEntries(Object.entries(stockage13).filter(([cle]) => cle !== clePhoto));
+          const pn = ouvrirPage(sansPhoto, capCamera);
+          await pause(1800);
+          await ouvrirDevis1(pn);
+          let clicsNatif = 0;
+          pn.$("fichier-photo-tableau").addEventListener("click", (e) => { clicsNatif += 1; e.preventDefault(); });
+          pn.$("bouton-photo-tableau").click();
+          await pause(300);
+          const o1 = optionsCamera[0] || {};
+          if (o1.source !== "CAMERA" || o1.resultType !== "dataUrl" || o1.saveToGallery !== false || o1.correctOrientation !== true || o1.allowEditing !== false || o1.width !== 1600) etape13.natif.push("options de l'appareil photo incorrectes (" + JSON.stringify(o1) + ")");
+          if (clicsNatif) etape13.natif.push("téléphone : le sélecteur de fichier s'ouvre au lieu de l'appareil photo");
+          if (pn.texte("msg-photo-tableau") !== "Photo illisible. Réessayez.") etape13.natif.push("data:image/svg+xml accepté (« " + pn.texte("msg-photo-tableau") + " »)");
+          reponseCamera = () => ({ dataUrl: "data:image/png;base64," + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString("base64") });
+          pn.$("bouton-photo-tableau").click();
+          await pause(300);
+          if (!pn.texte("msg-photo-tableau").startsWith("Format refusé")) etape13.natif.push("SVG annoncé en PNG par l'appareil photo accepté");
+          reponseCamera = () => { throw new Error("User cancelled photos app"); };
+          pn.$("bouton-photo-tableau").click();
+          await pause(300);
+          if (pn.texte("msg-photo-tableau") !== "") etape13.natif.push("annulation de l'électricien affichée comme une erreur");
+          reponseCamera = () => { throw new Error("Unable to open camera"); };
+          pn.$("bouton-photo-tableau").click();
+          await pause(300);
+          if (pn.texte("msg-photo-tableau") !== "L'appareil photo n'a pas pu s'ouvrir. Réessayez.") etape13.natif.push("échec de l'appareil photo sans message");
+          if (pn.stockage()[clePhoto]) etape13.natif.push("photo refusée malgré tout enregistrée");
+          pn.w.close();
+          etape13.fait = true;
           etape7.fait = true;
         }
       }
@@ -2701,7 +2829,7 @@ async function controlesExecution() {
 function controleCapacitor() {
   const problemes = [];
   const attendues = ["@capacitor/android", "@capacitor/app", "@capacitor/browser", "@capacitor/camera",
-    "@capacitor/filesystem", "@capacitor/haptics", "@capacitor/local-notifications", "@capacitor/network",
+    "@capacitor/filesystem", "@capacitor/local-notifications", "@capacitor/network",
     "@capacitor/preferences", "@capacitor/share", "@capacitor/splash-screen", "@capacitor/status-bar"];
   const pkg = JSON.parse(readFileSync(join(RACINE, "package.json"), "utf8"));
   const deps = Object.keys(pkg.dependencies || {}).sort();
@@ -2725,16 +2853,9 @@ function controleCapacitor() {
   if (existsSync(gradle)) {
     const contenu = readFileSync(gradle, "utf8");
     if (!contenu.includes('applicationId "com.brgelectro.batiplus"')) problemes.push("applicationId Android");
-    const manifeste = readFileSync(join(RACINE, "android", "app", "src", "main", "AndroidManifest.xml"), "utf8");
-    const permissions = [...manifeste.matchAll(/<uses-permission\s[^>]*>/g)].map((t) => t[0]);
-    const permises = new Set(["android.permission.INTERNET"]);
-    for (const p of permissions) {
-      const nom = (p.match(/android:name="([^"]+)"/) || [])[1];
-      const stockage = /EXTERNAL_STORAGE$/.test(nom || "");
-      if (!permises.has(nom) && !(stockage && /android:maxSdkVersion="29"/.test(p))) problemes.push("permission Android non justifiée : " + nom);
-    }
-    if (!/WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/.test(manifeste)) problemes.push("WRITE_EXTERNAL_STORAGE (maxSdkVersion 29) absente pour Documents/BatiPlus/");
-    android = "android/ présent, applicationId correct, " + permissions.length + " permissions (INTERNET, stockage limité à Android ≤ 10)";
+    /* Étape 13 : permissions APRÈS fusion des plugins contrôlées par PM (verifier-android.mjs). */
+    const { finales } = permissionsFusionnees();
+    android = "android/ présent, applicationId correct, " + finales.length + " permissions après fusion (détail : PM)";
   } else {
     problemes.push(android);
   }
@@ -3309,6 +3430,90 @@ async function controlesEtape12() {
       : "Pass semaine 750 / 7 j, Pro mensuel 2 500 / 30 j, Pro annuel 25 000 / 365 j, Lifetime 60 000 : identiques dans src/donnees.js et backend/formules.js (le montant facturé est lu en ligne) ; www/index.html ne contient aucune clé d'agrégateur ni clé privée");
 }
 
+/* ---------- Étape 13 : Android, Play Store, confidentialité ---------- */
+function controlesEtape13() {
+  const m = chargerMoteur();
+  const absent = etape13.fait ? [] : ["parcours jsdom de l'étape 13 non exécuté"];
+  const photo = [...absent, ...etape13.photo, ...etape13.natif];
+  const octets = Uint8Array.from(Buffer.from(JPEG_ESSAI, "base64"));
+  const dims = m.dimensionsJpeg(octets);
+  if (!dims || dims.largeur !== 40 || dims.hauteur !== 30 || dims.composantes !== 3) photo.push("dimensionsJpeg : " + JSON.stringify(dims));
+  if (m.dimensionsJpeg(octets.slice(0, 20)) !== null || m.dimensionsJpeg(Uint8Array.from([0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0, 0, 0, 0, 0])) !== null) photo.push("JPEG tronqué ou PNG lu comme un JPEG");
+  const emetteur = { nom: "Awa Sawadogo", entreprise: "", telephone: "+226 70 11 22 33", ville: "Ouagadougou", pays: "Burkina Faso" };
+  const catalogue = Object.fromEntries(Object.entries(m.CATALOGUE_DEFAUT).map(([r, a]) => [r, { ...a }]));
+  const devis = { ...m.devisDepuisChiffrage(m.chiffrerChantier(CHANTIERS_TYPES[0].chantier, catalogue, "XOF", null)), numero: "BP-2026-0007", titre: "Studio", client: "Client", lieu: "Ouaga", creeLe: "2026-10-16T10:00:00Z", conditions: "", note: "" };
+  const photoPdf = { octets, ...dims };
+  for (const formule of ["gratuit", "annuel"]) {
+    const mod = m.modeleFeuille(devis, "XOF", formule, emetteur, "");
+    const sans = analyserPdf(m.creerPdfDevis(mod, null, null));
+    const avec = analyserPdf(m.creerPdfDevis(mod, { octets, largeur: 40, hauteur: 30 }, photoPdf));
+    if (avec.erreurs.length || avec.pages !== sans.pages + 1 || !avec.texte.includes("/Im2 Do") || !avec.texte.includes("(Page " + avec.pages + " / " + avec.pages + ")")) photo.push(formule + " : annexe photo → " + avec.pages + " page(s) pour " + sans.pages + " " + avec.erreurs.join(","));
+    if (formule === "annuel" && (!avec.texte.includes("/Im1 Do") || !/\/XObject << \/Im1 6 0 R \/Im2 7 0 R >>/.test(avec.texte))) photo.push("logo et photo ensemble : ressources /Im1 /Im2 incorrectes");
+    const cmjn = analyserPdf(m.creerPdfDevis(mod, null, { ...photoPdf, composantes: 4 }));
+    if (cmjn.texte.includes("/Im2") || cmjn.pages !== sans.pages) photo.push("JPEG CMJN (4 composantes) intégré");
+  }
+  controle("PT", "photo du tableau électrique jointe au devis (appareil photo, sans permission)", photo.length === 0,
+    photo.join(" ; ") || "fiche devis : photo enregistrée affichée, « Changer la photo », « Retirer la photo » avec confirmation ; navigateur : sélecteur image/jpeg,png,webp + capture=environment, SVG déguisé et fichier > 5 Mo refusés ; téléphone : Camera.getPhoto (source CAMERA, saveToGallery false, correctOrientation, 1600 px), SVG/data:svg refusés, annulation silencieuse, échec expliqué ; feuille A4 : annexe sur une page à part ; PDF : page d'annexe /Im2 (40 × 30 DCTDecode), « Page n / n », logo + photo = /Im1 /Im2, CMJN refusé ; photo d'un autre compte jamais affichée ; photos orphelines effacées au démarrage (PDF " + (etape13.octetsPdf || 0) + " octets)");
+
+  /* Confidentialité : document complet, page publiable, résumé dans l'application. */
+  const confid = [];
+  const politique = existsSync(join(RACINE, "CONFIDENTIALITE.md")) ? readFileSync(join(RACINE, "CONFIDENTIALITE.md"), "utf8") : "";
+  for (const attendu of ["BRG Électro+", "+226 05 60 86 08", "+226 68 52 42 90", "com.brgelectro.batiplus", "Données collectées", "Appareil photo", "Notifications", "Paiement", "Durée de conservation", "Suppression", "Vos droits", "Sécurité", "Enfants", "Modifications"]) {
+    if (!politique.includes(attendu)) confid.push("CONFIDENTIALITE.md : « " + attendu + " » absent");
+  }
+  const pagePublique = join(RACINE, "store", "confidentialite.html");
+  const html13 = existsSync(pagePublique) ? readFileSync(pagePublique, "utf8") : "";
+  if (!html13.includes("+226 05 60 86 08") || /<script|\son[a-z]+=|https?:\/\/(?!wa\.me)/i.test(html13.replace(/<meta http-equiv[^>]*>/, ""))) confid.push("store/confidentialite.html absent, incomplet, avec script ou ressource externe");
+  const modele = (html.match(/<template id="modele-conditions">([\s\S]*?)<\/template>/) || [])[1] || "";
+  for (const attendu of ["Appareil photo", "Paiement", "jamais vendues", "Suppression", "+226 05 60 86 08"]) if (!modele.includes(attendu)) confid.push("résumé dans l'application : « " + attendu + " » absent");
+  const fiche = existsSync(join(RACINE, "store", "fiche-play-store.md")) ? readFileSync(join(RACINE, "store", "fiche-play-store.md"), "utf8") : "";
+  if (!/Sécurité des données/.test(fiche) || !/Nom/.test(fiche) || !/Numéro de téléphone/.test(fiche) || !/Photos/.test(fiche)) confid.push("fiche : formulaire « Sécurité des données » incomplet");
+  controle("PC", "politique de confidentialité complète, publiable et résumée dans l'application", confid.length === 0,
+    confid.join(" ; ") || "CONFIDENTIALITE.md (éditeur, données, appareil photo, notifications, paiement, conservation, suppression, droits, sécurité, enfants, modifications) ; store/confidentialite.html prête à publier (aucun script, aucune ressource externe) ; « Lire les conditions » résume la politique dans l'application ; formulaire « Sécurité des données » rempli dans store/fiche-play-store.md");
+
+  /* Fiche Play Store : textes dans les limites, images aux bonnes dimensions. */
+  const store = [];
+  const section = (titre) => ((fiche.split("\n## ").find((b) => b.startsWith(titre)) || "").match(/```text\n([\s\S]*?)\n```/) || [])[1] || "";
+  const titre = section("Titre");
+  const courte = section("Description courte");
+  const longue = section("Description longue");
+  if (titre !== "BâtiPlus Électricien : devis") store.push("titre « " + titre + " »");
+  if (!courte || [...courte].length > 80) store.push("description courte : " + [...courte].length + " caractères (80 max)");
+  if (!longue || [...longue].length > 4000 || [...longue].length < 1500) store.push("description longue : " + [...longue].length + " caractères (4 000 max)");
+  if (/meilleur|n°\s*1|gratuit à vie|#1|top/i.test(titre + courte)) store.push("titre ou description courte avec une mention interdite par Google Play");
+  if (!/Catégorie[^\n]*Entreprise|Catégorie[^\n]*Business/i.test(fiche)) store.push("catégorie Entreprise (Business) absente");
+  if (metiers.test(fiche)) store.push("autre métier cité dans la fiche");
+  if (/mobile money|orange money|moov|wave|agrégateur|carte bancaire|fedapay|cinetpay|ligdicash|paydunya|stripe/i.test(titre + courte + longue)) store.push("la description oriente vers un paiement hors Google Play");
+  const dimsPng = (chemin) => {
+    if (!existsSync(chemin)) return null;
+    const o = readFileSync(chemin);
+    return o.slice(1, 4).toString() === "PNG" ? { l: o.readUInt32BE(16), h: o.readUInt32BE(20), couleur: o[25], octets: o.length } : null;
+  };
+  const icone = dimsPng(join(RACINE, "store", "icone-512.png"));
+  if (!icone || icone.l !== 512 || icone.h !== 512 || icone.octets > 1024 * 1024) store.push("icône 512 × 512 (≤ 1 Mo) absente");
+  const banniere = dimsPng(join(RACINE, "store", "banniere-1024x500.png"));
+  if (!banniere || banniere.l !== 1024 || banniere.h !== 500) store.push("bannière 1024 × 500 absente");
+  else if (banniere.couleur !== 2) store.push("bannière avec transparence (PNG 24 bits attendu)");
+  if (icone && icone.couleur !== 6) store.push("icône : PNG 32 bits attendu");
+  const dossierCaptures = join(RACINE, "store", "captures");
+  const captures = existsSync(dossierCaptures) ? readdirSync(dossierCaptures).filter((f) => f.endsWith(".png")).sort() : [];
+  const mauvaises = captures.filter((f) => { const d = dimsPng(join(dossierCaptures, f)); return !d || d.l !== 1080 || d.h !== 1920; });
+  if (captures.length < 2 || captures.length > 8 || mauvaises.length) store.push(captures.length + " capture(s), " + mauvaises.length + " hors 1080 × 1920");
+  controle("FS", "fiche Play Store : textes et images conformes", store.length === 0,
+    store.join(" ; ") || "titre « " + titre + " » (" + [...titre].length + "/30), description courte " + [...courte].length + "/80, longue " + [...longue].length + "/4 000, catégorie Entreprise, aucun paiement hors Google Play cité ; icône 512 × 512 (" + Math.round(icone.octets / 1024) + " Ko), bannière 1024 × 500 sans transparence, " + captures.length + " captures 1080 × 1920 (store/captures)");
+
+  /* Documentation : Android en 12 étapes, iPhone honnête. */
+  const docs = [];
+  const android = existsSync(join(RACINE, "ANDROID.md")) ? readFileSync(join(RACINE, "ANDROID.md"), "utf8") : "";
+  const etapes = [...android.matchAll(/^## Étape (\d+)\b/gm)].map((x) => Number(x[1]));
+  if (etapes.length !== 12 || etapes.some((n, i) => n !== i + 1)) docs.push("ANDROID.md : " + etapes.length + " étapes numérotées (12 attendues)");
+  for (const attendu of ["keytool -genkey", "bundleRelease", "assembleDebug", "adb install", "mode avion", "verifier:android", "Play App Signing", "versionCode"]) if (!android.includes(attendu)) docs.push("ANDROID.md : « " + attendu + " » absent");
+  const ios = existsSync(join(RACINE, "IOS.md")) ? readFileSync(join(RACINE, "IOS.md"), "utf8") : "";
+  for (const attendu of ["Mac", "Xcode", "99", "4.2", "Safari", "Sur l'écran d'accueil"]) if (!ios.includes(attendu)) docs.push("IOS.md : « " + attendu + " » absent");
+  controle("DC", "ANDROID.md (12 étapes) et IOS.md complets", docs.length === 0,
+    docs.join(" ; ") || "ANDROID.md : 12 étapes (outils, construction, keystore keytool + 2 sauvegardes, APK de test adb install, mode avion, verifier:android, bundleRelease, Play App Signing, fiche, test interne, publication, mises à jour versionCode) ; IOS.md : Mac + Xcode, 99 $/an, règle 4.2 d'Apple, recommandation PWA par Safari « Sur l'écran d'accueil »");
+}
+
 /* ---------- Rapport ---------- */
 await controlesExecution();
 controlesMoteur();
@@ -3323,8 +3528,10 @@ controlesEtape10();
 controlesEtape11();
 await controlesEtape12();
 controlesIdentite();
+controlesEtape13();
+for (const r of verifierAndroid()) controle(r.numero, r.libelle, r.ok, r.detail);
 
-const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+", "㊸", "㊹", "㊺", "㊻", "VR", "CO", "SW", "AN", "CS", "㊼", "㊽", "㊾", "㊿", "AB", "RL", "PV", "RC", "PI", "SP", "SE", "RT", "RN", "PX"];
+const ordre = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑨b", "⑩", "⑪", "⑫", "⑮", "⑰", "⑳", "㉑", "㉔", "㉕", "IC", "PA", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜", "㉝", "㉞", "㉟", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "CL", "ST", "D", "A", "N3", "P", "S①", "S②", "S③", "S④", "S⑤", "S⑥", "S⑦", "S⑪", "S+", "㊸", "㊹", "㊺", "㊻", "VR", "CO", "SW", "AN", "CS", "㊼", "㊽", "㊾", "㊿", "AB", "RL", "PV", "RC", "PI", "SP", "SE", "RT", "RN", "PX", "PT", "PM", "MF", "GS", "PC", "FS", "DC"];
 resultats.sort((a, b) => {
   const ia = ordre.indexOf(a.numero); const ib = ordre.indexOf(b.numero);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);

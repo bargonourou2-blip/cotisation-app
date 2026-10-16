@@ -1,15 +1,50 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ===================================================================
+         Permissions : UNIQUEMENT celles qui servent (contrôle ⑩, npm run verifier:android).
+         - INTERNET              : paiement, synchronisation (étapes 12 et 14).
+         - POST_NOTIFICATIONS    : rappels de renouvellement J-3, veille, jour J (Android 13+).
+         - ACCESS_NETWORK_STATE  : détection hors ligne (plugin Network).
+         CAMERA n'est PAS déclarée : la photo du tableau passe par l'application Appareil photo
+         du téléphone (intent système), qui ne demande aucune permission à BâtiPlus. Déclarer
+         CAMERA obligerait au contraire à demander l'autorisation à l'électricien.
+         =================================================================== -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Ajoutées par les plugins, inutiles pour BâtiPlus : retirées à la fusion des manifestes.
+         Rappels : replanifiés à chaque ouverture de l'application (pas besoin du redémarrage). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
+    <uses-permission android:name="android.permission.VIBRATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove" />
+
+    <!-- Ouvrir l'appareil photo du téléphone (visibilité des paquets, Android 11+). -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/regles_extraction"
         android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/securite_reseau"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+
+        <!-- Seul composant ouvert aux autres applications : le lanceur. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"
             android:name=".MainActivity"
@@ -30,13 +65,11 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Rappels locaux : récepteurs internes, jamais ouverts aux autres applications. -->
+        <receiver android:name="com.capacitorjs.plugins.localnotifications.TimedNotificationPublisher" android:exported="false" />
+        <receiver android:name="com.capacitorjs.plugins.localnotifications.NotificationDismissReceiver" android:exported="false" />
+        <!-- Restauration au redémarrage du téléphone : retirée avec RECEIVE_BOOT_COMPLETED. -->
+        <receiver android:name="com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver" tools:node="remove" />
     </application>
-
-    <!-- Permissions -->
-
-    <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Devis PDF dans Documents/BatiPlus/ : permission utile seulement jusqu'à Android 10 (API 29) ;
-         au-delà, Filesystem écrit sans permission de stockage. -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 </manifest>
