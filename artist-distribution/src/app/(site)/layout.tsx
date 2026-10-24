@@ -1,0 +1,14 @@
+import { SiteHeader } from '@/components/marketing/site-header';
+import { SiteFooter } from '@/components/marketing/site-footer';
+
+export default function LayoutSite({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen flex-col">
+      <SiteHeader />
+      <main id="contenu" className="flex-1">
+        {children}
+      </main>
+      <SiteFooter />
+    </div>
+  );
+}
